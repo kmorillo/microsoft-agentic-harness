@@ -1,5 +1,6 @@
 using Domain.Common.Telemetry;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using OpenTelemetry.Exporter;
@@ -11,14 +12,14 @@ namespace Presentation.AgentHub.Tests.Telemetry.Fixtures;
 /// <summary>
 /// E2E test factory that extends <see cref="MetricsIntegrationFactory"/> by replacing
 /// the in-process Prometheus exporter with an OTLP exporter targeting a Testcontainers
-/// OTel Collector. The collector forwards metrics to an external Prometheus instance.
+/// OTel Collector, and pointing <see cref="Presentation.AgentHub.Services.PrometheusQueryService"/>
+/// at the Testcontainers Prometheus instance so <c>/api/metrics/*</c> endpoints return real data.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Keeps all mock AI services from the parent factory (stub agent, no-op safety, etc.)
-/// so no real LLM calls are made. The only difference is the metrics export pipeline:
-/// metrics flow through the real OTel Collector config (filter/app_only, namespace prefixing)
-/// into Prometheus, enabling true end-to-end validation of the observability pipeline.
+/// so no real LLM calls are made. The metrics pipeline is fully real:
+/// App → OTLP → Collector (filter/namespace) → Prometheus → PrometheusQueryService → MetricsController.
 /// </para>
 /// <para>
 /// The <c>service.name</c> resource attribute is set to <c>Presentation.AgentHub</c>
@@ -28,22 +29,41 @@ namespace Presentation.AgentHub.Tests.Telemetry.Fixtures;
 public class MetricsE2EFactory : MetricsIntegrationFactory
 {
     private readonly string _otlpEndpoint;
+    private readonly string _prometheusEndpoint;
 
     /// <summary>
-    /// Creates a new E2E factory that exports OTLP metrics to the given collector endpoint.
+    /// Creates a new E2E factory that exports OTLP metrics to the given collector endpoint
+    /// and proxies Prometheus queries to the given Prometheus endpoint.
     /// </summary>
     /// <param name="otlpGrpcEndpoint">
     /// The collector's OTLP gRPC endpoint (e.g., <c>http://localhost:4317</c>).
     /// </param>
-    public MetricsE2EFactory(string otlpGrpcEndpoint)
+    /// <param name="prometheusEndpoint">
+    /// The Prometheus HTTP API endpoint (e.g., <c>http://localhost:9090</c>).
+    /// Configures <c>PrometheusQueryService</c> so <c>/api/metrics/*</c> controller
+    /// endpoints query the real Testcontainers Prometheus instance.
+    /// </param>
+    public MetricsE2EFactory(string otlpGrpcEndpoint, string prometheusEndpoint)
     {
         _otlpEndpoint = otlpGrpcEndpoint;
+        _prometheusEndpoint = prometheusEndpoint;
     }
 
     /// <inheritdoc/>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
+
+        // Point PrometheusQueryService at the Testcontainers Prometheus instance
+        // so /api/metrics/* endpoints return real data from the E2E pipeline.
+        builder.ConfigureAppConfiguration((_, config) =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AppConfig:Prometheus:BaseUrl"] = _prometheusEndpoint,
+                ["AppConfig:Prometheus:EnableDemoData"] = "false",
+            });
+        });
 
         builder.ConfigureServices(services =>
         {

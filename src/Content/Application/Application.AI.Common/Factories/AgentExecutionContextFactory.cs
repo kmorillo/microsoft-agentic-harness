@@ -76,6 +76,7 @@ public class AgentExecutionContextFactory
 		var middlewareTypes = ResolveMiddlewareTypes(skill, options);
 		var aiContextProviders = BuildAIContextProviders(skill, options);
 		var frameworkType = options.FrameworkType
+			?? ResolveFrameworkTypeFromMetadata(skill)
 			?? _appConfig.CurrentValue.AI?.AgentFramework?.ClientType
 			?? AIAgentFrameworkClientType.AzureOpenAI;
 
@@ -162,6 +163,15 @@ public class AgentExecutionContextFactory
 			skill.Id, agentName, tools?.Count ?? 0, aiContextProviders?.Count ?? 0);
 
 		return context;
+	}
+
+	private static AIAgentFrameworkClientType? ResolveFrameworkTypeFromMetadata(SkillDefinition skill)
+	{
+		if (skill.Metadata?.TryGetValue("framework_type", out var value) == true
+			&& Enum.TryParse<AIAgentFrameworkClientType>(value?.ToString(), ignoreCase: true, out var parsed))
+			return parsed;
+
+		return null;
 	}
 
 	private string ResolveDeploymentName(SkillDefinition skill, SkillAgentOptions options)

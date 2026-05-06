@@ -60,17 +60,6 @@ public class DependencyInjectionTests
     }
 
     [Fact]
-    public void AddApplicationAIDependencies_RegistersTieredContextAssembler_AsTransient()
-    {
-        var services = CreateServicesWithAIDependencies();
-
-        var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(ITieredContextAssembler));
-        descriptor.Should().NotBeNull();
-        descriptor!.Lifetime.Should().Be(ServiceLifetime.Transient);
-        descriptor.ImplementationType.Should().Be(typeof(TieredContextAssembler));
-    }
-
-    [Fact]
     public void AddApplicationAIDependencies_RegistersAgentExecutionContextFactory_AsSingleton()
     {
         var services = CreateServicesWithAIDependencies();

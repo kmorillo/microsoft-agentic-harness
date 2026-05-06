@@ -61,13 +61,12 @@ public sealed class PrometheusFixture : IAsyncLifetime
             .WithPortBinding(8889, true)
             .WithResourceMapping(
                 Path.Combine(RepoRoot, "scripts", "otel-collector", "config.yaml"),
-                "/etc/otelcol-contrib/config.yaml")
+                "/etc/otelcol-contrib/")
             .WithEnvironment("DEPLOYMENT_ENVIRONMENT", "test")
             .WithEnvironment("TEMPO_ENDPOINT", "localhost:4317")
             .WithEnvironment("APPLICATIONINSIGHTS_CONNECTION_STRING", "InstrumentationKey=00000000-0000-0000-0000-000000000000")
             .WithWaitStrategy(Wait.ForUnixContainer()
-                .UntilPortIsAvailable(4317)
-                .UntilPortIsAvailable(8889))
+                .UntilMessageIsLogged("Everything is ready"))
             .Build();
 
         await _collector.StartAsync();
@@ -82,7 +81,9 @@ public sealed class PrometheusFixture : IAsyncLifetime
                   - targets: ['otel-collector:8889']
             """;
 
-        var promConfigPath = Path.Combine(Path.GetTempPath(), $"prom-{Guid.NewGuid():N}.yml");
+        var promConfigDir = Path.Combine(Path.GetTempPath(), $"prom-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(promConfigDir);
+        var promConfigPath = Path.Combine(promConfigDir, "prometheus.yml");
         await File.WriteAllTextAsync(promConfigPath, promConfig);
 
         _prometheus = new ContainerBuilder()
@@ -90,9 +91,9 @@ public sealed class PrometheusFixture : IAsyncLifetime
             .WithName($"prometheus-{Guid.NewGuid():N}")
             .WithNetwork(_network)
             .WithPortBinding(9090, true)
-            .WithResourceMapping(promConfigPath, "/etc/prometheus/prometheus.yml")
+            .WithResourceMapping(promConfigPath, "/etc/prometheus/")
             .WithWaitStrategy(Wait.ForUnixContainer()
-                .UntilPortIsAvailable(9090))
+                .UntilMessageIsLogged("Server is ready to receive web requests"))
             .Build();
 
         await _prometheus.StartAsync();

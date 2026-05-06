@@ -77,12 +77,15 @@ public static class DependencyInjection
         // Tool conversion — ITool to AITool bridge for keyed DI tools
         services.AddSingleton<IToolConverter, AIToolConverter>();
 
-        // Context budget tracking and tiered context assembly
+        // Context budget tracking
         services.AddSingleton<IContextBudgetTracker, ContextBudgetTracker>();
-        services.AddTransient<ITieredContextAssembler, TieredContextAssembler>();
 
         // LLM usage capture — scoped so middleware and handler share the same instance per turn
         services.AddScoped<ILlmUsageCapture, Services.LlmUsageCapture>();
+
+        // Agent conversation cache — reuses the same AIAgent across all turns in a conversation
+        services.AddMemoryCache();
+        services.AddSingleton<IAgentConversationCache, Services.AgentConversationCache>();
 
         return services;
     }

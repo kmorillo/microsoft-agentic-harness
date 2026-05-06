@@ -25,6 +25,11 @@ public static class DependencyInjection
         this IServiceCollection services,
         GovernanceConfig config)
     {
+        var resolvedPaths = config.PolicyPaths
+            .Select(p => Path.IsPathRooted(p) ? p : Path.Combine(AppContext.BaseDirectory, p))
+            .Where(File.Exists)
+            .ToList();
+
         var options = new GovernanceOptions
         {
             EnableAudit = config.EnableAudit,
@@ -33,20 +38,10 @@ public static class DependencyInjection
             ConflictStrategy = (AgentGovernance.Policy.ConflictResolutionStrategy)(int)config.ConflictStrategy
         };
 
-        foreach (var path in config.PolicyPaths)
+        foreach (var path in resolvedPaths)
             options.PolicyPaths.Add(path);
 
         var kernel = new GovernanceKernel(options);
-
-        foreach (var path in config.PolicyPaths)
-        {
-            var resolved = Path.IsPathRooted(path)
-                ? path
-                : Path.Combine(AppContext.BaseDirectory, path);
-
-            if (File.Exists(resolved))
-                kernel.LoadPolicy(resolved);
-        }
 
         services.AddSingleton(kernel);
         services.AddSingleton(kernel.PolicyEngine);

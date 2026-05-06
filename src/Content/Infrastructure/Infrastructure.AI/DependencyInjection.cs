@@ -129,6 +129,10 @@ public static class DependencyInjection
         services.AddKeyedSingleton<ITool>(DocumentIngestTool.ToolName, (sp, _) =>
             new DocumentIngestTool(sp.GetRequiredService<IMediator>()));
 
+        // Echo tools — deterministic tools for E2E testing pipeline verification
+        services.AddKeyedSingleton<ITool>(EchoLookupTool.ToolName, (_, _) => new EchoLookupTool());
+        services.AddKeyedSingleton<ITool>(EchoCalculateTool.ToolName, (_, _) => new EchoCalculateTool());
+
         // Azure AI Foundry persistent agents — register administration client when configured
         if (appConfig.AI.AIFoundry.IsConfigured)
         {
@@ -254,6 +258,7 @@ public static class DependencyInjection
 
             case AIAgentFrameworkClientType.AzureAIInference:
             case AIAgentFrameworkClientType.Anthropic:
+            case AIAgentFrameworkClientType.Echo:
                 // No DI registration needed — ChatClientFactory creates the client
                 // directly with a custom endpoint and caches it internally.
                 break;
