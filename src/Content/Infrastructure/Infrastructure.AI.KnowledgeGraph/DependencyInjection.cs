@@ -1,5 +1,8 @@
 using Application.AI.Common.Interfaces.KnowledgeGraph;
+using Application.AI.Common.Interfaces.RAG;
 using Domain.Common.Config;
+using Infrastructure.AI.KnowledgeGraph.Audit;
+using Infrastructure.AI.KnowledgeGraph.Compliance;
 using Infrastructure.AI.KnowledgeGraph.InMemory;
 using Infrastructure.AI.KnowledgeGraph.Neo4j;
 using Infrastructure.AI.KnowledgeGraph.PostgreSql;
@@ -93,6 +96,21 @@ public static class DependencyInjection
         // Multi-tenant isolation (conditional decorator)
         services.AddSingleton<IKnowledgeScopeValidator>(sp =>
             new KnowledgeScopeValidator(sp.GetRequiredService<IOptionsMonitor<AppConfig>>()));
+
+        // Audit sink (structured logging; swap for DB/event hub in production)
+        services.AddSingleton<IMemoryAuditSink>(sp =>
+            new StructuredLoggingAuditSink(
+                sp.GetRequiredService<ILogger<StructuredLoggingAuditSink>>()));
+
+        // Right-to-erasure orchestrator — cascades across graph, feedback, and vector stores
+        services.AddScoped<IErasureOrchestrator>(sp =>
+            new DefaultErasureOrchestrator(
+                sp.GetRequiredService<IKnowledgeGraphStore>(),
+                sp.GetRequiredService<IFeedbackStore>(),
+                sp.GetService<IVectorStore>(),
+                sp.GetRequiredService<IMemoryAuditSink>(),
+                sp.GetService<TimeProvider>() ?? TimeProvider.System,
+                sp.GetRequiredService<ILogger<DefaultErasureOrchestrator>>()));
 
         return services;
     }
