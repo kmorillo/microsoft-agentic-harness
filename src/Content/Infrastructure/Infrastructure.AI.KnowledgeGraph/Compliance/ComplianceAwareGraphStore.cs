@@ -170,6 +170,11 @@ public sealed class ComplianceAwareGraphStore : IKnowledgeGraphStore
         CancellationToken cancellationToken = default)
         => _inner.GetNodesByOwnerAsync(ownerId, cancellationToken);
 
+    /// <inheritdoc />
+    public Task<IReadOnlyList<GraphNode>> GetAllNodesAsync(
+        CancellationToken cancellationToken = default)
+        => _inner.GetAllNodesAsync(cancellationToken);
+
     private GraphNode StampNode(GraphNode node, DateTimeOffset now, string? ownerId)
     {
         var policy = _retentionProvider.GetPolicy(node.Type);

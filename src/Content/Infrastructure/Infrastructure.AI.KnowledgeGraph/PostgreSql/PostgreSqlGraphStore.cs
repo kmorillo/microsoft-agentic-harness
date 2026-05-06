@@ -303,6 +303,16 @@ public sealed class PostgreSqlGraphStore : IKnowledgeGraphStore
         return Task.FromResult<IReadOnlyList<GraphNode>>([]);
     }
 
+    /// <inheritdoc />
+    public Task<IReadOnlyList<GraphNode>> GetAllNodesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        // TODO: When PostgreSQL is wired, use:
+        // SELECT id, name, type, properties, chunk_ids, provenance FROM kg_nodes
+        _logger.LogWarning("GetAllNodesAsync not yet implemented for PostgreSQL backend");
+        return Task.FromResult<IReadOnlyList<GraphNode>>([]);
+    }
+
     private async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken ct)
     {
         var conn = new NpgsqlConnection(_connectionString);

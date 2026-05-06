@@ -197,6 +197,13 @@ public sealed class InMemoryGraphStore : IKnowledgeGraphStore
         return Task.FromResult<IReadOnlyList<GraphNode>>(owned);
     }
 
+    /// <inheritdoc />
+    public Task<IReadOnlyList<GraphNode>> GetAllNodesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return Task.FromResult<IReadOnlyList<GraphNode>>(_nodes.Values.ToList());
+    }
+
     private static IReadOnlyDictionary<string, string> MergeProperties(
         IReadOnlyDictionary<string, string> existing,
         IReadOnlyDictionary<string, string> incoming)

@@ -137,4 +137,13 @@ public interface IKnowledgeGraphStore
     Task<IReadOnlyList<GraphNode>> GetNodesByOwnerAsync(
         string ownerId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves all nodes in the graph store. Used by the retention enforcement
+    /// service to scan for expired nodes. Production implementations should use
+    /// indexed queries (e.g., <c>WHERE expires_at &lt; @now</c>) for efficiency.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<GraphNode>> GetAllNodesAsync(
+        CancellationToken cancellationToken = default);
 }
