@@ -60,4 +60,19 @@ public record GraphEdge
     /// via <c>GraphRagConfig.ProvenanceEnabled = false</c>.
     /// </summary>
     public ProvenanceStamp? Provenance { get; init; }
+
+    /// <summary>
+    /// When this edge was created in the knowledge graph.
+    /// </summary>
+    public DateTimeOffset? CreatedAt { get; init; }
+
+    /// <summary>
+    /// When this edge expires based on the applicable retention policy.
+    /// </summary>
+    public DateTimeOffset? ExpiresAt { get; init; }
+
+    /// <summary>
+    /// The knowledge scope owner who created this edge.
+    /// </summary>
+    public string? OwnerId { get; init; }
 }
