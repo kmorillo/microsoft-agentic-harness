@@ -53,6 +53,11 @@ public static class DependencyInjection
         services.AddSingleton<IGovernanceAuditService, AgtAuditAdapter>();
         services.AddSingleton<IMcpSecurityScanner, McpSecurityScannerAdapter>();
 
+        services.AddSingleton<IResponseSanitizer, CredentialRedactor>();
+        services.AddSingleton<IResponseSanitizer, ResponseInjectionScrubber>();
+        services.AddSingleton<IResponseSanitizer, ExfiltrationUrlDetector>();
+        services.AddSingleton<ICompositeResponseSanitizer, CompositeResponseSanitizer>();
+
         return services;
     }
 
@@ -67,6 +72,7 @@ public static class DependencyInjection
         services.AddSingleton<IPromptInjectionScanner, NoOpInjectionScanner>();
         services.AddSingleton<IGovernanceAuditService, NoOpAuditService>();
         services.AddSingleton<IMcpSecurityScanner, NoOpMcpScanner>();
+        services.AddSingleton<ICompositeResponseSanitizer, NoOpResponseSanitizer>();
 
         return services;
     }

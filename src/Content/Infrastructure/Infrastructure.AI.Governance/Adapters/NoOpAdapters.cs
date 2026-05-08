@@ -34,3 +34,10 @@ internal sealed class NoOpMcpScanner : IMcpSecurityScanner
     public IReadOnlyList<McpToolScanResult> ScanTools(IEnumerable<(string Name, string Description, string? Schema)> tools) =>
         tools.Select(t => McpToolScanResult.Safe(t.Name)).ToList().AsReadOnly();
 }
+
+/// <summary>No-op response sanitizer used when governance is disabled.</summary>
+internal sealed class NoOpResponseSanitizer : ICompositeResponseSanitizer
+{
+    public SanitizationResult Sanitize(string content, string? toolName = null) =>
+        SanitizationResult.Clean(content ?? string.Empty);
+}
