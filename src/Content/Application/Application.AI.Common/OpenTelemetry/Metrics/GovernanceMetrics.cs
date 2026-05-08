@@ -41,4 +41,16 @@ public static class GovernanceMetrics
     /// <summary>MCP tool threats detected.</summary>
     public static Counter<long> McpThreats { get; } =
         AppInstrument.Meter.CreateCounter<long>(GovernanceConventions.McpThreats, "{threat}", "MCP tool threats detected");
+
+    /// <summary>Response sanitization actions taken. Tags: agent.governance.sanitization.category, agent.governance.tool.</summary>
+    public static Counter<long> ResponseSanitizations { get; } =
+        AppInstrument.Meter.CreateCounter<long>(GovernanceConventions.ResponseSanitizations, "{sanitization}", "Response sanitization actions");
+
+    /// <summary>Responses blocked due to threat level exceeding threshold. Tags: agent.governance.tool.</summary>
+    public static Counter<long> ResponseBlocks { get; } =
+        AppInstrument.Meter.CreateCounter<long>(GovernanceConventions.ResponseBlocks, "{block}", "Response blocks due to high threat level");
+
+    /// <summary>Response sanitization latency in milliseconds.</summary>
+    public static Histogram<double> SanitizationDuration { get; } =
+        AppInstrument.Meter.CreateHistogram<double>(GovernanceConventions.SanitizationDuration, "ms", "Response sanitization duration");
 }

@@ -18,6 +18,11 @@ public static class GovernanceConventions
     public const string McpScans = "agent.governance.mcp_scans";
     public const string McpThreats = "agent.governance.mcp_threats";
 
+    public const string ResponseSanitizations = "agent.governance.response.sanitizations";
+    public const string ResponseBlocks = "agent.governance.response.blocks";
+    public const string SanitizationDuration = "agent.governance.response.sanitization_duration";
+    public const string SanitizationCategoryTag = "agent.governance.sanitization.category";
+
     public static class ActionValues
     {
         public const string Allow = "allow";

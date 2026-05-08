@@ -34,4 +34,13 @@ public sealed class GovernanceConfig
     /// Detections below this level are logged but not blocked.
     /// </summary>
     public ThreatLevel InjectionBlockThreshold { get; init; } = ThreatLevel.High;
+
+    /// <summary>Whether MCP tool response sanitization is enabled.</summary>
+    public bool EnableResponseSanitization { get; init; } = true;
+
+    /// <summary>
+    /// Minimum threat level that triggers response blocking instead of redaction.
+    /// Findings below this level are redacted and the sanitized response continues.
+    /// </summary>
+    public ThreatLevel ResponseBlockThreshold { get; init; } = ThreatLevel.Critical;
 }
