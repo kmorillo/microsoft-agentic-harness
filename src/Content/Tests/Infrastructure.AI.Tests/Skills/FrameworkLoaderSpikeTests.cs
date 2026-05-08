@@ -1,25 +1,26 @@
 using FluentAssertions;
 using Microsoft.Agents.AI;
-using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Infrastructure.AI.Tests.Skills;
 
 /// <summary>
-/// Read-only spike: verify that <see cref="FileAgentSkillsProvider"/> from
-/// Microsoft.Agents.AI can be constructed with our existing skill paths.
-/// <c>FileAgentSkillLoader</c> is internal — only <see cref="FileAgentSkillsProvider"/>
-/// is publicly accessible for progressive skill disclosure.
+/// Read-only spike: verify that <see cref="AgentSkillsProviderBuilder"/> from
+/// Microsoft.Agents.AI can construct a skills provider with our existing skill paths.
+/// In 1.4.0, <c>FileAgentSkillsProvider</c> was replaced by <see cref="AgentSkillsProviderBuilder"/>
+/// which is the recommended public API for progressive skill disclosure.
 /// </summary>
 [Trait("Category", "Spike")]
 public class FrameworkLoaderSpikeTests
 {
+    private static readonly AgentFileSkillScriptRunner NoOpRunner =
+        (skill, script, arguments, serviceProvider, cancellationToken) =>
+            Task.FromResult<object?>(null);
+
     private readonly string _skillsRoot;
 
     public FrameworkLoaderSpikeTests()
     {
-        // Walk up from the test bin folder to the repo root, then into the Skills directory.
-        // AppContext.BaseDirectory = .../bin/Debug/net10.0/
         var repoRoot = FindRepoRoot(AppContext.BaseDirectory);
         _skillsRoot = Path.Combine(
             repoRoot,
@@ -30,75 +31,69 @@ public class FrameworkLoaderSpikeTests
     }
 
     [Fact]
-    public void FileAgentSkillsProvider_ConstructionWithSkillPaths_DoesNotThrow()
+    public void AgentSkillsProviderBuilder_ConstructionWithSkillPaths_DoesNotThrow()
     {
-        var act = () => new FileAgentSkillsProvider(
-            [_skillsRoot],
-            options: null,
-            loggerFactory: NullLoggerFactory.Instance);
+        var act = () => new AgentSkillsProviderBuilder()
+            .UseFileSkill(_skillsRoot)
+            .UseFileScriptRunner(NoOpRunner)
+            .Build();
 
         act.Should().NotThrow(
-            "FileAgentSkillsProvider should accept our skill paths without error");
+            "AgentSkillsProviderBuilder should accept our skill paths without error");
     }
 
     [Fact]
-    public void FileAgentSkillsProvider_ConstructedInstance_IsNotNull()
+    public void AgentSkillsProviderBuilder_ConstructedInstance_IsNotNull()
     {
-        var provider = new FileAgentSkillsProvider(
-            [_skillsRoot],
-            options: null,
-            loggerFactory: NullLoggerFactory.Instance);
+        var provider = new AgentSkillsProviderBuilder()
+            .UseFileSkill(_skillsRoot)
+            .UseFileScriptRunner(NoOpRunner)
+            .Build();
 
         provider.Should().NotBeNull();
     }
 
     [Fact]
-    public void FileAgentSkillsProvider_WithMultiplePaths_ConstructsSuccessfully()
+    public void AgentSkillsProviderBuilder_WithMultiplePaths_ConstructsSuccessfully()
     {
-        // Point at individual skill directories
         var echoPath = Path.Combine(_skillsRoot, "echo-test");
         var orchestratorPath = Path.Combine(_skillsRoot, "orchestrator-agent");
         var researchPath = Path.Combine(_skillsRoot, "research-agent");
 
-        var provider = new FileAgentSkillsProvider(
-            [echoPath, orchestratorPath, researchPath],
-            options: null,
-            loggerFactory: NullLoggerFactory.Instance);
+        var builder = new AgentSkillsProviderBuilder()
+            .UseFileScriptRunner(NoOpRunner);
+        foreach (var path in new[] { echoPath, orchestratorPath, researchPath })
+            builder.UseFileSkill(path);
+
+        var provider = builder.Build();
 
         provider.Should().NotBeNull();
     }
 
     [Fact]
-    public void FileAgentSkillsProvider_WithOptions_ConstructsSuccessfully()
+    public void AgentSkillsProviderBuilder_WithFilter_ConstructsSuccessfully()
     {
-        var options = new FileAgentSkillsProviderOptions
-        {
-            SkillsInstructionPrompt = "Use load_skill to explore available skills."
-        };
-
-        var provider = new FileAgentSkillsProvider(
-            [_skillsRoot],
-            options: options,
-            loggerFactory: NullLoggerFactory.Instance);
+        var provider = new AgentSkillsProviderBuilder()
+            .UseFileSkill(_skillsRoot)
+            .UseFileScriptRunner(NoOpRunner)
+            .UseFilter(s => s.Frontmatter.Name != "internal")
+            .Build();
 
         provider.Should().NotBeNull();
     }
 
     [Fact]
-    public void FileAgentSkillsProvider_IsAIContextProvider()
+    public void AgentSkillsProvider_IsAIContextProvider()
     {
-        var provider = new FileAgentSkillsProvider(
-            [_skillsRoot],
-            options: null,
-            loggerFactory: NullLoggerFactory.Instance);
+        var provider = new AgentSkillsProviderBuilder()
+            .UseFileSkill(_skillsRoot)
+            .UseFileScriptRunner(NoOpRunner)
+            .Build();
 
         provider.Should().BeAssignableTo<AIContextProvider>(
-            "FileAgentSkillsProvider should be an AIContextProvider for agent wiring");
+            "AgentSkillsProvider should be an AIContextProvider for agent wiring");
     }
 
-    /// <summary>
-    /// Walks up from the given directory until we find a directory containing AgenticHarness.slnx.
-    /// </summary>
     private static string FindRepoRoot(string startDir)
     {
         var dir = startDir;

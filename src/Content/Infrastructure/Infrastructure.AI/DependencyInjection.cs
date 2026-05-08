@@ -10,6 +10,7 @@ using Infrastructure.AI.Traces;
 using Application.AI.Common.Interfaces.Agent;
 using Application.AI.Common.Interfaces.Agents;
 using Application.AI.Common.Interfaces.Compaction;
+using Application.AI.Common.Interfaces.Governance;
 using Application.AI.Common.Interfaces.Config;
 using Application.AI.Common.Interfaces.Hooks;
 using Application.AI.Common.Interfaces.Permissions;
@@ -29,6 +30,7 @@ using Infrastructure.AI.Audit;
 using Infrastructure.AI.ContentSafety;
 using OpenAI;
 using Infrastructure.AI.Agents;
+using Infrastructure.AI.Governance;
 using Infrastructure.AI.Compaction;
 using Infrastructure.AI.Compaction.Strategies;
 using Infrastructure.AI.Config;
@@ -208,6 +210,19 @@ public static class DependencyInjection
         services.AddSingleton<ISubagentToolResolver, SubagentToolResolver>();
         services.AddSingleton<IAgentMailbox, InMemoryAgentMailbox>();
         services.AddSingleton<ISubagentProfileRegistry, BuiltInSubagentProfiles>();
+
+        // Autonomy tier resolution — reads tier from SubagentDefinition or falls back to config
+        services.AddSingleton<IAutonomyTierResolver, DefaultAutonomyTierResolver>();
+
+        // Delegation persistence — append-only JSONL per supervisor session
+        services.AddSingleton<IDelegationStore, JsonlDelegationStore>();
+
+        // Supervisor strategy — deterministic capability-based agent selection, keyed for extensibility
+        services.AddKeyedSingleton<ISupervisorStrategy>("capability-match", (sp, _) =>
+            new CapabilityMatchStrategy(sp.GetRequiredService<IOptionsMonitor<AppConfig>>()));
+
+        // Supervisor — coordinates delegation, concurrency, depth tracking, and audit
+        services.AddSingleton<ISupervisor, CapabilityMatchSupervisor>();
 
         // Config discovery — directory walk with @include support
         services.AddTransient<IConfigDiscoveryService, DirectoryWalkConfigDiscovery>();
