@@ -1,3 +1,5 @@
+using Domain.Common.Config.AI.Governance;
+
 namespace Domain.Common.Config.AI;
 
 /// <summary>
@@ -43,4 +45,10 @@ public sealed class GovernanceConfig
     /// Findings below this level are redacted and the sanitized response continues.
     /// </summary>
     public ThreatLevel ResponseBlockThreshold { get; init; } = ThreatLevel.Critical;
+
+    /// <summary>
+    /// Human escalation configuration for approval workflows triggered when
+    /// agents exceed their authority.
+    /// </summary>
+    public EscalationConfig Escalation { get; init; } = new();
 }

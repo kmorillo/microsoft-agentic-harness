@@ -6,6 +6,7 @@ using Domain.Common.Config.AI.MCP;
 using Domain.Common.Config.AI.Orchestration;
 using Domain.Common.Config.AI.Permissions;
 using Domain.Common.Config.AI.RAG;
+using Domain.Common.Config.AI.Resilience;
 
 namespace Domain.Common.Config.AI;
 
@@ -27,6 +28,7 @@ namespace Domain.Common.Config.AI;
 /// ├── Permissions       — Permission system for tool and file access approvals
 /// ├── Hooks             — Lifecycle hook execution configuration
 /// ├── Orchestration     — Subagent management and streaming execution
+/// ├── Resilience        — LLM fallback chains, circuit breakers, retry, degraded mode
 /// └── Rag               — RAG pipeline: ingestion, retrieval, reranking, model tiering
 /// </code>
 /// </para>
@@ -98,6 +100,12 @@ public class AIConfig
     /// retrieval, reranking, query transformation, and model tiering.
     /// </summary>
     public RagConfig Rag { get; set; } = new();
+
+    /// <summary>
+    /// LLM provider resilience configuration including fallback chains,
+    /// circuit breakers, retry policies, and degraded mode behavior.
+    /// </summary>
+    public ResilienceConfig Resilience { get; set; } = new();
 
     /// <summary>Agent Governance Toolkit configuration.</summary>
     public GovernanceConfig Governance { get; init; } = new();
