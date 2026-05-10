@@ -1,4 +1,5 @@
 using Application.AI.Common.OpenTelemetry.Metrics;
+using Domain.AI.Resilience;
 using Domain.AI.Telemetry.Conventions;
 using Domain.Common.Config.AI.Resilience;
 using Microsoft.Extensions.AI;
@@ -38,12 +39,14 @@ public static class ProviderResiliencePipelineBuilder
     /// <param name="providerName">Logical name for this provider (used in OTel tags and circuit breaker isolation).</param>
     /// <param name="config">Resilience configuration from Options pattern.</param>
     /// <param name="circuitBreakerStateProvider">Output: the Polly state provider for this pipeline, used by health monitor to query circuit state.</param>
+    /// <param name="onCircuitStateChanged">Optional callback invoked on circuit state transitions (Opened→Unavailable, Closed→Healthy, HalfOpened→Degraded).</param>
     /// <param name="logger">Logger for retry/circuit events.</param>
     /// <returns>A configured resilience pipeline scoped to this provider.</returns>
     public static ResiliencePipeline<ChatResponse> Build(
         string providerName,
         ResilienceConfig config,
         out CircuitBreakerStateProvider circuitBreakerStateProvider,
+        Action<ProviderHealthState>? onCircuitStateChanged = null,
         ILogger? logger = null)
     {
         var stateProvider = new CircuitBreakerStateProvider();
@@ -51,7 +54,7 @@ public static class ProviderResiliencePipelineBuilder
 
         var pipeline = new ResiliencePipelineBuilder<ChatResponse>()
             .AddRetry(CreateRetryOptions(providerName, config.Retry, logger))
-            .AddCircuitBreaker(CreateCircuitBreakerOptions(providerName, config.CircuitBreaker, stateProvider, logger))
+            .AddCircuitBreaker(CreateCircuitBreakerOptions(providerName, config.CircuitBreaker, stateProvider, onCircuitStateChanged, logger))
             .AddTimeout(CreateTimeoutOptions(config.Timeout))
             .Build();
 
@@ -73,12 +76,14 @@ public static class ProviderResiliencePipelineBuilder
     /// <param name="providerName">Logical name for this provider.</param>
     /// <param name="config">Resilience configuration.</param>
     /// <param name="sharedStateProvider">State provider for read-only health queries. Does not synchronize circuit state across pipelines.</param>
+    /// <param name="onCircuitStateChanged">Optional callback invoked on circuit state transitions.</param>
     /// <param name="logger">Logger for retry/circuit events.</param>
     /// <returns>A non-generic resilience pipeline for stream initiation.</returns>
     public static ResiliencePipeline BuildForStreamInitiation(
         string providerName,
         ResilienceConfig config,
         CircuitBreakerStateProvider sharedStateProvider,
+        Action<ProviderHealthState>? onCircuitStateChanged = null,
         ILogger? logger = null)
     {
         var pipeline = new ResiliencePipelineBuilder()
@@ -105,12 +110,24 @@ public static class ProviderResiliencePipelineBuilder
                 ShouldHandle = new PredicateBuilder().Handle<HttpRequestException>().Handle<TaskCanceledException>().Handle<TimeoutRejectedException>(),
                 OnOpened = args =>
                 {
-                    RecordCircuitOpened(providerName, logger);
+                    if (onCircuitStateChanged is not null)
+                        onCircuitStateChanged(ProviderHealthState.Unavailable);
+                    else
+                        RecordCircuitOpened(providerName, logger);
                     return default;
                 },
                 OnClosed = args =>
                 {
-                    RecordCircuitClosed(providerName, logger);
+                    if (onCircuitStateChanged is not null)
+                        onCircuitStateChanged(ProviderHealthState.Healthy);
+                    else
+                        RecordCircuitClosed(providerName, logger);
+                    return default;
+                },
+                OnHalfOpened = args =>
+                {
+                    logger?.LogInformation("Stream circuit half-opened for provider {Provider}", providerName);
+                    onCircuitStateChanged?.Invoke(ProviderHealthState.Degraded);
                     return default;
                 }
             })
@@ -142,7 +159,7 @@ public static class ProviderResiliencePipelineBuilder
     }
 
     private static CircuitBreakerStrategyOptions<ChatResponse> CreateCircuitBreakerOptions(
-        string providerName, CircuitBreakerConfig cbConfig, CircuitBreakerStateProvider stateProvider, ILogger? logger)
+        string providerName, CircuitBreakerConfig cbConfig, CircuitBreakerStateProvider stateProvider, Action<ProviderHealthState>? onCircuitStateChanged, ILogger? logger)
     {
         return new CircuitBreakerStrategyOptions<ChatResponse>
         {
@@ -157,17 +174,24 @@ public static class ProviderResiliencePipelineBuilder
                 .Handle<TimeoutRejectedException>(),
             OnOpened = args =>
             {
-                RecordCircuitOpened(providerName, logger);
+                if (onCircuitStateChanged is not null)
+                    onCircuitStateChanged(ProviderHealthState.Unavailable);
+                else
+                    RecordCircuitOpened(providerName, logger);
                 return default;
             },
             OnClosed = args =>
             {
-                RecordCircuitClosed(providerName, logger);
+                if (onCircuitStateChanged is not null)
+                    onCircuitStateChanged(ProviderHealthState.Healthy);
+                else
+                    RecordCircuitClosed(providerName, logger);
                 return default;
             },
             OnHalfOpened = args =>
             {
                 logger?.LogInformation("Circuit half-opened for provider {Provider}", providerName);
+                onCircuitStateChanged?.Invoke(ProviderHealthState.Degraded);
                 return default;
             }
         };

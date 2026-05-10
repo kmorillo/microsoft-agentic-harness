@@ -1,6 +1,7 @@
 using Application.AI.Common.Helpers;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Context;
+using Application.AI.Common.Interfaces.Resilience;
 using Application.AI.Common.Interfaces.Skills;
 using Application.AI.Common.Interfaces.Tools;
 using Application.AI.Common.Interfaces.Traces;
@@ -40,6 +41,7 @@ public class AgentExecutionContextFactory
     private readonly IExecutionTraceStore? _traceStore;
     private readonly ISkillContentProvider? _skillContentProvider;
     private readonly IAgentConfigReporter? _agentConfigReporter;
+    private readonly IResilientChatClientProvider? _resilientChatClientProvider;
 
     public AgentExecutionContextFactory(
         ILogger<AgentExecutionContextFactory> logger,
@@ -51,7 +53,8 @@ public class AgentExecutionContextFactory
         IContextBudgetTracker? budgetTracker = null,
         IExecutionTraceStore? traceStore = null,
         ISkillContentProvider? skillContentProvider = null,
-        IAgentConfigReporter? agentConfigReporter = null)
+        IAgentConfigReporter? agentConfigReporter = null,
+        IResilientChatClientProvider? resilientChatClientProvider = null)
     {
         _logger = logger;
         _appConfig = appConfig;
@@ -63,6 +66,7 @@ public class AgentExecutionContextFactory
         _traceStore = traceStore;
         _skillContentProvider = skillContentProvider;
         _agentConfigReporter = agentConfigReporter;
+        _resilientChatClientProvider = resilientChatClientProvider;
     }
 
     /// <summary>
@@ -117,6 +121,13 @@ public class AgentExecutionContextFactory
         // Expose candidate skill content provider so evaluation contexts can inject candidate content
         if (_skillContentProvider != null)
             additionalProps[ISkillContentProvider.AdditionalPropertiesKey] = _skillContentProvider;
+
+        // Stash resilient chat client for transparent fallback when resilience is enabled
+        if (_resilientChatClientProvider is not null)
+        {
+            var resilientClient = await _resilientChatClientProvider.GetResilientChatClientAsync();
+            additionalProps["__resilientChatClient"] = resilientClient;
+        }
 
         // Start a trace run when a store is wired in
         if (_traceStore != null)
