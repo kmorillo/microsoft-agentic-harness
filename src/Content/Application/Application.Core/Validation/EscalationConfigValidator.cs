@@ -33,6 +33,10 @@ public sealed class EscalationConfigValidator : AbstractValidator<EscalationConf
             .Must(v => ValidApprovalStrategies.Contains(v, StringComparer.OrdinalIgnoreCase))
             .WithMessage($"DefaultApprovalStrategy must be one of: {string.Join(", ", ValidApprovalStrategies)}.");
 
+        RuleFor(x => x.AuditStoragePath)
+            .NotEmpty()
+            .WithMessage("AuditStoragePath must be configured.");
+
         RuleFor(x => x.PriorityLevels)
             .NotEmpty()
             .WithMessage("PriorityLevels must be configured when escalation is enabled.")

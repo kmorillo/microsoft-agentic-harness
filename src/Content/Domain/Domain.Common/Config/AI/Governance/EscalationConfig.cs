@@ -13,6 +13,7 @@ namespace Domain.Common.Config.AI.Governance;
 /// ├── DefaultTimeoutSeconds    — Global escalation timeout
 /// ├── DefaultTimeoutAction     — Deny / DenyAndEscalate / Approve / Escalate
 /// ├── DefaultApprovalStrategy  — AnyOf / AllOf / Quorum
+/// ├── AuditStoragePath          — Directory for JSONL audit log
 /// └── PriorityLevels{}         — Per-priority overrides keyed by EscalationPriority name
 ///     ├── TimeoutSeconds       — Override timeout for this level
 ///     ├── Async                — Non-blocking mode (informational)
@@ -53,4 +54,10 @@ public class EscalationConfig
     /// ("Informational", "Blocking", "Critical").
     /// </summary>
     public Dictionary<string, EscalationPriorityConfig> PriorityLevels { get; set; } = new();
+
+    /// <summary>
+    /// Directory path for the JSONL escalation audit store.
+    /// Relative paths are resolved from the application working directory.
+    /// </summary>
+    public string AuditStoragePath { get; set; } = ".agent-sessions/escalations";
 }

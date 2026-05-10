@@ -95,6 +95,18 @@ public class EscalationConfigValidatorTests
         result.Errors.Should().Contain(e => e.PropertyName == "DefaultApprovalStrategy");
     }
 
+    [Fact]
+    public async Task Validate_EmptyAuditStoragePath_HasError()
+    {
+        var config = CreateValidConfig();
+        config.AuditStoragePath = "";
+
+        var result = await _validator.ValidateAsync(config);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "AuditStoragePath");
+    }
+
     private static EscalationConfig CreateValidConfig() => new()
     {
         Enabled = true,
