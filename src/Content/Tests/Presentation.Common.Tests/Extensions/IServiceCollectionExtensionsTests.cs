@@ -1,10 +1,13 @@
 using Domain.Common.Config;
+using Domain.Common.Config.AI.Governance;
+using Domain.Common.Config.AI.Resilience;
 using Domain.Common.Config.Cache;
 using FluentAssertions;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Presentation.Common.Extensions;
 using Xunit;
 
@@ -146,5 +149,45 @@ public sealed class IServiceCollectionExtensionsTests
         var result = services.AddAuthDependencies(azureConfig);
 
         result.Should().BeSameAs(services);
+    }
+
+    // -- EscalationConfig and ResilienceConfig bindings --
+
+    [Fact]
+    public void RegisterConfigSections_BindsEscalationConfig()
+    {
+        var services = new ServiceCollection();
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AppConfig:AI:Governance:Escalation:Enabled"] = "true",
+                ["AppConfig:AI:Governance:Escalation:DefaultTimeoutSeconds"] = "600",
+            })
+            .Build();
+
+        services.RegisterConfigSections(config);
+        var provider = services.BuildServiceProvider();
+
+        var escConfig = provider.GetRequiredService<IOptionsMonitor<EscalationConfig>>().CurrentValue;
+        escConfig.Enabled.Should().BeTrue();
+        escConfig.DefaultTimeoutSeconds.Should().Be(600);
+    }
+
+    [Fact]
+    public void RegisterConfigSections_BindsResilienceConfig()
+    {
+        var services = new ServiceCollection();
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["AppConfig:AI:Resilience:Enabled"] = "true",
+            })
+            .Build();
+
+        services.RegisterConfigSections(config);
+        var provider = services.BuildServiceProvider();
+
+        var resConfig = provider.GetRequiredService<IOptionsMonitor<ResilienceConfig>>().CurrentValue;
+        resConfig.Enabled.Should().BeTrue();
     }
 }

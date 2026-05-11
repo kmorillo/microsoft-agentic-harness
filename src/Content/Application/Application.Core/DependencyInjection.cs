@@ -1,9 +1,12 @@
+using Application.AI.Common.Interfaces.Escalation;
 using Application.AI.Common.Interfaces.Permissions;
+using Application.Core.Escalation.Strategies;
 using Application.Core.Permissions;
 using Application.Core.Workflows.Governance;
 using Application.Core.Workflows.KnowledgeGraph;
 using Application.Core.Workflows.MetaHarness;
 using Application.Core.Workflows.Rag;
+using Domain.AI.Escalation;
 using FluentValidation;
 using MediatR;
 using Microsoft.Agents.AI.Workflows;
@@ -41,6 +44,11 @@ public static class DependencyInjection
 
 		// Autonomy tier rule provider — generates baseline permission rules from agent tier
 		services.AddSingleton<IPermissionRuleProvider, AutonomyTierRuleProvider>();
+
+		// Approval strategies — keyed by ApprovalStrategyType for IEscalationService to resolve
+		services.AddKeyedSingleton<IApprovalStrategy>(ApprovalStrategyType.AnyOf, (_, _) => new AnyOfApprovalStrategy());
+		services.AddKeyedSingleton<IApprovalStrategy>(ApprovalStrategyType.AllOf, (_, _) => new AllOfApprovalStrategy());
+		services.AddKeyedSingleton<IApprovalStrategy>(ApprovalStrategyType.Quorum, (_, _) => new QuorumApprovalStrategy());
 
 		services.AddWorkflowDependencies();
 

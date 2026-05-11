@@ -4,6 +4,8 @@ using Application.Common.Interfaces.Security;
 using Application.Core;
 using Domain.Common.Config;
 using Domain.Common.Config.AI;
+using Domain.Common.Config.AI.Governance;
+using Domain.Common.Config.AI.Resilience;
 using Domain.Common.Config.Azure;
 using Domain.Common.Config.Cache;
 using Domain.Common.Config.Connectors;
@@ -79,6 +81,8 @@ public static class IServiceCollectionExtensions
         services.Configure<AIConfig>(configuration.GetSection("AppConfig:AI"));
         services.Configure<AzureConfig>(configuration.GetSection("AppConfig:Azure"));
         services.Configure<CacheConfig>(configuration.GetSection("AppConfig:Cache"));
+        services.Configure<EscalationConfig>(configuration.GetSection("AppConfig:AI:Governance:Escalation"));
+        services.Configure<ResilienceConfig>(configuration.GetSection("AppConfig:AI:Resilience"));
 
         return services;
     }

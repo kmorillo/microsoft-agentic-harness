@@ -4,7 +4,11 @@ using Application.AI.Common.Interfaces.MetaHarness;
 using Application.AI.Common.Interfaces.Skills;
 using Application.AI.Common.Interfaces.Memory;
 using Application.AI.Common.Interfaces.Traces;
+using Application.AI.Common.Interfaces.Escalation;
+using Application.AI.Common.Interfaces.Resilience;
+using Infrastructure.AI.Escalation;
 using Infrastructure.AI.Memory;
+using Infrastructure.AI.Resilience;
 using Infrastructure.AI.Security;
 using Infrastructure.AI.Traces;
 using Application.AI.Common.Interfaces.Agent;
@@ -243,7 +247,42 @@ public static class DependencyInjection
         // Regression suite service — scoped to match evaluation lifecycle
         services.AddScoped<IRegressionSuiteService, FileSystemRegressionSuiteService>();
 
+        RegisterEscalationServices(services);
+        RegisterResilienceServices(services, appConfig);
+
         return services;
+    }
+
+    /// <summary>
+    /// Registers escalation pipeline services: service, audit store, composite notifier,
+    /// and no-op notification channel stubs.
+    /// </summary>
+    private static void RegisterEscalationServices(IServiceCollection services)
+    {
+        services.AddSingleton<IEscalationService, DefaultEscalationService>();
+        services.AddSingleton<IEscalationAuditStore, JsonlEscalationAuditStore>();
+        services.AddSingleton<IEscalationNotifier, CompositeEscalationNotifier>();
+        services.AddSingleton<IEscalationNotificationChannel, NoOpSlackNotifier>();
+        services.AddSingleton<IEscalationNotificationChannel, NoOpTeamsNotifier>();
+    }
+
+    /// <summary>
+    /// Registers resilience pipeline services: health monitor, capability registry,
+    /// resilient provider, and conditionally the retry queue hosted service.
+    /// </summary>
+    private static void RegisterResilienceServices(IServiceCollection services, AppConfig appConfig)
+    {
+        services.AddSingleton<PollyProviderHealthMonitor>();
+        services.AddSingleton<IProviderHealthMonitor>(sp => sp.GetRequiredService<PollyProviderHealthMonitor>());
+        services.AddSingleton<ProviderCapabilityRegistry>();
+        services.AddSingleton<IResilientChatClientProvider, ResilientChatClientProvider>();
+
+        if (appConfig.AI.Resilience.Enabled)
+        {
+            services.AddSingleton<LlmRetryQueue>();
+            services.AddSingleton<ILlmRetryQueue>(sp => sp.GetRequiredService<LlmRetryQueue>());
+            services.AddHostedService(sp => sp.GetRequiredService<LlmRetryQueue>());
+        }
     }
 
     private static void RegisterAIClients(IServiceCollection services, AppConfig appConfig)
