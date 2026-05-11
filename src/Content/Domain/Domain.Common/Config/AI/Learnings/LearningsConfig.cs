@@ -91,4 +91,13 @@ public class LearningsConfig
     /// </summary>
     /// <value>Default: true</value>
     public bool BiasCorrection { get; set; } = true;
+
+    /// <summary>
+    /// EMA smoothing factor for temporal decay bias correction.
+    /// Controls how aggressively new learnings (UpdateCount &lt; 5) are boosted.
+    /// Lower values produce stronger correction for early observations.
+    /// Must be in range (0, 1].
+    /// </summary>
+    /// <value>Default: 0.25</value>
+    public double DecayBiasAlpha { get; set; } = 0.25;
 }

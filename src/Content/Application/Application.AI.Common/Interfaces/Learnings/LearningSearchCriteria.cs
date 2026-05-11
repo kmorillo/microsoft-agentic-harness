@@ -8,8 +8,8 @@ namespace Application.AI.Common.Interfaces.Learnings;
 /// </summary>
 public sealed record LearningSearchCriteria
 {
-    /// <summary>Required scope for filtering. Agent-scoped queries also return team and global learnings.</summary>
-    public required LearningScope Scope { get; init; }
+    /// <summary>Scope for filtering. Null searches across all scopes. Agent-scoped queries also return team and global learnings.</summary>
+    public LearningScope? Scope { get; init; }
 
     /// <summary>Filter by learning category. Null returns all categories.</summary>
     public LearningCategory? Category { get; init; }

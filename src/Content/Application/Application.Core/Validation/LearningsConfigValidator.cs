@@ -36,6 +36,10 @@ public sealed class LearningsConfigValidator : AbstractValidator<LearningsConfig
             .GreaterThan(0).WithMessage("BaselineAdjustmentThreshold must be > 0.")
             .LessThanOrEqualTo(1).WithMessage("BaselineAdjustmentThreshold must be <= 1.");
 
+        RuleFor(x => x.DecayBiasAlpha)
+            .GreaterThan(0).WithMessage("DecayBiasAlpha must be > 0.")
+            .LessThanOrEqualTo(1).WithMessage("DecayBiasAlpha must be <= 1.");
+
         RuleFor(x => x.StoreProvider)
             .NotEmpty().WithMessage("StoreProvider must be configured (e.g., 'graph' or 'in_memory').");
     }
