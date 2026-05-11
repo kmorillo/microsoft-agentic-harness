@@ -121,6 +121,7 @@ public sealed class AgUiRunHandlerTests
             store.Object,
             observability.Object,
             new ConversationLockRegistry(),
+            new AgUiEventWriterAccessor(),
             NullLogger<AgUiRunHandler>.Instance);
     }
 

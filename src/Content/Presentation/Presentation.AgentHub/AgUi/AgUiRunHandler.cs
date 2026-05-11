@@ -29,6 +29,7 @@ public sealed class AgUiRunHandler
     private readonly IConversationStore _conversationStore;
     private readonly IObservabilityStore _observabilityStore;
     private readonly ConversationLockRegistry _lockRegistry;
+    private readonly IAgUiEventWriterAccessor _writerAccessor;
     private readonly ILogger<AgUiRunHandler> _logger;
 
     /// <summary>
@@ -39,12 +40,14 @@ public sealed class AgUiRunHandler
         IConversationStore conversationStore,
         IObservabilityStore observabilityStore,
         ConversationLockRegistry lockRegistry,
+        IAgUiEventWriterAccessor writerAccessor,
         ILogger<AgUiRunHandler> logger)
     {
         _mediator = mediator;
         _conversationStore = conversationStore;
         _observabilityStore = observabilityStore;
         _lockRegistry = lockRegistry;
+        _writerAccessor = writerAccessor;
         _logger = logger;
     }
 
@@ -139,6 +142,7 @@ public sealed class AgUiRunHandler
         await semaphore.WaitAsync(ct);
         try
         {
+            _writerAccessor.Writer = writer;
             await ExecuteRunAsync(input, writer, record, userMessage.Content, callerId, observabilitySessionId, ct);
         }
         catch (OperationCanceledException)
@@ -152,6 +156,7 @@ public sealed class AgUiRunHandler
         }
         finally
         {
+            _writerAccessor.Writer = null;
             semaphore.Release();
         }
     }

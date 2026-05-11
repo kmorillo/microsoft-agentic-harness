@@ -58,4 +58,13 @@ public static class AgUiEventType
 
     /// <summary>A custom, application-defined event type.</summary>
     public const string Custom = "CUSTOM";
+
+    /// <summary>Signals that an agent action requires human approval.</summary>
+    public const string EscalationRequested = "ESCALATION_REQUESTED";
+
+    /// <summary>Signals that a pending escalation has been resolved.</summary>
+    public const string EscalationResolved = "ESCALATION_RESOLVED";
+
+    /// <summary>Warns that a pending escalation is approaching its timeout deadline.</summary>
+    public const string EscalationExpiring = "ESCALATION_EXPIRING";
 }
