@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>01 · Get Running in 10 Minutes — Agentic Harness Developer Guide</title>
+        <meta
+            name="description"
+            content="Install prerequisites, configure secrets, build, and run your first agent conversation. Includes fixes for the errors you'll actually hit."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <!-- ============ SIDEBAR ============ -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Developer Guide</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Getting Started</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-get-running.html"
+                            ><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Configuration</div>
+                        <a class="sidebar-link" href="02-configuration.html"
+                            ><span class="sidebar-link-num">02</span> Configuration Reference</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Architecture</div>
+                        <a class="sidebar-link" href="03-big-picture.html"
+                            ><span class="sidebar-link-num">03</span> The Big Picture</a
+                        >
+                        <a class="sidebar-link" href="04-message-journey.html"
+                            ><span class="sidebar-link-num">04</span> A Message's Journey</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Systems</div>
+                        <a class="sidebar-link" href="05-skills.html"
+                            ><span class="sidebar-link-num">05</span> Skills System</a
+                        >
+                        <a class="sidebar-link" href="06-tools.html"
+                            ><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a
+                        >
+                        <a class="sidebar-link" href="07-rag.html"
+                            ><span class="sidebar-link-num">07</span> The RAG Pipeline</a
+                        >
+                        <a class="sidebar-link" href="08-mcp.html"
+                            ><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Patterns</div>
+                        <a class="sidebar-link" href="09-patterns.html"
+                            ><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a
+                        >
+                        <a class="sidebar-link" href="10-observability.html"
+                            ><span class="sidebar-link-num">10</span> Observability &amp; Safety</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Building</div>
+                        <a class="sidebar-link" href="11-extending.html"
+                            ><span class="sidebar-link-num">11</span> Extending the Harness</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Reference</div>
+                        <a class="sidebar-link" href="12-reference.html"
+                            ><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a
+                        >
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- ============ MAIN ============ -->
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 01 · Getting Started</span>
+                    <h1 class="page-title">Get Running in 10 Minutes</h1>
+                    <p class="page-lead">
+                        By the end of this page, the harness will be running on your machine and an agent will have
+                        answered a question you typed. We'll cover the prerequisites, the credentials it needs, the
+                        build, and the specific errors you'll probably hit on a fresh clone — with the exact fixes for
+                        each one.
+                    </p>
+
+                    <h2>Before you start</h2>
+                    <p>
+                        You need four things on your machine. If you already have them, skim and skip ahead. If you
+                        don't, get them now — none of them take more than a few minutes to install.
+                    </p>
+
+                    <h3>1 · .NET 10 SDK</h3>
+                    <p>
+                        This whole project is built on .NET 10. The <strong>SDK</strong> is what compiles the code; the
+                        <strong>runtime</strong> alone won't work for development. Download the SDK from
+                        <a href="https://dotnet.microsoft.com/download/dotnet/10.0"
+                            >dotnet.microsoft.com/download/dotnet/10.0</a
+                        >.
+                    </p>
+
+                    <div class="callout callout-jargon">
+                        <span class="callout-icon">¶</span>
+                        <div class="callout-body">
+                            <div class="callout-title">SDK vs. Runtime</div>
+                            <p style="margin: 0">
+                                A <strong>runtime</strong> can <em>run</em> compiled .NET apps but can't build them.
+                                The <strong>SDK</strong> includes the runtime plus the compiler, the
+                                <code>dotnet</code> CLI, and the build tooling. Developers always want the SDK.
+                            </p>
+                        </div>
+                    </div>
+
+                    <p>Verify the install worked:</p>
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">bash</span>
+                        </div>
+                        <pre><code>dotnet --version
+# Expected output: 10.0.x (or higher)</code></pre>
+                    </div>
+
+                    <h3>2 · Git</h3>
+                    <p>
+                        If you're reading this, you probably already have it. If not, install from
+                        <a href="https://git-scm.com">git-scm.com</a>. Any version from the last few years is fine.
+                    </p>
+
+                    <h3>3 · An AI provider account</h3>
+                    <p>
+                        The agent calls a real Large Language Model — by default Azure OpenAI's GPT-4o, but the harness
+                        supports plain OpenAI as a fallback. You need <strong>one</strong> of the following:
+                    </p>
+                    <ul>
+                        <li>
+                            <strong>Azure OpenAI</strong> — an Azure subscription with the OpenAI service provisioned
+                            and a deployment created (most enterprise users land here). You'll need the
+                            <em>endpoint URL</em> and an <em>API key</em>.
+                        </li>
+                        <li>
+                            <strong>OpenAI</strong> — an API key from
+                            <a href="https://platform.openai.com">platform.openai.com</a>. Easiest to set up if you
+                            don't have Azure.
+                        </li>
+                    </ul>
+
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
+                        <div class="callout-body">
+                            <div class="callout-title">"Deployment" in Azure OpenAI</div>
+                            <p style="margin: 0">
+                                In Azure OpenAI, a <strong>deployment</strong> is a named instance of a specific model
+                                (e.g. you might deploy GPT-4o under the name <code>gpt-4o</code> or
+                                <code>my-prod-model</code>). The harness needs that deployment name — not the model
+                                name. If you don't see deployments in your portal, you may need to create one in Azure
+                                AI Studio first.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3>4 · An IDE (optional but recommended)</h3>
+                    <p>
+                        You can do everything from the command line, but real life is easier with an IDE. Any of these
+                        work well:
+                    </p>
+                    <ul>
+                        <li><strong>JetBrains Rider</strong> — best-in-class .NET experience.</li>
+                        <li><strong>Visual Studio 2022/2025</strong> — Windows only, free Community edition is fine.</li>
+                        <li>
+                            <strong>VS Code + C# Dev Kit</strong> — cross-platform, lightweight. The Dev Kit extension
+                            is what makes it usable for .NET.
+                        </li>
+                    </ul>
+
+                    <hr />
+
+                    <h2>The 10-minute path</h2>
+                    <p>
+                        These six steps will get you from zero to a running agent. Each step links to a "what if it
+                        fails" section further down the page.
+                    </p>
+
+                    <ol class="steps">
+                        <li class="step">
+                            <div class="step-meta">Step 1 · ~30 seconds</div>
+                            <div class="step-title">Clone the repo</div>
+                            <p>
+                                Pick a folder you're happy to keep code in (avoid OneDrive or Dropbox paths if you can
+                                — they sometimes lock files mid-build).
+                            </p>
+                            <div class="code-block">
+                                <div class="code-block-header">
+                                    <span class="code-block-lang">bash</span>
+                                </div>
+                                <pre><code>git clone https://github.com/MCKRUZ/microsoft-agentic-harness.git
+cd microsoft-agentic-harness</code></pre>
+                            </div>
+                            <p>
+                                If your team has a fork, clone that instead. The folder structure and commands are the
+                                same.
+                            </p>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-meta">Step 2 · ~2 minutes</div>
+                            <div class="step-title">Configure your secrets</div>
+                            <p>
+                                The agent needs your AI provider credentials, but those credentials should
+                                <strong>never</strong> be committed to source control. .NET solves this with a feature
+                                called <strong>User Secrets</strong> — encrypted-at-rest values stored in your user
+                                profile, scoped per project. The harness ships with a wizard that sets them up for
+                                you.
+                            </p>
+
+                            <div class="callout callout-jargon">
+                                <span class="callout-icon">¶</span>
+                                <div class="callout-body">
+                                    <div class="callout-title">.NET User Secrets</div>
+                                    <p style="margin: 0">
+                                        A built-in development-only secrets store. Run
+                                        <code>dotnet user-secrets set "Key" "Value" --project &lt;path&gt;</code> and
+                                        the value is stored in
+                                        <code>%APPDATA%\Microsoft\UserSecrets\</code> (Windows) or
+                                        <code>~/.microsoft/usersecrets/</code> (macOS/Linux), keyed by a unique GUID in
+                                        the .csproj. <strong>Never use this in production</strong> — it's
+                                        plaintext-on-disk under your user account. For production, use Azure Key Vault.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <p>Run the setup wizard:</p>
+                            <div class="code-block">
+                                <div class="code-block-header">
+                                    <span class="code-block-lang">cmd (Windows)</span>
+                                </div>
+                                <pre><code>setup-secrets.bat</code></pre>
+                            </div>
+                            <p>or, if you prefer to do it yourself or you're not on Windows:</p>
+                            <div class="code-block">
+                                <div class="code-block-header">
+                                    <span class="code-block-lang">bash</span>
+                                </div>
+                                <pre><code>cd src/Content/Presentation/Presentation.ConsoleUI
+
+# For Azure OpenAI
+dotnet user-secrets set "AppConfig:AI:AgentFramework:ClientType" "AzureOpenAI"
+dotnet user-secrets set "AppConfig:AI:AgentFramework:Endpoint" "https://your-resource.openai.azure.com/"
+dotnet user-secrets set "AppConfig:AI:AgentFramework:ApiKey" "your-key-here"
+dotnet user-secrets set "AppConfig:AI:AgentFramework:DefaultDeployment" "gpt-4o"
+
+# Or for plain OpenAI
+dotnet user-secrets set "AppConfig:AI:AgentFramework:ClientType" "OpenAI"
+dotnet user-secrets set "AppConfig:AI:AgentFramework:ApiKey" "sk-..."
+dotnet user-secrets set "AppConfig:AI:AgentFramework:DefaultDeployment" "gpt-4o"
+
+cd ../../../..</code></pre>
+                            </div>
+
+                            <div class="callout callout-tip">
+                                <span class="callout-icon">✓</span>
+                                <div class="callout-body">
+                                    <div class="callout-title">Inspecting what you set</div>
+                                    <p style="margin: 0">
+                                        At any time, run
+                                        <code>dotnet user-secrets list --project src/Content/Presentation/Presentation.ConsoleUI</code>
+                                        to see every secret currently set for the console project. Use this to debug
+                                        "the wrong endpoint is being used" issues.
+                                    </p>
+                                </div>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-meta">Step 3 · ~3 minutes (first time)</div>
+                            <div class="step-title">Build the solution</div>
+                            <p>
+                                The first build will restore <strong>NuGet packages</strong> (.NET's package manager —
+                                like npm or pip but for .NET). This is the slowest step on a fresh clone; subsequent
+                                builds are incremental and take seconds.
+                            </p>
+                            <div class="code-block">
+                                <div class="code-block-header">
+                                    <span class="code-block-lang">bash</span>
+                                </div>
+                                <pre><code>dotnet build src/AgenticHarness.slnx</code></pre>
+                            </div>
+                            <p>You're looking for the line at the bottom that says <code>Build succeeded</code>:</p>
+                            <div class="code-block">
+                                <div class="code-block-header">
+                                    <span class="code-block-lang">output</span>
+                                </div>
+                                <pre><code>Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:42.18</code></pre>
+                            </div>
+                            <p>
+                                If you see warnings, that's fine for now. Errors mean we need to talk — see
+                                <a href="#troubleshooting">Troubleshooting</a> below.
+                            </p>
+
+                            <div class="callout callout-jargon">
+                                <span class="callout-icon">¶</span>
+                                <div class="callout-body">
+                                    <div class="callout-title">.slnx vs .sln</div>
+                                    <p style="margin: 0">
+                                        <code>.slnx</code> is the new XML-based solution format introduced in recent
+                                        Visual Studio / .NET SDK versions. It does the same job as the old
+                                        <code>.sln</code> file (groups projects together) but is easier to read and
+                                        diff. The <code>dotnet</code> CLI handles both transparently.
+                                    </p>
+                                </div>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-meta">Step 4 · ~1 minute (optional)</div>
+                            <div class="step-title">Run the tests</div>
+                            <p>
+                                Not strictly required to run the agent, but it's a great smoke test that confirms
+                                everything compiled and wired up correctly.
+                            </p>
+                            <div class="code-block">
+                                <div class="code-block-header">
+                                    <span class="code-block-lang">bash</span>
+                                </div>
+                                <pre><code>dotnet test src/AgenticHarness.slnx</code></pre>
+                            </div>
+                            <p>
+                                You'll see hundreds of tests run across the test projects. A green <code>Passed</code>
+                                at the bottom means the codebase is healthy on your machine. A few skipped tests
+                                (typically integration tests requiring external services) are expected and normal.
+                            </p>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-meta">Step 5 · ~10 seconds</div>
+                            <div class="step-title">Run the console UI</div>
+                            <p>
+                                Now the fun part. The <strong>ConsoleUI</strong> is one of several presentation layers
+                                that can host an agent (others include a SignalR hub and an MCP server). For learning
+                                the codebase, the console is the easiest entry point because everything happens in
+                                front of you on the terminal.
+                            </p>
+                            <div class="code-block">
+                                <div class="code-block-header">
+                                    <span class="code-block-lang">bash</span>
+                                </div>
+                                <pre><code>dotnet run --project src/Content/Presentation/Presentation.ConsoleUI</code></pre>
+                            </div>
+                            <p>You should see an interactive menu like this:</p>
+                            <div class="code-block">
+                                <div class="code-block-header">
+                                    <span class="code-block-lang">terminal</span>
+                                </div>
+                                <pre><code>╔══════════════════════════════════════════╗
+║       Agentic Harness · Console UI       ║
+╚══════════════════════════════════════════╝
+
+Choose an example to run:
+
+  [1] Research agent
+  [2] Orchestrator (multi-agent)
+  [3] MCP tools discovery
+  [4] Tool converter demo
+  [5] Persistent agent
+  [6] A2A agent-to-agent
+  [7] Setup secrets wizard
+  [8] Meta-harness optimization
+  [9] RAG pipeline demo
+  [q] Quit
+
+Selection:</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-meta">Step 6 · ~30 seconds</div>
+                            <div class="step-title">Talk to an agent</div>
+                            <p>
+                                Pick option <strong>[1] Research agent</strong>. It's the simplest single-agent
+                                example, and a great first interaction to demystify what's happening under the hood.
+                            </p>
+                            <p>When prompted, type something like:</p>
+                            <div class="code-block">
+                                <div class="code-block-header">
+                                    <span class="code-block-lang">prompt</span>
+                                </div>
+                                <pre><code>What is Clean Architecture in three sentences?</code></pre>
+                            </div>
+                            <p>
+                                The agent will respond. Depending on your network and the model, this takes a few
+                                seconds. While you wait, several things are happening that the rest of this guide will
+                                unpack:
+                            </p>
+                            <ul>
+                                <li>
+                                    Your prompt was wrapped in a <code>ExecuteAgentTurn</code> command and sent through
+                                    the <strong>MediatR pipeline</strong> for validation and logging
+                                    (<a href="04-message-journey.html">A Message's Journey</a>).
+                                </li>
+                                <li>
+                                    The <strong>research agent's skill</strong> was loaded into the agent's context
+                                    (<a href="05-skills.html">Skills System</a>).
+                                </li>
+                                <li>
+                                    The harness assembled the final prompt — system instructions, skill content, tool
+                                    schemas, conversation history — and called the LLM
+                                    (<a href="04-message-journey.html">A Message's Journey</a>).
+                                </li>
+                                <li>
+                                    Every step was traced with <strong>OpenTelemetry</strong>, so if you had Jaeger
+                                    running, you'd see a span-by-span timeline of the request
+                                    (<a href="10-observability.html">Observability &amp; Safety</a>).
+                                </li>
+                            </ul>
+                            <p>
+                                Congratulations — you've just run a production-grade AI agent on your own machine. 🎉
+                            </p>
+                        </li>
+                    </ol>
+
+                    <h2 id="troubleshooting">Troubleshooting: errors you'll probably hit</h2>
+                    <p>
+                        On a fresh clone, these are the issues we see most often. If your error isn't here, check the
+                        <code>logs/</code> folder at the repo root — the harness writes structured JSON logs there
+                        that usually contain the real cause buried inside a generic-looking stack trace.
+                    </p>
+
+                    <h3 id="error-sdk"><code>error NETSDK1045: The current .NET SDK does not support targeting .NET 10.0</code></h3>
+                    <p>
+                        Your .NET SDK is too old. Either you installed a 9.x version or your <code>PATH</code> is
+                        picking up an older install.
+                    </p>
+                    <p>
+                        <strong>Fix:</strong> Install .NET 10 SDK from
+                        <a href="https://dotnet.microsoft.com/download/dotnet/10.0">the official download page</a>,
+                        then run <code>dotnet --list-sdks</code> to confirm 10.x is listed. On Windows, if multiple SDKs
+                        are installed, .NET picks the highest by default — but you can pin a version with a
+                        <code>global.json</code> file in the repo root.
+                    </p>
+
+                    <h3 id="error-auth"><code>Unauthorized</code> or <code>401</code> from the LLM call</h3>
+                    <p>Your API key is wrong, missing, or pointing at the wrong endpoint.</p>
+                    <p><strong>Fix:</strong> Run this from the repo root to see exactly what's been set:</p>
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">bash</span>
+                        </div>
+                        <pre><code>dotnet user-secrets list --project src/Content/Presentation/Presentation.ConsoleUI</code></pre>
+                    </div>
+                    <p>
+                        Check that <code>Endpoint</code> matches your Azure OpenAI resource URL (with the trailing
+                        slash), <code>ApiKey</code> is set to a real key, and
+                        <code>DefaultDeployment</code> matches the deployment name in the Azure portal
+                        (case-sensitive!). If they look right but it still fails, regenerate the key in Azure — keys do
+                        get rotated.
+                    </p>
+
+                    <h3 id="error-deployment"><code>DeploymentNotFound</code> or <code>The API deployment for this resource does not exist</code></h3>
+                    <p>
+                        Your API key is valid but the deployment name doesn't match anything in your Azure OpenAI
+                        resource.
+                    </p>
+                    <p>
+                        <strong>Fix:</strong> Go to the Azure Portal → your Azure OpenAI resource → <em>Model
+                        deployments</em>. The name in the <em>Deployment name</em> column is what
+                        <code>DefaultDeployment</code> should be set to. Note that the <em>model</em> column (e.g.
+                        <code>gpt-4o</code>) is different from the deployment name (which might be
+                        <code>gpt-4o</code>, <code>my-deployment</code>, or anything else you chose).
+                    </p>
+
+                    <h3 id="error-locked"><code>The file is being used by another process</code></h3>
+                    <p>
+                        Common on Windows, especially if the repo lives in OneDrive or Dropbox. The build is trying to
+                        write a DLL that another process (often a previous <code>dotnet</code> instance or the IDE)
+                        has open.
+                    </p>
+                    <p>
+                        <strong>Fix:</strong> Close your IDE, stop any running <code>dotnet</code> processes
+                        (<code>taskkill /F /IM dotnet.exe</code> on Windows), then retry. If it keeps happening,
+                        consider moving the repo to a non-synced folder like <code>C:\dev\</code>.
+                    </p>
+
+                    <h3 id="error-path"><code>File access denied</code> when running a tool</h3>
+                    <p>
+                        The harness sandboxes file system access — tools can only touch files under explicitly
+                        allow-listed paths. By default, that's the repo root and below.
+                    </p>
+                    <p>
+                        <strong>Fix:</strong> Open
+                        <code>src/Content/Presentation/Presentation.ConsoleUI/appsettings.json</code> and find the
+                        <code>AppConfig.Infrastructure.FileSystem.AllowedBasePaths</code> array. Add any paths you want
+                        the agent to read or write. Don't just open everything to <code>"/"</code> — the sandbox is
+                        deliberate. Read <a href="06-tools.html">Tools &amp; Keyed DI</a> for the why. The exact key is documented in <a href="02-configuration.html#section-filesystem">Configuration → FileSystem</a>.
+                    </p>
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Don't disable the sandbox</div>
+                            <p style="margin: 0">
+                                The first instinct when a sandboxed tool fails is to widen the allow-list to
+                                <code>"/"</code> or remove the check entirely. <strong>Don't.</strong> The sandbox
+                                exists because the agent can be tricked into reading or deleting things — see
+                                <a href="10-observability.html">Observability &amp; Safety</a>. Add the specific path
+                                you need, nothing more.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3 id="error-restore"><code>error NU1101: Unable to find package</code></h3>
+                    <p>
+                        NuGet can't reach the package source. Usually a corporate proxy or VPN issue.
+                    </p>
+                    <p>
+                        <strong>Fix:</strong> Check <code>dotnet nuget list source</code> — at minimum, you need
+                        <code>nuget.org</code> enabled. If your company has a private feed (Azure Artifacts, Artifactory),
+                        you may need to add it with <code>dotnet nuget add source &lt;url&gt; --name internal</code>
+                        and provide credentials. Ask your DevOps team for the right URL.
+                    </p>
+
+                    <hr />
+
+                    <h2>What just happened</h2>
+                    <p>
+                        Mechanically: you compiled a .NET solution, set credentials, ran a console app that asked an
+                        LLM a question, and saw the answer. That's the user view. But under the hood, every one of the
+                        following systems engaged for a single prompt:
+                    </p>
+
+                    <div class="def">
+                        <div class="def-term">DI composition root</div>
+                        <div class="def-desc">
+                            <code>Program.cs</code> built the service container — registering every layer (Domain,
+                            Application, Infrastructure, Presentation) via their respective
+                            <code>Add*Dependencies()</code> extension methods.
+                        </div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term">Hosted services</div>
+                        <div class="def-desc">
+                            Background services (like the skill seeder that copies <code>SKILL.md</code> files into
+                            the working directory) started before the menu rendered.
+                        </div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term">MediatR pipeline</div>
+                        <div class="def-desc">
+                            Your prompt was wrapped in an <code>ExecuteAgentTurnCommand</code> and flowed through
+                            validation, caching, and performance-logging behaviors before reaching the handler.
+                        </div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term">AgentFactory</div>
+                        <div class="def-desc">
+                            Built an agent instance with the right skills loaded, the right tools registered, and
+                            content-safety middleware wired in.
+                        </div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term">ChatClientFactory</div>
+                        <div class="def-desc">
+                            Created an Azure OpenAI (or OpenAI) chat client using the credentials you set in User
+                            Secrets, decorated with retries, timeouts, and observability.
+                        </div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term">OpenTelemetry</div>
+                        <div class="def-desc">
+                            Every step above created a span. Even though you don't have a trace collector running yet,
+                            the spans were captured locally. We'll set up Jaeger in
+                            <a href="10-observability.html">Observability &amp; Safety</a>.
+                        </div>
+                    </div>
+
+                    <p style="margin-top: var(--space-6)">
+                        Don't worry about understanding all of that yet — each item gets its own page. What matters
+                        right now is that <strong>it works on your machine</strong>. The rest of this guide is about
+                        opening the hood and looking at the engine.
+                    </p>
+
+                    <h2>Where to go from here</h2>
+                    <p>Two pages worth reading next, in this order:</p>
+                    <div class="card-grid">
+                        <a class="card" href="02-configuration.html">
+                            <span class="card-num">02 · Next</span>
+                            <div class="card-title">Configuration Reference</div>
+                            <p class="card-desc">
+                                You just touched a handful of config keys to get running. This is every other knob —
+                                what it does, when to change it, and the recipes for the common ones.
+                            </p>
+                        </a>
+                        <a class="card" href="03-big-picture.html">
+                            <span class="card-num">03 · Then</span>
+                            <div class="card-title">The Big Picture</div>
+                            <p class="card-desc">
+                                A guided tour of the Clean Architecture layout. You'll know where to look for any
+                                given concept by the end.
+                            </p>
+                        </a>
+                    </div>
+
+                    <!-- Footer nav -->
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="index.html">
+                            <div class="page-nav-label">← Previous</div>
+                            <div class="page-nav-title">00 · Welcome</div>
+                        </a>
+                        <a class="page-nav-link page-nav-next" href="02-configuration.html">
+                            <div class="page-nav-label">Next →</div>
+                            <div class="page-nav-title">02 · Configuration Reference</div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- TOC -->
+                <aside class="toc" aria-label="On this page">
+                    <div class="toc-title">On this page</div>
+                    <ul class="toc-list"></ul>
+                </aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>

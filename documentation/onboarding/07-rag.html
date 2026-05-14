@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>07 · The RAG Pipeline — Agentic Harness Developer Guide</title>
+        <meta name="description" content="Retrieval-Augmented Generation in this codebase — ingestion, retrieval, reranking, assembly." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <aside class="sidebar">
+                <div class="sidebar-header"><a class="sidebar-brand" href="index.html"><span class="sidebar-brand-mark">AH</span><span><span class="sidebar-brand-text">Agentic Harness</span><br /><span class="sidebar-brand-sub">Developer Guide</span></span></a></div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group"><div class="sidebar-group-title">Getting Started</div><a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a><a class="sidebar-link" href="01-get-running.html"><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Configuration</div><a class="sidebar-link" href="02-configuration.html"><span class="sidebar-link-num">02</span> Configuration Reference</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Architecture</div><a class="sidebar-link" href="03-big-picture.html"><span class="sidebar-link-num">03</span> The Big Picture</a><a class="sidebar-link" href="04-message-journey.html"><span class="sidebar-link-num">04</span> A Message's Journey</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Systems</div><a class="sidebar-link" href="05-skills.html"><span class="sidebar-link-num">05</span> Skills System</a><a class="sidebar-link" href="06-tools.html"><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a><a class="sidebar-link" href="07-rag.html"><span class="sidebar-link-num">07</span> The RAG Pipeline</a><a class="sidebar-link" href="08-mcp.html"><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Patterns</div><a class="sidebar-link" href="09-patterns.html"><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a><a class="sidebar-link" href="10-observability.html"><span class="sidebar-link-num">10</span> Observability &amp; Safety</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Building</div><a class="sidebar-link" href="11-extending.html"><span class="sidebar-link-num">11</span> Extending the Harness</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Reference</div><a class="sidebar-link" href="12-reference.html"><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a></div>
+                </nav>
+            </aside>
+
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 07 · Systems</span>
+                    <h1 class="page-title">The RAG Pipeline</h1>
+                    <p class="page-lead">
+                        Retrieval-Augmented Generation is how the agent answers questions about documents it wasn't
+                        trained on. Drop a PDF in, ask a question, get a cited answer. The pipeline that makes that
+                        work is one of the most engineered parts of the codebase — let's walk through it.
+                    </p>
+
+                    <div class="callout callout-jargon">
+                        <span class="callout-icon">¶</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Five terms you'll see on this page — defined up front</div>
+                            <p style="margin: 0">
+                                <strong>Embedding</strong> — a fixed-length list of numbers (typically 768 or 1536
+                                floats) that represents the <em>meaning</em> of a piece of text. Two embeddings being
+                                "close" in that high-dimensional space means the texts mean similar things — even if
+                                they don't share any words.
+                                <br /><br />
+                                <strong>Vector store</strong> — a specialized database for embeddings. Given a query
+                                embedding, it efficiently finds the K nearest stored embeddings (cosine or dot-product
+                                similarity).
+                                <br /><br />
+                                <strong>Dense retrieval</strong> — searching by embedding similarity. Catches semantic
+                                matches ("car" finds "automobile").
+                                <br /><br />
+                                <strong>Sparse retrieval (BM25)</strong> — old-school keyword search with smart
+                                term-frequency weighting. Catches exact-keyword matches that embeddings sometimes miss
+                                (specific product codes, names, acronyms).
+                                <br /><br />
+                                <strong>Reranking</strong> — taking a candidate list of chunks and reordering them
+                                with a more expensive but more accurate scoring model. Cheap to score 50 candidates;
+                                too expensive to score the whole corpus.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>What problem RAG solves</h2>
+                    <p>
+                        An LLM only knows what it saw during training. Ask it about your internal architecture doc
+                        from last week and it'll make something up. RAG fixes this by <strong>retrieving relevant
+                        chunks</strong> from your documents at query time, <strong>augmenting</strong> the prompt with
+                        them, and letting the LLM <strong>generate</strong> an answer grounded in real text.
+                    </p>
+                    <p>The "RAG pipeline" is the machinery that does this well — at scale, with good citations, and without retrieving garbage.</p>
+
+                    <div class="callout callout-jargon">
+                        <span class="callout-icon">¶</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Why "pipeline" and not "search"?</div>
+                            <p style="margin: 0">
+                                Naive RAG = "embed the query, find top-K nearest chunks, stuff into prompt." That works
+                                for toy demos and fails on real corpora. The pipeline adds query understanding, hybrid
+                                retrieval, reranking, quality evaluation, and assembly under a token budget. Each
+                                stage is its own concern in <code>Infrastructure.AI.RAG/</code>.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>The five stages</h2>
+
+                    <div class="arch-stack">
+                        <div class="arch-layer arch-layer-domain"><div class="arch-layer-name">1 · Ingestion</div><div class="arch-layer-projects">Parse → chunk → enrich → embed → index</div></div>
+                        <div class="arch-layer arch-layer-app"><div class="arch-layer-name">2 · Query transform</div><div class="arch-layer-projects">Classify → rewrite → expand (RAG Fusion, HyDE)</div></div>
+                        <div class="arch-layer arch-layer-infra"><div class="arch-layer-name">3 · Retrieval</div><div class="arch-layer-projects">Hybrid: dense (vector) + sparse (BM25) → RRF</div></div>
+                        <div class="arch-layer arch-layer-present"><div class="arch-layer-name">4 · Reranking + quality</div><div class="arch-layer-projects">Cross-encoder rerank → CRAG evaluate → refine/reject</div></div>
+                        <div class="arch-layer arch-layer-app"><div class="arch-layer-name">5 · Assembly</div><div class="arch-layer-projects">Token-budgeted, citation-tracked context blocks</div></div>
+                    </div>
+
+                    <h3>1 · Ingestion</h3>
+                    <p>Documents come in (PDFs, Markdown, HTML, code). The ingestion phase:</p>
+                    <ol>
+                        <li><strong>Parses</strong> by file type into a uniform <code>RagDocument</code>.</li>
+                        <li><strong>Chunks</strong> using one of three strategies — <strong>structure-aware</strong> (respects headings/code blocks), <strong>fixed-size</strong> (deterministic), or <strong>semantic</strong> (splits on topic shifts). Strategy is configurable per source via <code>AppConfig.AI.Rag.Ingestion</code>.</li>
+                        <li><strong>Enriches</strong> chunks with contextual headers — a few sentences of "where in the document this came from", inspired by the Anthropic contextual-retrieval pattern.</li>
+                        <li><strong>RAPTOR summarization</strong> (optional) — builds a hierarchical tree of chunk summaries, so the agent can retrieve at either fine-grained or whole-section granularity.</li>
+                        <li><strong>Embeds</strong> each chunk via the configured embedding model.</li>
+                        <li><strong>Indexes</strong> into both a vector store (Azure AI Search or FAISS) and a sparse keyword store (Azure AI Search or SQLite FTS5).</li>
+                    </ol>
+
+                    <h3>2 · Query transformation</h3>
+                    <p>
+                        Before retrieving, the user's question gets refined. Two patterns are implemented:
+                    </p>
+                    <ul>
+                        <li><strong>RAG Fusion</strong> — generate N paraphrased variants of the question, retrieve for each, fuse the results. Beats a single embedding for ambiguous queries.</li>
+                        <li><strong>HyDE (Hypothetical Document Embedding)</strong> — generate a fake "ideal answer" to the question, embed <em>that</em>, retrieve chunks similar to the fake answer. Surprisingly effective when the question wording doesn't match the document wording.</li>
+                    </ul>
+                    <p>A query classifier decides which transformation (or none) to apply per question.</p>
+
+                    <h3>3 · Hybrid retrieval</h3>
+                    <p>Dense vector search alone misses queries with rare keywords. BM25 alone misses semantic paraphrases. The harness runs both in parallel and fuses results with <strong>Reciprocal Rank Fusion (RRF)</strong>:</p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">algorithm · RRF</span></div>
+                        <pre><code>score(chunk) = Σ over rank-lists  ( 1 / (k + rank_in_list) )
+
+# k is typically 60. Each retrieval method ranks the chunk;
+# RRF blends them so a chunk doesn't need to be top-1 in either list,
+# just present and well-ranked in both.</code></pre>
+                    </div>
+
+                    <h3>4 · Reranking and quality</h3>
+                    <p>RRF gives a candidate set (typically 20–50 chunks). The reranker scores them more carefully — three strategies are registered under keyed DI:</p>
+                    <ul>
+                        <li><code>AzureSemanticReranker</code> — uses Azure AI Search's semantic ranking.</li>
+                        <li><code>CrossEncoderReranker</code> — runs a cross-encoder model (query+chunk pairs) for high-precision reordering.</li>
+                        <li><code>NoOpReranker</code> — pass-through, for benchmarks.</li>
+                    </ul>
+                    <p>
+                        After reranking, the <strong>CRAG evaluator</strong> (Corrective RAG) scores how
+                        confidence-worthy the top results are. Configurable accept/refine/reject thresholds determine
+                        whether to return the chunks as-is, trigger a query refinement loop, or reject the retrieval
+                        and surface a "I don't have good sources for this" response.
+                    </p>
+
+                    <h3>5 · Assembly</h3>
+                    <p>Finally, the surviving chunks are stitched into context blocks under a token budget. Key features:</p>
+                    <ul>
+                        <li>Citation IDs tracked per chunk — the LLM can quote them in its answer for traceability.</li>
+                        <li><strong>Pointer expansion</strong> — if a chunk's parent section or sibling chunks are relevant and under-budget, they're pulled in to provide more context.</li>
+                        <li>Token budget enforcement — the assembler stops before exceeding <code>AppConfig.Agent.DefaultTokenBudget</code> minus the conversation history reserve.</li>
+                    </ul>
+
+                    <h2>How an agent uses RAG</h2>
+                    <p>
+                        From the agent's perspective, RAG is just another <code>ITool</code> — typically
+                        <code>document_search</code>. A research skill declares it in <code>allowed-tools</code>; when
+                        the LLM calls it, the full pipeline above runs and returns formatted context blocks.
+                    </p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">SKILL.md fragment</span></div>
+                        <pre><code>---
+allowed-tools:
+  - document_search
+  - web_search
+---
+
+When the user asks about internal documentation, use document_search first.
+Cite chunk IDs in the format [doc:chunk-id] when quoting passages.</code></pre>
+                    </div>
+
+                    <h2>Configuration</h2>
+                    <p>RAG config is one of the deepest sections of <code>AppConfig</code>. Each stage has its own subsection:</p>
+                    <div class="file-tree">
+<span class="ft-dir">AppConfig.AI.Rag</span>
+├── Ingestion          <span class="ft-comment">// chunking strategy, RAPTOR, contextual enrichment</span>
+├── QueryTransform     <span class="ft-comment">// RAG Fusion / HyDE thresholds</span>
+├── Retrieval          <span class="ft-comment">// dense + sparse weights, top-K</span>
+├── Reranker           <span class="ft-comment">// strategy key (Azure | CrossEncoder | NoOp)</span>
+├── Crag               <span class="ft-comment">// accept / refine / reject thresholds</span>
+├── VectorStore        <span class="ft-comment">// AzureSearch | Faiss + connection</span>
+├── ModelTiering       <span class="ft-comment">// which model to use for embedding vs synthesis</span>
+└── GraphRag           <span class="ft-comment">// graph-backed knowledge layer (planned)</span>
+                    </div>
+                    <p>Each section maps to a class under <code>Domain.Common/Config/AI/RAG/</code>. Default values are tuned for "works well out of the box on the included demo corpus."</p>
+
+                    <h2>Where the code lives</h2>
+                    <table>
+                        <thead><tr><th>Concern</th><th>Location</th></tr></thead>
+                        <tbody>
+                            <tr><td>Pipeline orchestration</td><td><code>Infrastructure.AI.RAG/Pipeline/</code></td></tr>
+                            <tr><td>Chunking strategies</td><td><code>Infrastructure.AI.RAG/Chunking/</code></td></tr>
+                            <tr><td>Embedding clients</td><td><code>Infrastructure.AI.RAG/Embedding/</code></td></tr>
+                            <tr><td>Retrieval (dense + sparse)</td><td><code>Infrastructure.AI.RAG/Retrieval/</code></td></tr>
+                            <tr><td>Rerankers (keyed DI)</td><td><code>Infrastructure.AI.RAG/Reranking/</code></td></tr>
+                            <tr><td>CRAG evaluation</td><td><code>Infrastructure.AI.RAG/Quality/</code></td></tr>
+                            <tr><td>Tool wrappers (<code>document_search</code>, etc.)</td><td><code>Infrastructure.AI.RAG/Tools/</code></td></tr>
+                        </tbody>
+                    </table>
+
+                    <h2>Knowledge graph layer (planned)</h2>
+                    <p>
+                        The codebase includes a teaching-stub <code>ManagedCodeGraphRagService</code> in
+                        <code>Infrastructure.AI.KnowledgeGraph</code>, intended to be replaced with a real graph
+                        backend (Neo4j, Kuzu, or PostgreSQL with extensions). When complete, it'll add:
+                    </p>
+                    <ul>
+                        <li>Entity extraction with ontology validation.</li>
+                        <li>Community detection (Leiden algorithm) for thematic clustering.</li>
+                        <li>Feedback-weighted retrieval — historical "this chunk helped" scores blended with semantic relevance.</li>
+                        <li>Cross-session knowledge persistence — <code>Remember()</code>, <code>Recall()</code>, <code>Forget()</code>, <code>Improve()</code> operations on the graph.</li>
+                    </ul>
+                    <p>If you're extending the harness with domain-specific intelligence, this is where it'll plug in. See <a href="../../CLAUDE.md">CLAUDE.md</a> for the design notes.</p>
+
+                    <hr />
+
+                    <h2>Where to go from here</h2>
+                    <div class="card-grid">
+                        <a class="card" href="08-mcp.html">
+                            <span class="card-num">08 · Next</span>
+                            <div class="card-title">MCP Server &amp; Client</div>
+                            <p class="card-desc">The other tool-extension pattern — how the harness exposes and consumes tools via the Model Context Protocol.</p>
+                        </a>
+                        <a class="card" href="02-configuration.html#section-mcp">
+                            <span class="card-num">02 · Related</span>
+                            <div class="card-title">RAG configuration keys</div>
+                            <p class="card-desc">Every knob in the RAG pipeline, in the config reference.</p>
+                        </a>
+                    </div>
+
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="06-tools.html"><div class="page-nav-label">← Previous</div><div class="page-nav-title">06 · Tools &amp; Keyed DI</div></a>
+                        <a class="page-nav-link page-nav-next" href="08-mcp.html"><div class="page-nav-label">Next →</div><div class="page-nav-title">08 · MCP Server &amp; Client</div></a>
+                    </div>
+                </div>
+                <aside class="toc" aria-label="On this page"><div class="toc-title">On this page</div><ul class="toc-list"></ul></aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>

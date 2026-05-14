@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>06 · Tools &amp; Keyed DI — Agentic Harness Developer Guide</title>
+        <meta name="description" content="How tools register, how the LLM finds them, and the sandboxing that keeps them safe." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <aside class="sidebar">
+                <div class="sidebar-header"><a class="sidebar-brand" href="index.html"><span class="sidebar-brand-mark">AH</span><span><span class="sidebar-brand-text">Agentic Harness</span><br /><span class="sidebar-brand-sub">Developer Guide</span></span></a></div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group"><div class="sidebar-group-title">Getting Started</div><a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a><a class="sidebar-link" href="01-get-running.html"><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Configuration</div><a class="sidebar-link" href="02-configuration.html"><span class="sidebar-link-num">02</span> Configuration Reference</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Architecture</div><a class="sidebar-link" href="03-big-picture.html"><span class="sidebar-link-num">03</span> The Big Picture</a><a class="sidebar-link" href="04-message-journey.html"><span class="sidebar-link-num">04</span> A Message's Journey</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Systems</div><a class="sidebar-link" href="05-skills.html"><span class="sidebar-link-num">05</span> Skills System</a><a class="sidebar-link" href="06-tools.html"><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a><a class="sidebar-link" href="07-rag.html"><span class="sidebar-link-num">07</span> The RAG Pipeline</a><a class="sidebar-link" href="08-mcp.html"><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Patterns</div><a class="sidebar-link" href="09-patterns.html"><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a><a class="sidebar-link" href="10-observability.html"><span class="sidebar-link-num">10</span> Observability &amp; Safety</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Building</div><a class="sidebar-link" href="11-extending.html"><span class="sidebar-link-num">11</span> Extending the Harness</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Reference</div><a class="sidebar-link" href="12-reference.html"><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a></div>
+                </nav>
+            </aside>
+
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 06 · Systems</span>
+                    <h1 class="page-title">Tools &amp; Keyed DI</h1>
+                    <p class="page-lead">
+                        Tools are the agent's hands. A skill says "I need <code>file_system_read</code>" and the
+                        harness resolves an implementation, wraps it in safety guarantees, and presents it to the LLM
+                        as a callable function. The pattern is more interesting than it looks — let's open the hood.
+                    </p>
+
+                    <h2>The <code>ITool</code> interface</h2>
+                    <p>Every internal tool implements one interface. It looks roughly like this:</p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · ITool</span></div>
+                        <pre><code>public interface ITool
+{
+    string Name { get; }                                  // "file_system_read"
+    string Description { get; }                           // "Reads files from disk under sandbox"
+    IReadOnlyList&lt;string&gt; SupportedOperations { get; }   // ["read", "list"]
+
+    Task&lt;ToolResult&gt; ExecuteAsync(
+        string operation,
+        IReadOnlyDictionary&lt;string, object?&gt; parameters,
+        CancellationToken cancellationToken);
+}</code></pre>
+                    </div>
+                    <p>
+                        One tool can expose <em>multiple operations</em>. <code>file_system</code> is a single
+                        <code>ITool</code> with operations <code>read</code>, <code>list</code>,
+                        <code>write</code>. This keeps the tool surface focused — the LLM sees one entry "file system"
+                        rather than three separate ones.
+                    </p>
+
+                    <h2>Keyed DI — the heart of the pattern</h2>
+                    <p>
+                        Tools are registered as <strong>keyed singletons</strong> in
+                        <code>Infrastructure.Common/DependencyInjection.cs</code>:
+                    </p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · DI registration</span></div>
+                        <pre><code>services.AddKeyedSingleton&lt;ITool, FileSystemTool&gt;("file_system");
+services.AddKeyedSingleton&lt;ITool, CalculationTool&gt;("calculation_engine");
+services.AddKeyedSingleton&lt;ITool, WebSearchTool&gt;("web_search");
+// ...</code></pre>
+                    </div>
+
+                    <div class="callout callout-jargon">
+                        <span class="callout-icon">¶</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Keyed DI, slowly</div>
+                            <p style="margin: 0">
+                                Normal dependency injection: you register one implementation per interface. When any
+                                class asks for that interface, the container hands back the registered class.
+                                <br /><br />
+                                Example: <code>services.AddSingleton&lt;ILogger, FileLogger&gt;()</code>. Any class
+                                with an <code>ILogger</code> constructor parameter gets a <code>FileLogger</code>.
+                                <br /><br />
+                                <strong>Keyed DI</strong> (added in .NET 8) lets you register
+                                <em>multiple</em> implementations of the <em>same</em> interface, each tagged with a
+                                string <strong>key</strong>. Callers ask for a specific one by key:
+                                <code>sp.GetKeyedService&lt;ITool&gt;("file_system")</code>.
+                                <br /><br />
+                                Why this matters for tools: a skill says "I need the tool named
+                                <code>file_system</code>" — as a plain string in a Markdown file. The harness can
+                                resolve that string to a concrete <code>ITool</code> at runtime, exactly because the
+                                tool is registered <em>under that string key</em>. Without keyed DI, you'd need
+                                ten different interfaces (<code>IFileSystemTool</code>,
+                                <code>ICalculationTool</code>...) or a giant <code>switch</code> statement. Keyed DI
+                                replaces both.
+                            </p>
+                        </div>
+                    </div>
+
+                    <p>
+                        When <code>AgentFactory</code> processes a skill's <code>allowed-tools</code> list, it does
+                        exactly:
+                    </p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · AgentFactory.cs</span></div>
+                        <pre><code>foreach (var toolName in skill.AllowedTools)
+{
+    var tool = serviceProvider.GetRequiredKeyedService&lt;ITool&gt;(toolName);
+    var aiTool = _toolConverter.Convert(tool, skill.AllowedOperations(toolName));
+    aiTools.Add(aiTool);
+}</code></pre>
+                    </div>
+
+                    <h2>From <code>ITool</code> to <code>AITool</code></h2>
+                    <p>
+                        The LLM doesn't know about <code>ITool</code>. It speaks the
+                        <code>Microsoft.Extensions.AI.AITool</code> contract — a JSON-schema'd function with a
+                        callback. The bridge is <code>AIToolConverter</code>:
+                    </p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · AIToolConverter (excerpted)</span></div>
+                        <pre><code>var aiFunction = AIFunctionFactory.Create(
+    async (string operation, JsonElement? parametersJson, CancellationToken ct) =&gt;
+    {
+        if (!activeOperations.Contains(operation, StringComparer.OrdinalIgnoreCase))
+            return $"Error: Operation '{operation}' is not available.";
+
+        var parameters = ParseParameters(parametersJson);
+        var result = await tool.ExecuteAsync(operation, parameters, ct);
+        return result.Success ? result.Output ?? "OK" : $"Error: {result.Error}";
+    },
+    new AIFunctionFactoryOptions
+    {
+        Name = tool.Name,
+        Description = description    // built from purpose + operations + param hints
+    });</code></pre>
+                    </div>
+
+                    <p>
+                        The LLM sees a function called e.g. <code>file_system</code> that takes two parameters:
+                        <code>operation</code> (one of the supported ops) and <code>parametersJson</code> (a JSON
+                        object of operation-specific arguments). When the LLM calls it, the converter routes to
+                        <code>tool.ExecuteAsync</code>.
+                    </p>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Why two parameters and not a rich schema?</div>
+                            <p style="margin: 0">
+                                <code>AIToolConverter</code> is a <em>generic fallback</em>. Its priority is 200 — the
+                                lowest. For tools that benefit from richer per-operation schemas, you can register a
+                                tool-specific converter at priority 100, and it'll be preferred. The fallback "two
+                                params + JSON" pattern keeps the surface uniform and tools self-contained — they
+                                document their operations in <code>SupportedOperations</code> rather than relying on
+                                bespoke schema code.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>Operation filtering by skill</h2>
+                    <p>
+                        A skill can declare not just which tools it can use but which <em>operations</em> within each
+                        tool. The converter respects this — only operations in the intersection of
+                        <code>skill.allowed-tools</code> and <code>tool.SupportedOperations</code> are exposed to the
+                        LLM. This is how a "read-only research" skill prevents the agent from invoking
+                        <code>file_system.write</code>.
+                    </p>
+
+                    <h2>The file system sandbox — case study</h2>
+                    <p>
+                        <code>FileSystemService</code> (in <code>Infrastructure.AI/Tools/</code>) is the canonical
+                        example of why this architecture matters. It implements <code>ITool</code> for file
+                        operations, but every operation goes through a path validator:
+                    </p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · sandbox check</span></div>
+                        <pre><code>private bool IsPathAllowed(string requestedPath)
+{
+    var absolute = Path.GetFullPath(requestedPath);
+    return _allowedBasePaths.Any(allowed =&gt;
+        absolute.StartsWith(Path.GetFullPath(allowed), StringComparison.OrdinalIgnoreCase));
+}</code></pre>
+                    </div>
+                    <p>
+                        Allowed paths come from <code>AppConfig.Infrastructure.FileSystem.AllowedBasePaths</code>.
+                        Path traversal attacks (<code>../../etc/passwd</code>) are caught because
+                        <code>Path.GetFullPath</code> normalizes before comparison.
+                    </p>
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">The sandbox is the LLM's only restraint</div>
+                            <p style="margin: 0">
+                                The agent's reasoning can be tricked, prompted, or jailbroken. The sandbox can't —
+                                it's a deterministic check in code. <strong>Never disable it</strong> just to make a
+                                feature work. Add the specific path you need to
+                                <code>AllowedBasePaths</code> and document why.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>MCP tools as <code>ITool</code></h2>
+                    <p>
+                        Tools discovered on external MCP servers are wrapped to implement the same
+                        <code>ITool</code> interface. Once wrapped, they're indistinguishable from internal tools —
+                        the agent doesn't know or care that <code>github_create_issue</code> lives on a remote MCP
+                        server, only that calling it produces a <code>ToolResult</code>. See
+                        <a href="08-mcp.html">MCP Server &amp; Client</a> for the wrapping flow.
+                    </p>
+
+                    <h2>Where each tool lives in the repo</h2>
+                    <table>
+                        <thead><tr><th>Tool family</th><th>Project</th></tr></thead>
+                        <tbody>
+                            <tr><td>File system, calculation, internal utilities</td><td><code>Infrastructure.AI/Tools/</code></td></tr>
+                            <tr><td>RAG retrieval tools (document_search, etc.)</td><td><code>Infrastructure.AI.RAG/</code></td></tr>
+                            <tr><td>External connector tools (GitHub, Jira, Slack)</td><td><code>Infrastructure.AI.Connectors/</code></td></tr>
+                            <tr><td>MCP-discovered tools (wrapped)</td><td><code>Infrastructure.AI.MCP/</code></td></tr>
+                            <tr><td>Tool DI registration</td><td><code>Infrastructure.Common/DependencyInjection.cs</code> &amp; per-project <code>DependencyInjection.cs</code></td></tr>
+                            <tr><td>Tool conversion (bridge to <code>AITool</code>)</td><td><code>Application.AI.Common/Services/Tools/AIToolConverter.cs</code></td></tr>
+                        </tbody>
+                    </table>
+
+                    <h2>Observability</h2>
+                    <p>
+                        Every tool invocation is wrapped in an OpenTelemetry span by the chat client middleware. The
+                        span includes the tool name, the operation, latency, and success/failure. <code>ToolExecutionMetrics</code>
+                        also emits a <code>Counter</code> per invocation. When an agent goes off the rails, the first
+                        place to look is the tool-call sequence in a Jaeger trace — see
+                        <a href="10-observability.html">Observability &amp; Safety</a>.
+                    </p>
+
+                    <hr />
+
+                    <h2>Where to go from here</h2>
+                    <div class="card-grid">
+                        <a class="card" href="07-rag.html">
+                            <span class="card-num">07 · Next</span>
+                            <div class="card-title">The RAG Pipeline</div>
+                            <p class="card-desc">The biggest tool family — how documents are ingested, retrieved, and assembled into agent context.</p>
+                        </a>
+                        <a class="card" href="11-extending.html">
+                            <span class="card-num">11 · Related</span>
+                            <div class="card-title">Extending the Harness</div>
+                            <p class="card-desc">Walkthrough: add your own tool from scratch with tests.</p>
+                        </a>
+                    </div>
+
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="05-skills.html"><div class="page-nav-label">← Previous</div><div class="page-nav-title">05 · Skills System</div></a>
+                        <a class="page-nav-link page-nav-next" href="07-rag.html"><div class="page-nav-label">Next →</div><div class="page-nav-title">07 · The RAG Pipeline</div></a>
+                    </div>
+                </div>
+                <aside class="toc" aria-label="On this page"><div class="toc-title">On this page</div><ul class="toc-list"></ul></aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>

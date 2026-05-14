@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>04 · A Message's Journey — Agentic Harness Developer Guide</title>
+        <meta name="description" content="Trace one user prompt from the keyboard, through every layer, to the LLM and back." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span><span class="sidebar-brand-text">Agentic Harness</span><br /><span class="sidebar-brand-sub">Developer Guide</span></span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group"><div class="sidebar-group-title">Getting Started</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-get-running.html"><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Configuration</div>
+                        <a class="sidebar-link" href="02-configuration.html"><span class="sidebar-link-num">02</span> Configuration Reference</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Architecture</div>
+                        <a class="sidebar-link" href="03-big-picture.html"><span class="sidebar-link-num">03</span> The Big Picture</a>
+                        <a class="sidebar-link" href="04-message-journey.html"><span class="sidebar-link-num">04</span> A Message's Journey</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Systems</div>
+                        <a class="sidebar-link" href="05-skills.html"><span class="sidebar-link-num">05</span> Skills System</a>
+                        <a class="sidebar-link" href="06-tools.html"><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a>
+                        <a class="sidebar-link" href="07-rag.html"><span class="sidebar-link-num">07</span> The RAG Pipeline</a>
+                        <a class="sidebar-link" href="08-mcp.html"><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Patterns</div>
+                        <a class="sidebar-link" href="09-patterns.html"><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a>
+                        <a class="sidebar-link" href="10-observability.html"><span class="sidebar-link-num">10</span> Observability &amp; Safety</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Building</div>
+                        <a class="sidebar-link" href="11-extending.html"><span class="sidebar-link-num">11</span> Extending the Harness</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Reference</div>
+                        <a class="sidebar-link" href="12-reference.html"><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a>
+                    </div>
+                </nav>
+            </aside>
+
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 04 · Architecture</span>
+                    <h1 class="page-title">A Message's Journey</h1>
+                    <p class="page-lead">
+                        You typed a question into the console. Several seconds later, an answer appeared. What happened
+                        in between is the most important thing to understand in this codebase. We'll trace it step by
+                        step, file by file, with real code excerpts from this repo.
+                    </p>
+
+                    <h2>The cast of characters</h2>
+                    <p>Before the trace, meet the players. We'll refer to each by name throughout.</p>
+                    <div class="def"><div class="def-term"><code>App.cs</code></div><div class="def-desc">Presentation entry — owns the Spectre.Console menu and routes to example classes.</div></div>
+                    <div class="def"><div class="def-term"><code>ResearchAgentExample</code></div><div class="def-desc">An example class that builds an <code>ExecuteAgentTurnCommand</code> and dispatches it via MediatR.</div></div>
+                    <div class="def"><div class="def-term">MediatR pipeline</div><div class="def-desc">A series of <code>IPipelineBehavior</code> wrappers (validation, content safety, governance, etc.) that every command flows through.</div></div>
+                    <div class="def"><div class="def-term"><code>ExecuteAgentTurnCommandHandler</code></div><div class="def-desc">The handler that actually invokes the agent for a single turn.</div></div>
+                    <div class="def"><div class="def-term"><code>AgentConversationCache</code></div><div class="def-desc">Caches built agents per <code>(conversationId, skillId)</code> so subsequent turns reuse the same configured instance.</div></div>
+                    <div class="def"><div class="def-term"><code>AgentFactory</code></div><div class="def-desc">Builds a new agent — loads the skill, resolves tools, wires content safety, attaches OTel.</div></div>
+                    <div class="def"><div class="def-term"><code>ChatClientFactory</code></div><div class="def-desc">Creates the LLM client (Azure OpenAI, OpenAI, or AI Foundry) from <code>AppConfig.AI.AgentFramework</code>.</div></div>
+                    <div class="def"><div class="def-term">The agent</div><div class="def-desc">A <code>Microsoft.Agents.AI.AIAgent</code> — assembles the prompt, calls the LLM, dispatches tool calls, loops until done.</div></div>
+
+                    <hr />
+
+                    <h2>Step-by-step trace</h2>
+
+                    <ol class="steps">
+                        <li class="step">
+                            <div class="step-meta">Step 1 · Presentation</div>
+                            <div class="step-title">You type a message and press Enter</div>
+                            <p>
+                                <code>App.RunAsync()</code> sits in a menu loop. When you pick
+                                "Research Agent", it calls <code>ResearchAgentExample.RunAsync()</code>. That example
+                                reads your prompt from the console, then builds a strongly-typed command:
+                            </p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">C# · ExecuteAgentTurnCommand</span></div>
+                                <pre><code>var cmd = new ExecuteAgentTurnCommand
+{
+    AgentName       = "research",     // matches a SKILL.md ID
+    UserMessage     = userInput,
+    ConversationId  = sessionGuid,
+    TurnNumber      = currentTurn,
+    ConversationHistory = priorMessages
+};
+var result = await _mediator.Send(cmd, cancellationToken);</code></pre>
+                            </div>
+                            <p>
+                                Everything from here on flows through MediatR. The example doesn't know anything about
+                                Azure OpenAI, the skill loader, or tools. It just sends a command. That's the
+                                Application boundary doing its job.
+                            </p>
+
+                            <div class="callout callout-jargon">
+                                <span class="callout-icon">¶</span>
+                                <div class="callout-body">
+                                    <div class="callout-title">MediatR, briefly</div>
+                                    <p style="margin: 0">
+                                        A C# library implementing the mediator pattern. You define a
+                                        <code>record Command : IRequest&lt;TResponse&gt;</code>; somewhere else you
+                                        define <code>class Handler : IRequestHandler&lt;Command, TResponse&gt;</code>;
+                                        a third party calls <code>_mediator.Send(command)</code> and MediatR finds the
+                                        right handler. Why? Because pipeline behaviors can wrap every command for
+                                        cross-cutting concerns (validation, logging, retries) without the handlers or
+                                        callers knowing about them. We use this heavily.
+                                    </p>
+                                </div>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-meta">Step 2 · Application — pipeline behaviors</div>
+                            <div class="step-title">The command flows through the MediatR pipeline</div>
+                            <p>
+                                Before the handler runs, the command is wrapped in
+                                <strong>pipeline behaviors</strong> — one for each cross-cutting concern. Each behavior
+                                can pre-process the request, call the next behavior, and post-process the response.
+                                Registration order matters; the order roughly is:
+                            </p>
+                            <ol>
+                                <li><code>UnhandledExceptionBehavior</code> — outer wrapper, converts uncaught exceptions to logged errors.</li>
+                                <li><code>RequestTracingBehavior</code> — opens an OTel <code>Activity</code> per request.</li>
+                                <li><code>TimeoutBehavior</code> — enforces <code>request.Timeout</code> or <code>AppConfig.Agent.DefaultRequestTimeoutSec</code>.</li>
+                                <li><code>AgentContextPropagationBehavior</code> — copies agent/conversation IDs into ambient tracing tags.</li>
+                                <li><code>PromptInjectionBehavior</code> — runs deterministic prompt-injection detectors on user input.</li>
+                                <li><code>ContentSafetyBehavior</code> — checks input against configured content filters.</li>
+                                <li><code>GovernancePolicyBehavior</code> — applies YAML policy rules.</li>
+                                <li><code>ToolPermissionBehavior</code> — checks autonomy-tier permissions if the request invokes a tool.</li>
+                                <li><code>RequestValidationBehavior</code> — runs FluentValidation validators in parallel.</li>
+                                <li><code>AuthorizationBehavior</code> — claim-based authorization (for HTTP-hosted commands).</li>
+                                <li><code>CachingBehavior</code> — looks up cached responses for cacheable queries.</li>
+                                <li><code>AuditTrailBehavior</code> — persistent audit log of every command.</li>
+                                <li><code>HookBehavior</code> — invokes any configured pre/post hooks.</li>
+                            </ol>
+
+                            <div class="callout callout-tip">
+                                <span class="callout-icon">✓</span>
+                                <div class="callout-body">
+                                    <div class="callout-title">Why so many?</div>
+                                    <p style="margin: 0">
+                                        Each one is independent and turn-off-able. Production agents need most of them;
+                                        unit tests can swap to a bare pipeline. The behaviors are how we keep the
+                                        handler focused on its one job (executing the turn) while still getting
+                                        observability, validation, and safety for free.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <p>
+                                If any behavior decides to abort — e.g. validation fails — the pipeline short-circuits
+                                and returns a failure <code>Result</code> without ever reaching the handler. Here's
+                                the validation behavior boiled down:
+                            </p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">C# · RequestValidationBehavior</span></div>
+                                <pre><code>var results = await Task.WhenAll(
+    validators.Select(v =&gt; v.ValidateAsync(context, cancellationToken)));
+
+if (results.SelectMany(r =&gt; r.Errors).Any())
+    return Result.ValidationFailure(errorMessages);
+
+return await next();   // call the next behavior / handler</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-meta">Step 3 · Application — handler entry</div>
+                            <div class="step-title"><code>ExecuteAgentTurnCommandHandler.Handle()</code></div>
+                            <p>
+                                After all behaviors green-light the request, the handler runs. Its job has four parts:
+                                resolve the skill, get or build an agent, run the turn, record telemetry.
+                            </p>
+                            <p>
+                                <strong>Resolving the skill.</strong> The incoming <code>AgentName</code> might be an
+                                agent ID (from the manifest) or a skill ID directly. The handler looks up the agent
+                                manifest first, then falls back to treating the name as a skill ID:
+                            </p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">C# · skill resolution</span></div>
+                                <pre><code>var skillId = _agentRegistry.TryGet(request.AgentName)?.Skill
+              ?? request.AgentName;</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-meta">Step 4 · Application — agent build/cache</div>
+                            <div class="step-title">Get the agent from cache, or build a new one</div>
+                            <p>
+                                <code>AgentConversationCache.GetOrCreateAsync()</code> keys by
+                                <code>(conversationId, skillId)</code>. If an agent for that key already exists, it's
+                                reused (preserving any in-memory state). Otherwise, <code>AgentFactory.Create()</code>
+                                is invoked. Building a new agent is non-trivial:
+                            </p>
+                            <ul>
+                                <li>Load the <code>SkillDefinition</code> from the <code>SKILL.md</code> file via <code>ISkillLoaderService</code>.</li>
+                                <li>Read the skill's <code>allowed-tools</code> declaration. Resolve each one from the keyed DI container.</li>
+                                <li>Convert internal <code>ITool</code> implementations to <code>AITool</code> via <code>AIToolConverter</code> — see <a href="06-tools.html">Tools &amp; Keyed DI</a>.</li>
+                                <li>Create the chat client through <code>IChatClientFactory</code> (Azure OpenAI, OpenAI, or AI Foundry depending on config).</li>
+                                <li>Wrap the chat client with middleware: content safety, OTel, function-invocation limits.</li>
+                                <li>Construct a <code>Microsoft.Agents.AI.AIAgent</code> with the system prompt (assembled from skill instructions + any override) and the tool list.</li>
+                            </ul>
+                            <div class="callout callout-tip">
+                                <span class="callout-icon">✓</span>
+                                <div class="callout-body">
+                                    <div class="callout-title">Why cache agents per conversation?</div>
+                                    <p style="margin: 0">
+                                        Building an agent costs real work (file I/O for the skill, tool resolution,
+                                        client construction). Within a single conversation, every turn uses the same
+                                        skill — caching the built agent skips that work on turn 2+. The cache is
+                                        keyed by <code>conversationId</code>, so different conversations get
+                                        independent agents.
+                                    </p>
+                                </div>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-meta">Step 5 · Handler — invoke the agent</div>
+                            <div class="step-title"><code>agent.RunAsync(messages)</code></div>
+                            <p>
+                                The handler builds a message list — prior conversation history plus the new user
+                                message — and calls the agent. Behind the scenes,
+                                <code>Microsoft.Agents.AI</code> does this loop:
+                            </p>
+                            <ol>
+                                <li>Serialize messages + tool schemas into an LLM request.</li>
+                                <li>Send the request to the chat client (Azure OpenAI / OpenAI).</li>
+                                <li>If the response includes a <code>tool_call</code>, dispatch the call to the matching <code>AITool</code> and append its result to the messages.</li>
+                                <li>Loop until the response has no more tool calls — that's the agent's final answer.</li>
+                            </ol>
+                            <p>
+                                The handler captures token usage and tool names from an ambient
+                                <code>LlmUsageCapture</code> that the OTel middleware writes to during the run:
+                            </p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">C# · ExecuteAgentTurnCommandHandler.cs</span></div>
+                                <pre><code>_usageCapture.TakeSnapshot();           // clear stale data
+LlmUsageCapture.Current = _usageCapture; // ambient scope
+
+response = await agent.RunAsync(messages, cancellationToken: ct);
+
+var usage = _usageCapture.TakeSnapshot(); // total tokens, cost, tools called</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-meta">Step 6 · Telemetry &amp; result</div>
+                            <div class="step-title">Record what happened, return the result</div>
+                            <p>
+                                Before returning, the handler:
+                            </p>
+                            <ul>
+                                <li>Records the user message and assistant response in <code>IObservabilityStore</code> (durable audit).</li>
+                                <li>Emits OTel metrics: <code>TurnDuration</code>, <code>TurnsTotal</code>, per-tool <code>Invocations</code>.</li>
+                                <li>Builds an <code>AgentTurnResult</code> with the response text, updated history, tools invoked, token counts, and USD cost.</li>
+                            </ul>
+                            <p>The <code>AgentTurnResult</code> flows back through the pipeline (in reverse), gets logged by the audit behavior, and returns to <code>ResearchAgentExample</code> which prints it to the console.</p>
+                        </li>
+                    </ol>
+
+                    <hr />
+
+                    <h2>The whole journey in one diagram</h2>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">flow</span></div>
+                        <pre><code>You ──▶ Console
+        │
+        ▼
+   ResearchAgentExample
+        │  builds command
+        ▼
+   IMediator.Send(cmd)
+        │
+        ▼
+   ┌────────────── MediatR pipeline ──────────────┐
+   │  Tracing → Timeout → ContextPropagation →    │
+   │  PromptInjection → ContentSafety →           │
+   │  Governance → ToolPermission → Validation →  │
+   │  Authorization → Caching → Audit → Hooks     │
+   └──────────────────┬───────────────────────────┘
+                      ▼
+   ExecuteAgentTurnCommandHandler
+        │ resolve skill ID
+        ▼
+   AgentConversationCache.GetOrCreateAsync
+        │ cache miss?
+        ▼
+   AgentFactory.Create(skill)
+        │  loads SKILL.md
+        │  resolves keyed tools
+        │  wires content safety + OTel
+        ▼
+   ChatClientFactory.CreateAsync
+        │  AzureOpenAI / OpenAI / AIFoundry
+        ▼
+   agent.RunAsync(messages)
+        │  ┌─ LLM call (prompt + tool schemas)
+        │  │  ┐
+        │  └─ if tool_call → dispatch → result → loop
+        │     ┘
+        ▼
+   AgentTurnResult { text, tokens, cost, tools[] }
+        │  observability store + metrics
+        ▼  unwinds back through pipeline
+   Console prints the response.</code></pre>
+                    </div>
+
+                    <h2>What this means for you as a developer</h2>
+                    <p>Three things to take away:</p>
+                    <ol>
+                        <li><strong>You almost never need to modify the handler.</strong> 95% of changes happen in skills, tools, or behaviors. Adding a new capability is usually "register a new tool + reference it from a skill" — never "change the journey."</li>
+                        <li><strong>Cross-cutting features live in behaviors, not in handlers.</strong> Need to log every request to a custom store? Write a <code>IPipelineBehavior</code>. Don't sprinkle <code>_logger.Log()</code> calls inside handlers.</li>
+                        <li><strong>The agent loop is owned by <code>Microsoft.Agents.AI</code>.</strong> You don't write the tool-call dispatch yourself — you give the agent tools, and it does the loop. If you want different behavior, that's the boundary to look at.</li>
+                    </ol>
+
+                    <hr />
+
+                    <h2>Where to go from here</h2>
+                    <div class="card-grid">
+                        <a class="card" href="05-skills.html">
+                            <span class="card-num">05 · Next</span>
+                            <div class="card-title">Skills System</div>
+                            <p class="card-desc">How <code>SKILL.md</code> files become the agent's instructions and tool list, with three-tier progressive disclosure.</p>
+                        </a>
+                        <a class="card" href="06-tools.html">
+                            <span class="card-num">06 · Then</span>
+                            <div class="card-title">Tools &amp; Keyed DI</div>
+                            <p class="card-desc">How tools register, how the LLM sees them, and the sandboxing that keeps them safe.</p>
+                        </a>
+                    </div>
+
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="03-big-picture.html">
+                            <div class="page-nav-label">← Previous</div>
+                            <div class="page-nav-title">03 · The Big Picture</div>
+                        </a>
+                        <a class="page-nav-link page-nav-next" href="05-skills.html">
+                            <div class="page-nav-label">Next →</div>
+                            <div class="page-nav-title">05 · Skills System</div>
+                        </a>
+                    </div>
+                </div>
+
+                <aside class="toc" aria-label="On this page"><div class="toc-title">On this page</div><ul class="toc-list"></ul></aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>

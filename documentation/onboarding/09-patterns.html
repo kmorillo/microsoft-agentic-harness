@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>09 · Patterns You'll Use Daily — Agentic Harness Developer Guide</title>
+        <meta name="description" content="Result<T>, MediatR pipeline behaviors, factories, immutability — the recurring patterns that show up across every project." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <aside class="sidebar">
+                <div class="sidebar-header"><a class="sidebar-brand" href="index.html"><span class="sidebar-brand-mark">AH</span><span><span class="sidebar-brand-text">Agentic Harness</span><br /><span class="sidebar-brand-sub">Developer Guide</span></span></a></div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group"><div class="sidebar-group-title">Getting Started</div><a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a><a class="sidebar-link" href="01-get-running.html"><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Configuration</div><a class="sidebar-link" href="02-configuration.html"><span class="sidebar-link-num">02</span> Configuration Reference</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Architecture</div><a class="sidebar-link" href="03-big-picture.html"><span class="sidebar-link-num">03</span> The Big Picture</a><a class="sidebar-link" href="04-message-journey.html"><span class="sidebar-link-num">04</span> A Message's Journey</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Systems</div><a class="sidebar-link" href="05-skills.html"><span class="sidebar-link-num">05</span> Skills System</a><a class="sidebar-link" href="06-tools.html"><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a><a class="sidebar-link" href="07-rag.html"><span class="sidebar-link-num">07</span> The RAG Pipeline</a><a class="sidebar-link" href="08-mcp.html"><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Patterns</div><a class="sidebar-link" href="09-patterns.html"><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a><a class="sidebar-link" href="10-observability.html"><span class="sidebar-link-num">10</span> Observability &amp; Safety</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Building</div><a class="sidebar-link" href="11-extending.html"><span class="sidebar-link-num">11</span> Extending the Harness</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Reference</div><a class="sidebar-link" href="12-reference.html"><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a></div>
+                </nav>
+            </aside>
+
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 09 · Patterns</span>
+                    <h1 class="page-title">Patterns You'll Use Daily</h1>
+                    <p class="page-lead">
+                        Six patterns show up in nearly every file you'll touch. Internalize these and the codebase
+                        starts to feel consistent rather than alien. Each pattern exists because we tried the simpler
+                        thing first and regretted it.
+                    </p>
+
+                    <h2>1 · <code>Result&lt;T&gt;</code> for expected failures</h2>
+                    <p>
+                        Validation errors, missing records, business-rule rejections — these aren't <em>exceptions</em>,
+                        they're <em>expected</em>. Throwing for them pollutes the stack and forces callers to
+                        try/catch what should be normal flow.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · Domain.Common/Result.cs</span></div>
+                        <pre><code>public sealed record Result&lt;T&gt;
+{
+    public bool IsSuccess { get; }
+    public T? Value { get; }
+    public string? Error { get; }
+    public IReadOnlyList&lt;string&gt; ValidationErrors { get; }
+
+    public static Result&lt;T&gt; Success(T value)                  =&gt; new(true, value, null, []);
+    public static Result&lt;T&gt; Fail(string error)                =&gt; new(false, default, error, []);
+    public static Result&lt;T&gt; ValidationFailure(IReadOnlyList&lt;string&gt; errors) =&gt; new(false, default, null, errors);
+}</code></pre>
+                    </div>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">When to use Result vs. throw</div>
+                            <p style="margin: 0">
+                                <strong>Result</strong> — anything the caller might reasonably handle: validation,
+                                "not found", auth rejection, business rules. <strong>Throw</strong> — truly
+                                exceptional conditions: malformed config at startup, programming errors, infrastructure
+                                outages. As a rule of thumb, if the user could realistically retry and succeed
+                                with different input, it's a Result.
+                            </p>
+                        </div>
+                    </div>
+
+                    <p>The validation behavior we saw in <a href="04-message-journey.html">A Message's Journey</a> uses this — it never throws if the command's response type is <code>Result&lt;T&gt;</code>:</p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · pipeline behavior excerpt</span></div>
+                        <pre><code>if (ResultHelper.TryCreateValidationFailure&lt;TResponse&gt;(errorMessages, out var failureResult))
+    return failureResult;            // short-circuit, no throw
+
+throw new ValidationException(failures);  // fallback for non-Result handlers</code></pre>
+                    </div>
+
+                    <h2 id="mediatr-pipeline">2 · MediatR pipeline behaviors</h2>
+                    <p>
+                        Pipeline behaviors wrap every command/query going through MediatR. They're how this codebase
+                        keeps handlers focused on their one job while still adding cross-cutting concerns. The
+                        registration order matters — behaviors execute in the order registered, with each one having
+                        the opportunity to short-circuit.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · IPipelineBehavior shape</span></div>
+                        <pre><code>public sealed class MyBehavior&lt;TRequest, TResponse&gt; : IPipelineBehavior&lt;TRequest, TResponse&gt;
+{
+    public async Task&lt;TResponse&gt; Handle(
+        TRequest request,
+        RequestHandlerDelegate&lt;TResponse&gt; next,
+        CancellationToken ct)
+    {
+        // pre-process
+
+        var response = await next();   // call inner behavior / handler
+
+        // post-process
+
+        return response;
+    }
+}</code></pre>
+                    </div>
+
+                    <p>The behaviors used by this codebase (registered in <code>Application.AI.Common</code> and <code>Application.Common</code>):</p>
+                    <ul>
+                        <li><code>UnhandledExceptionBehavior</code>, <code>RequestTracingBehavior</code>, <code>TimeoutBehavior</code> — outermost wrappers.</li>
+                        <li><code>AgentContextPropagationBehavior</code> — propagates agent/conversation IDs into ambient tracing.</li>
+                        <li><code>PromptInjectionBehavior</code>, <code>ContentSafetyBehavior</code>, <code>GovernancePolicyBehavior</code>, <code>ToolPermissionBehavior</code> — safety stack.</li>
+                        <li><code>RequestValidationBehavior</code>, <code>AuthorizationBehavior</code> — guard rails.</li>
+                        <li><code>CachingBehavior</code>, <code>AuditTrailBehavior</code>, <code>HookBehavior</code> — cross-cutting features.</li>
+                    </ul>
+
+                    <h2>3 · Factories for complex construction</h2>
+                    <p>
+                        When constructing a service requires multiple dependencies, config lookups, or decoration steps,
+                        we use a factory rather than expanding the constructor of every consumer. The two big ones:
+                    </p>
+
+                    <div class="def"><div class="def-term"><code>AgentFactory</code></div><div class="def-desc">Builds a fully-configured <code>AIAgent</code>: loads the skill, resolves tools, wires content safety and OTel, applies function invocation limits. Consumers call <code>factory.Create(skillId)</code>; everything else is internal.</div></div>
+                    <div class="def"><div class="def-term"><code>ChatClientFactory</code></div><div class="def-desc">Builds an LLM chat client based on <code>ClientType</code> — Azure OpenAI, OpenAI, AI Foundry, or Azure AI Inference. Decorates with retries, timeouts, observability, content safety.</div></div>
+                    <div class="def"><div class="def-term"><code>AgentExecutionContextFactory</code></div><div class="def-desc">Builds the per-turn execution context — conversation IDs, observability session, ambient services.</div></div>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">The rule</div>
+                            <p style="margin: 0">
+                                Never construct an <code>AIAgent</code>, <code>IChatClient</code>, or
+                                <code>AgentExecutionContext</code> directly. <strong>Always go through the
+                                factory.</strong> Otherwise you lose content safety, OTel, function limits, and
+                                config consistency — and these are exactly the things tests catch you forgetting.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>4 · Immutability everywhere</h2>
+                    <p>Almost every Domain type is a <code>record</code> with <code>init</code>-only properties. Collections expose <code>IReadOnlyList&lt;T&gt;</code>. Mutation happens via <code>with</code> expressions that produce new instances.</p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · idiom</span></div>
+                        <pre><code>// Don't:
+skill.Instructions = "new instructions";   // won't compile — init-only
+
+// Do:
+var updated = skill with { Instructions = "new instructions" };</code></pre>
+                    </div>
+                    <p>This is a huge win in agent code: when multiple turns of a conversation share state, immutability ensures one turn can't accidentally mutate a value another turn is reading.</p>
+
+                    <h2>5 · Keyed DI for extensible registrations</h2>
+                    <p>We covered this on <a href="06-tools.html">Tools &amp; Keyed DI</a>. The same pattern is used for:</p>
+                    <ul>
+                        <li><strong>Tools</strong> — keyed by tool name (<code>"file_system"</code>).</li>
+                        <li><strong>Tool converters</strong> — keyed by priority.</li>
+                        <li><strong>Rerankers</strong> — keyed by strategy (<code>"AzureSemantic"</code>, <code>"CrossEncoder"</code>, <code>"NoOp"</code>).</li>
+                        <li><strong>Chat clients</strong> — keyed by <code>ClientType</code>.</li>
+                        <li><strong>Content providers, state stores, audit stores</strong> — anywhere you might have multiple implementations of the same interface coexisting.</li>
+                    </ul>
+
+                    <h2>6 · Options pattern with <code>IOptionsMonitor</code></h2>
+                    <p>
+                        Always inject <code>IOptionsMonitor&lt;AppConfig&gt;</code>, never raw config or
+                        <code>IOptions</code>. <code>IOptionsMonitor</code> picks up changes to
+                        <code>appsettings.json</code> without restart. <code>IOptions</code> snapshots once at startup.
+                    </p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · idiomatic config access</span></div>
+                        <pre><code>public class MyService(IOptionsMonitor&lt;AppConfig&gt; cfg) : IMyService
+{
+    private AppConfig Cfg =&gt; cfg.CurrentValue;
+
+    public void DoThing()
+    {
+        var budget = Cfg.Agent.DefaultTokenBudget;
+        // ... use it locally; don't cache cross-method
+    }
+}</code></pre>
+                    </div>
+
+                    <hr />
+
+                    <h2>The unwritten rules</h2>
+
+                    <h3>Functions stay small</h3>
+                    <p>Target under 50 lines per function. If a function is doing three distinct things, extract two of them. The exception is composition (e.g. <code>DependencyInjection.cs</code> with dozens of registrations) where the line count is structural.</p>
+
+                    <h3>One class per file</h3>
+                    <p>Even small helper classes get their own file. Makes it trivial to find anything via filename, and keeps git diffs clean.</p>
+
+                    <h3>No <code>console.log</code> or <code>Console.WriteLine</code> in library code</h3>
+                    <p>Use the injected <code>ILogger&lt;T&gt;</code>. Logs are JSONL structured by default — they flow to file, named pipe, and (in production) Application Insights. Bare <code>Console.WriteLine</code> bypasses all of that and breaks the JSON.</p>
+
+                    <h3>Validate at boundaries, trust the inside</h3>
+                    <p>Validate user inputs and external API responses with FluentValidation. <em>Don't</em> defensively re-validate values that came from your own Domain types. Records + init-only fields + validators at the boundary = the inside can trust its inputs.</p>
+
+                    <h3>Test like you mean it</h3>
+                    <p>80% coverage minimum on new code. Tests live in <code>src/Content/Tests/&lt;project&gt;.Tests/</code> — one test project per source project. Prefer real implementations over mocks: use <code>WebApplicationFactory&lt;Program&gt;</code> + in-memory DB for integration tests. See <a href="11-extending.html">Extending the Harness</a> for the test patterns.</p>
+
+                    <hr />
+
+                    <h2>Where to go from here</h2>
+                    <div class="card-grid">
+                        <a class="card" href="10-observability.html">
+                            <span class="card-num">10 · Next</span>
+                            <div class="card-title">Observability &amp; Safety</div>
+                            <p class="card-desc">How the harness sees inside the agent's head — OTel, content safety, governance, escalation.</p>
+                        </a>
+                        <a class="card" href="11-extending.html">
+                            <span class="card-num">11 · Related</span>
+                            <div class="card-title">Extending the Harness</div>
+                            <p class="card-desc">The patterns above, applied — three end-to-end recipes for adding new capabilities.</p>
+                        </a>
+                    </div>
+
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="08-mcp.html"><div class="page-nav-label">← Previous</div><div class="page-nav-title">08 · MCP Server &amp; Client</div></a>
+                        <a class="page-nav-link page-nav-next" href="10-observability.html"><div class="page-nav-label">Next →</div><div class="page-nav-title">10 · Observability &amp; Safety</div></a>
+                    </div>
+                </div>
+                <aside class="toc" aria-label="On this page"><div class="toc-title">On this page</div><ul class="toc-list"></ul></aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>

@@ -1,0 +1,1158 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>02 · Configuration Reference — Agentic Harness Developer Guide</title>
+        <meta
+            name="description"
+            content="Every configuration knob in the Agentic Harness, what it does, and when to change it. Bound from appsettings.json into strongly-typed AppConfig classes."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <!-- ============ SIDEBAR ============ -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Developer Guide</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Getting Started</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-get-running.html"
+                            ><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Configuration</div>
+                        <a class="sidebar-link" href="02-configuration.html"
+                            ><span class="sidebar-link-num">02</span> Configuration Reference</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Architecture</div>
+                        <a class="sidebar-link" href="03-big-picture.html"
+                            ><span class="sidebar-link-num">03</span> The Big Picture</a
+                        >
+                        <a class="sidebar-link" href="04-message-journey.html"
+                            ><span class="sidebar-link-num">04</span> A Message's Journey</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Systems</div>
+                        <a class="sidebar-link" href="05-skills.html"
+                            ><span class="sidebar-link-num">05</span> Skills System</a
+                        >
+                        <a class="sidebar-link" href="06-tools.html"
+                            ><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a
+                        >
+                        <a class="sidebar-link" href="07-rag.html"
+                            ><span class="sidebar-link-num">07</span> The RAG Pipeline</a
+                        >
+                        <a class="sidebar-link" href="08-mcp.html"
+                            ><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Patterns</div>
+                        <a class="sidebar-link" href="09-patterns.html"
+                            ><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a
+                        >
+                        <a class="sidebar-link" href="10-observability.html"
+                            ><span class="sidebar-link-num">10</span> Observability &amp; Safety</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Building</div>
+                        <a class="sidebar-link" href="11-extending.html"
+                            ><span class="sidebar-link-num">11</span> Extending the Harness</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Reference</div>
+                        <a class="sidebar-link" href="12-reference.html"
+                            ><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a
+                        >
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- ============ MAIN ============ -->
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 02 · Configuration</span>
+                    <h1 class="page-title">Configuration Reference</h1>
+                    <p class="page-lead">
+                        Every knob the harness exposes — what it does, where it lives in code, and the scenarios in
+                        which you'd actually change it. Read top to bottom on your first pass; bookmark it and use as
+                        a lookup table after that.
+                    </p>
+
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
+                        <div class="callout-body">
+                            <div class="callout-title">A note on Common vs Core</div>
+                            <p style="margin: 0">
+                                The entire configuration system documented on this page lives in
+                                <code>Domain.Common</code> — meaning it's <strong>harness infrastructure</strong>,
+                                shared across every fork of the template. When you add config keys for
+                                <em>your</em> application's specific settings (e.g. "PupWalkApi.StripeKey"), you can
+                                either add them under <code>AppConfig</code> (treating your app's config as part of
+                                the same root) or create a parallel config root in your own project. The harness's
+                                pattern (root POCO bound at startup via <code>services.Configure&lt;T&gt;()</code>)
+                                will work either way.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>Where configuration comes from</h2>
+                    <p>
+                        The harness uses standard .NET configuration. Values are pulled from <strong>three sources</strong>
+                        in this priority order — later sources override earlier ones:
+                    </p>
+
+                    <ol>
+                        <li>
+                            <strong><code>appsettings.json</code></strong> — the default values, checked into source
+                            control. This is the file you'll spend the most time in.
+                        </li>
+                        <li>
+                            <strong><code>appsettings.Development.json</code></strong> — environment-specific overrides
+                            (only loaded when <code>ASPNETCORE_ENVIRONMENT=Development</code>, which is the default
+                            during <code>dotnet run</code>).
+                        </li>
+                        <li>
+                            <strong>User Secrets</strong> (dev) <em>or</em> <strong>environment variables</strong> /
+                            <strong>Azure Key Vault</strong> (prod) — for anything sensitive: API keys, connection
+                            strings, signing secrets. These override the JSON files.
+                        </li>
+                    </ol>
+
+                    <div class="callout callout-jargon">
+                        <span class="callout-icon">¶</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Why three sources?</div>
+                            <p style="margin: 0">
+                                Defaults in JSON make the codebase self-documenting and reproducible. Per-environment
+                                JSON lets you tweak without forking. Secrets live outside the repo so you can't
+                                accidentally commit an API key. Same code runs on your laptop, in CI, and in
+                                production — only the configuration sources change.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3>How the values get into your code</h3>
+                    <p>
+                        Every key under <code>AppConfig</code> in JSON maps to a property on a strongly-typed C# class
+                        — the root is <code>AppConfig.cs</code> in <code>Domain.Common</code>. Binding happens once at
+                        startup:
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">C# · DI composition</span>
+                        </div>
+                        <pre><code>services.Configure&lt;AppConfig&gt;(configuration.GetSection("AppConfig"));</code></pre>
+                    </div>
+
+                    <p>From then on, any service can ask for an <code>IOptionsMonitor&lt;AppConfig&gt;</code>:</p>
+
+                    <div class="annotated">
+                        <div class="annotated-row">
+                            <div class="annotated-code">public class MyService(IOptionsMonitor&lt;AppConfig&gt; cfg)
+{
+    private AppConfig Cfg =&gt; cfg.CurrentValue;
+
+    public void DoThing()
+    {
+        var budget = Cfg.Agent.DefaultTokenBudget;
+        // ...
+    }
+}</div>
+                            <div class="annotated-note">
+                                <strong>Always inject <code>IOptionsMonitor&lt;T&gt;</code></strong>, not
+                                <code>IOptions&lt;T&gt;</code>. <code>IOptionsMonitor</code> picks up changes to
+                                <code>appsettings.json</code> at runtime without a restart. <code>IOptions</code>
+                                snapshots once at startup and never refreshes.
+                                <br /><br />
+                                <code>CurrentValue</code> returns the latest bound instance. Cache it in a local if you
+                                read it many times in one method.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Hot reload has limits</div>
+                            <p style="margin: 0">
+                                <code>IOptionsMonitor</code> only re-binds when the underlying file changes. If a
+                                service captures a value in a constructor or holds onto an instance after a read, that
+                                copy goes stale. The safe pattern is to always read <code>CurrentValue</code> at the
+                                top of each method that needs it.
+                            </p>
+                        </div>
+                    </div>
+
+                    <hr />
+
+                    <h2>The AppConfig tree</h2>
+                    <p>
+                        <code>AppConfig</code> is the single root. Everything else hangs off it. Here's the full
+                        top-level shape — each child is a section you can configure independently:
+                    </p>
+
+                    <div class="file-tree">
+<span class="ft-dir">AppConfig</span>
+├── <span class="ft-dir">Common</span>          <span class="ft-comment">// app name, version, slow threshold</span>
+├── <span class="ft-dir">Logging</span>         <span class="ft-comment">// log paths, pipe name, console suppression</span>
+├── <span class="ft-dir">Agent</span>           <span class="ft-comment">// request timeout, default token budget</span>
+├── <span class="ft-dir">Http</span>            <span class="ft-comment">// CORS, JWT auth, OpenAPI/Swagger</span>
+├── <span class="ft-dir">Infrastructure</span>  <span class="ft-comment">// FileSystem sandbox, state mgmt, content providers</span>
+├── <span class="ft-dir">Connectors</span>      <span class="ft-comment">// GitHub, Jira, Azure DevOps, Slack credentials</span>
+├── <span class="ft-dir">Observability</span>   <span class="ft-comment">// sampling, PII filter, exporters (Jaeger, Prom, AzMon)</span>
+├── <span class="ft-dir">AI</span>              <span class="ft-comment">// the big one — agents, MCP, RAG, governance, resilience</span>
+│   ├── AgentFramework
+│   ├── AIFoundry
+│   ├── MCP                  <span class="ft-comment">// this app as MCP server</span>
+│   ├── McpServers           <span class="ft-comment">// external MCP servers this app consumes</span>
+│   ├── A2A
+│   ├── ContextManagement
+│   ├── Permissions
+│   ├── Hooks
+│   ├── Orchestration
+│   ├── Skills               <span class="ft-comment">// where SKILL.md files live</span>
+│   ├── Agents               <span class="ft-comment">// where AGENT.md files live</span>
+│   ├── Rag
+│   ├── Resilience
+│   ├── DriftDetection
+│   ├── Learnings
+│   └── Governance
+├── <span class="ft-dir">Azure</span>           <span class="ft-comment">// App Insights, SQL, B2C, Key Vault, Graph</span>
+├── <span class="ft-dir">Cache</span>           <span class="ft-comment">// Memory | Redis</span>
+└── <span class="ft-dir">MetaHarness</span>     <span class="ft-comment">// optimization loop: iterations, eval tasks, traces</span>
+                    </div>
+
+                    <p>
+                        Every node above has a corresponding class in
+                        <code>src/Content/Domain/Domain.Common/Config/</code>. If you can't find what a key controls,
+                        open the class — XML doc comments explain each property.
+                    </p>
+
+                    <hr />
+
+                    <h2 id="section-common">AppConfig.Common</h2>
+                    <p>General settings that apply across all layers.</p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Type</th>
+                                <th>Default</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>ApplicationName</code></td>
+                                <td>string</td>
+                                <td><code>"AgenticHarness"</code></td>
+                                <td>Used as the OpenTelemetry resource attribute and in health-check output.</td>
+                            </tr>
+                            <tr>
+                                <td><code>ApplicationVersion</code></td>
+                                <td>string</td>
+                                <td><code>"1.0"</code></td>
+                                <td>Stamped onto OTel resources and API version metadata.</td>
+                            </tr>
+                            <tr>
+                                <td><code>SlowThresholdSec</code></td>
+                                <td>int</td>
+                                <td><code>5</code></td>
+                                <td>
+                                    Any MediatR request that exceeds this duration is logged as a warning by
+                                    <code>RequestPerformanceBehavior</code>. Lower it to surface slowness more
+                                    aggressively in load tests.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2 id="section-logging">AppConfig.Logging</h2>
+                    <p>Controls where logs are written and how they're formatted.</p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Default</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>LogsBasePath</code></td>
+                                <td><code>"logs"</code></td>
+                                <td>
+                                    Base directory for JSONL log files. Each run gets its own subfolder. Relative paths
+                                    resolve from the application working directory.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>PipeName</code></td>
+                                <td><code>"agentic-harness-logs"</code></td>
+                                <td>
+                                    Windows named-pipe name used to stream logs to <strong>LoggerUI</strong> in real
+                                    time. Different for each Presentation host (ConsoleUI uses
+                                    <code>AgenticHarnessLogs.ConsoleUI</code>).
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>EnableStructuredJson</code></td>
+                                <td><code>true</code></td>
+                                <td>Whether to emit JSONL log files. Disable only for tiny dev environments.</td>
+                            </tr>
+                            <tr>
+                                <td><code>RingBufferCapacity</code></td>
+                                <td><code>500</code></td>
+                                <td>
+                                    Last N log entries kept in-memory for the diagnostics endpoint. Independent of
+                                    on-disk retention.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>SuppressConsoleOutput</code></td>
+                                <td><code>false</code></td>
+                                <td>
+                                    Set to <code>true</code> when running LoggerUI alongside, so the agent console
+                                    stays clean and logs flow only through the pipe.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2 id="section-agent">AppConfig.Agent</h2>
+                    <p>Defaults applied to every agent conversation. Most sub-systems can override per agent.</p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Default</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>DefaultRequestTimeoutSec</code></td>
+                                <td><code>30</code></td>
+                                <td>
+                                    Cancellation budget for any MediatR request that doesn't specify its own.
+                                    <code>TimeoutBehavior</code> enforces it.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>DefaultTokenBudget</code></td>
+                                <td><code>128000</code></td>
+                                <td>
+                                    Cap on tokens the agent can spend per session — across system prompt, loaded
+                                    skills, tool schemas, and conversation history. <code>TokenBudgetBehavior</code>
+                                    enforces it. See <a href="05-skills.html">Skills</a> for how budget interacts with
+                                    progressive disclosure.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>MaxTurnsPerConversation</code></td>
+                                <td><code>10</code></td>
+                                <td>
+                                    Hard upper bound on the agent loop. When reached, the conversation terminates with
+                                    a "turn limit exceeded" result regardless of agent state.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">When to raise the token budget</div>
+                            <p style="margin: 0">
+                                If your agent legitimately needs to load many large skills (e.g. it's an orchestrator
+                                with a dozen sub-skills), bump <code>DefaultTokenBudget</code>. If the agent is
+                                hitting the cap because it's loading too eagerly, fix the
+                                <em>skill tier</em> instead — see <a href="05-skills.html">Skills System</a>.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2 id="section-filesystem">AppConfig.Infrastructure.FileSystem</h2>
+                    <p>
+                        This is the sandbox that decides which paths agents can read or write. Everything outside the
+                        allow-list is rejected at the service boundary, not at the LLM. Even if a malicious prompt
+                        convinces the agent to <code>cat /etc/passwd</code>, the call fails before it leaves the
+                        process.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">json · appsettings.json</span>
+                        </div>
+                        <pre><code>"Infrastructure": {
+  "FileSystem": {
+    "AllowedBasePaths": [ "../../../../../../.." ]
+  }
+}</code></pre>
+                    </div>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>AllowedBasePaths</code></td>
+                                <td>
+                                    Array of absolute or relative paths the agent is allowed to traverse. Relative
+                                    paths resolve from the running executable's directory — that's why the default
+                                    looks like a long <code>../</code> chain (it climbs from
+                                    <code>bin/Debug/net10.0/</code> back up to the repo root).
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="callout callout-danger">
+                        <span class="callout-icon">✕</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Don't widen this to <code>"/"</code></div>
+                            <p style="margin: 0">
+                                The first instinct when a tool says "access denied" is to add <code>"/"</code> or
+                                <code>"C:\\"</code> to the list and move on. <strong>Don't.</strong> The sandbox is
+                                what stops prompt-injected exfiltration. Add the specific subfolder, never a root.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2 id="section-ai-framework">AppConfig.AI.AgentFramework</h2>
+                    <p>Which LLM provider the harness talks to, and which model.</p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Type</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>ClientType</code></td>
+                                <td>enum</td>
+                                <td>
+                                    <code>AzureOpenAI</code> | <code>OpenAI</code> | <code>AzureAIInference</code>.
+                                    Selects which SDK is used by <code>ChatClientFactory</code>.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>Endpoint</code></td>
+                                <td>string</td>
+                                <td>
+                                    Azure OpenAI resource URL (e.g.
+                                    <code>https://my-resource.openai.azure.com/</code>). Leave blank for plain OpenAI.
+                                    <strong>Always stored in User Secrets / Key Vault, never in JSON.</strong>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>ApiKey</code></td>
+                                <td>string</td>
+                                <td>API key for the provider. <strong>Always a secret.</strong></td>
+                            </tr>
+                            <tr>
+                                <td><code>DefaultDeployment</code></td>
+                                <td>string</td>
+                                <td>
+                                    Name of the deployment (Azure) or model (OpenAI) used when no override is
+                                    specified. Case-sensitive.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>AvailableDeployments</code></td>
+                                <td>string[]</td>
+                                <td>
+                                    Allow-list of deployments callers can request per-conversation. Empty means
+                                    "<code>DefaultDeployment</code> is the only option."
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2 id="section-skills-paths">AppConfig.AI.Skills and AppConfig.AI.Agents</h2>
+                    <p>
+                        Tell the harness where to find <code>SKILL.md</code> and <code>AGENT.md</code> files on disk.
+                        These define what the agents know and do — covered in depth in
+                        <a href="05-skills.html">Skills System</a>.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">json</span>
+                        </div>
+                        <pre><code>"Skills": {
+  "BasePath": "skills",
+  "AdditionalPaths": []
+},
+"Agents": {
+  "BasePath": "agents",
+  "AdditionalPaths": []
+}</code></pre>
+                    </div>
+
+                    <p>
+                        <code>BasePath</code> is the primary location. <code>AdditionalPaths</code> lets you layer
+                        tenant- or environment-specific definitions on top of the built-ins — useful when you ship a
+                        base set of skills and your customer adds their own without forking.
+                    </p>
+
+                    <h2 id="section-mcp">AppConfig.AI.McpServers</h2>
+                    <p>
+                        Registry of <strong>external</strong> MCP servers this app should connect to as a client. The
+                        harness will discover their tools at startup and expose them to agents just like internal
+                        tools. (For the inverse direction — exposing <em>your</em> tools to other MCP clients — see
+                        <code>AppConfig.AI.MCP</code> and <a href="08-mcp.html">MCP Server &amp; Client</a>.)
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">json</span>
+                        </div>
+                        <pre><code>"McpServers": {
+  "Servers": {
+    "bifrost": {
+      "Type": "Http",
+      "Url": "http://192.168.50.189:8090/mcp",
+      "Description": "Bifrost MCP gateway — github, firecrawl, playwright"
+    }
+  }
+}</code></pre>
+                    </div>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>Type</code></td>
+                                <td><code>Http</code> | <code>Stdio</code>. HTTP for remote servers, Stdio for local processes.</td>
+                            </tr>
+                            <tr>
+                                <td><code>Url</code></td>
+                                <td>For HTTP servers — the MCP endpoint URL.</td>
+                            </tr>
+                            <tr>
+                                <td><code>Auth</code></td>
+                                <td>
+                                    Optional. Bearer token, API key in header, or none. See
+                                    <code>McpServerAuthConfig</code>.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>Description</code></td>
+                                <td>Human-readable, surfaced in observability output. Doesn't affect behavior.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2 id="section-governance">AppConfig.AI.Governance</h2>
+                    <p>
+                        The policy engine that decides whether a tool call should run, be blocked, or escalate to a
+                        human. Reads policies from YAML files.
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Default</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>Enabled</code></td>
+                                <td><code>true</code></td>
+                                <td>Master switch. When off, every tool call bypasses policy checks.</td>
+                            </tr>
+                            <tr>
+                                <td><code>PolicyPaths</code></td>
+                                <td><code>["Policies/default-policy.yaml"]</code></td>
+                                <td>One or more YAML policy files to load. Relative paths resolve from the app base directory.</td>
+                            </tr>
+                            <tr>
+                                <td><code>ConflictStrategy</code></td>
+                                <td><code>PriorityFirstMatch</code></td>
+                                <td>What to do when multiple rules match — first match wins by priority.</td>
+                            </tr>
+                            <tr>
+                                <td><code>EnablePromptInjectionDetection</code></td>
+                                <td><code>true</code></td>
+                                <td>Run deterministic prompt-injection patterns over every user input.</td>
+                            </tr>
+                            <tr>
+                                <td><code>InjectionBlockThreshold</code></td>
+                                <td><code>High</code></td>
+                                <td>
+                                    <code>Low</code> | <code>Medium</code> | <code>High</code> | <code>Critical</code>.
+                                    Detections at or above this level <em>block</em>. Lower-severity detections only
+                                    log.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>EnableMcpSecurity</code></td>
+                                <td><code>true</code></td>
+                                <td>Scan MCP tool schemas at registration time for known dangerous shapes.</td>
+                            </tr>
+                            <tr>
+                                <td><code>EnableAudit</code></td>
+                                <td><code>true</code></td>
+                                <td>Tamper-evident audit log of every governance decision.</td>
+                            </tr>
+                            <tr>
+                                <td><code>Escalation</code></td>
+                                <td>—</td>
+                                <td>
+                                    Nested config for human-in-the-loop approvals. Sets timeout per priority level
+                                    (<code>Informational</code>, <code>Blocking</code>, <code>Critical</code>) and
+                                    where audit records are written. See <a href="10-observability.html">Observability &amp; Safety</a>.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2 id="section-permissions">AppConfig.AI.Permissions</h2>
+                    <p>
+                        Per-tool approval policies. Distinct from <strong>Governance</strong>: governance enforces
+                        org-level rules from YAML; permissions are operational guards on individual tool invocations,
+                        keyed by autonomy tier.
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Default</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>DefaultBehavior</code></td>
+                                <td><code>Ask</code></td>
+                                <td><code>Allow</code> | <code>Ask</code> | <code>Deny</code>. Fallback when no rule matches.</td>
+                            </tr>
+                            <tr>
+                                <td><code>DefaultAutonomyLevel</code></td>
+                                <td><code>Supervised</code></td>
+                                <td>
+                                    <code>Restricted</code> | <code>Supervised</code> | <code>Autonomous</code>.
+                                    Assigned to any subagent without an explicit level in its
+                                    <code>SubagentDefinition</code>.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>TierPolicies</code></td>
+                                <td>—</td>
+                                <td>
+                                    Per-tier overrides. Each entry has a <code>DefaultBehavior</code> and a
+                                    <code>ToolOverrides</code> map keyed by tool name. The
+                                    <code>Autonomous</code> tier typically defaults to <code>Allow</code>;
+                                    <code>Restricted</code> defaults to <code>Ask</code> with only safe reads
+                                    pre-approved.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>DenialRateLimitThreshold</code></td>
+                                <td><code>3</code></td>
+                                <td>After this many consecutive denials for the same pattern, future matches auto-deny.</td>
+                            </tr>
+                            <tr>
+                                <td><code>SafetyGatePaths</code></td>
+                                <td><code>.git/, .claude/, .ssh/, .env</code></td>
+                                <td>Paths that always require explicit approval regardless of other rules.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2 id="section-resilience">AppConfig.AI.Resilience</h2>
+                    <p>
+                        LLM provider resilience — fallback chains, circuit breakers, retries, degraded mode.
+                        <strong>Off by default</strong> because most dev setups talk to one provider and want clear
+                        error messages rather than silent fallback. Turn it on for production.
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>Enabled</code></td>
+                                <td>Master toggle. Off → no resilience pipeline, no retry queue.</td>
+                            </tr>
+                            <tr>
+                                <td><code>FallbackChain[]</code></td>
+                                <td>
+                                    Ordered list. First entry is primary; subsequent entries are tried in order on
+                                    failure. Each entry declares its <code>ClientType</code>,
+                                    <code>DeploymentId</code>, and <code>Capabilities</code> (tool calling, streaming,
+                                    vision, max tokens). The orchestrator uses capabilities to skip providers that
+                                    can't satisfy a given request.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>CircuitBreaker</code></td>
+                                <td>
+                                    <code>FailureRatio</code> (0–1), <code>SamplingDurationSeconds</code>,
+                                    <code>MinimumThroughput</code>, <code>BreakDurationSeconds</code>. Polly v8
+                                    ratio-based breaker — when failure ratio is exceeded over the sampling window, the
+                                    circuit opens for the break duration.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>Retry</code></td>
+                                <td><code>MaxAttempts</code>, <code>BaseDelaySeconds</code>, <code>BackoffType</code> (<code>Exponential</code> | <code>Linear</code> | <code>Constant</code>).</td>
+                            </tr>
+                            <tr>
+                                <td><code>Timeout</code></td>
+                                <td>Per-attempt timeout. Distinct from the conversation-level timeout in <code>AppConfig.Agent</code>.</td>
+                            </tr>
+                            <tr>
+                                <td><code>DegradedMode</code></td>
+                                <td>
+                                    What happens when every provider is exhausted: requests queue for retry up to
+                                    <code>MaxQueueSize</code> and live for <code>RetryQueueTtlSeconds</code> before
+                                    failing.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2 id="section-orchestration">AppConfig.AI.Orchestration.Subagent</h2>
+                    <p>Controls multi-agent orchestration — when an orchestrator spawns sub-agents to delegate work.</p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Default</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>MaxConcurrentSubagents</code></td>
+                                <td><code>3</code></td>
+                                <td>Upper bound on parallel sub-agent invocations from a single orchestrator turn.</td>
+                            </tr>
+                            <tr>
+                                <td><code>DefaultMaxTurnsPerSubagent</code></td>
+                                <td><code>10</code></td>
+                                <td>Cap on the inner agent loop within a delegation.</td>
+                            </tr>
+                            <tr>
+                                <td><code>MaxDelegationDepth</code></td>
+                                <td><code>3</code></td>
+                                <td>How deep the orchestrator → sub → sub chain can go. Hard limit to prevent runaway recursion.</td>
+                            </tr>
+                            <tr>
+                                <td><code>CapabilityMatchWeights</code></td>
+                                <td>—</td>
+                                <td>
+                                    Tunes the routing score: <code>ToolCoverage</code> + <code>TypeAlignment</code> +
+                                    <code>TierHeadroom</code> must sum to 1.0. Bias toward
+                                    <code>TierHeadroom</code> for safety-first routing.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>MailboxStoragePath</code> / <code>DelegationStoragePath</code></td>
+                                <td>under <code>.agent-sessions/</code></td>
+                                <td>On-disk locations for inter-agent message storage and delegation audit records.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2 id="section-observability">AppConfig.Observability</h2>
+                    <p>
+                        OpenTelemetry pipeline configuration. See <a href="10-observability.html">Observability &amp;
+                        Safety</a> for the conceptual model and the Jaeger setup.
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>EnableTracing</code> / <code>EnableMetrics</code></td>
+                                <td>Master toggles for the trace and metric pipelines respectively.</td>
+                            </tr>
+                            <tr>
+                                <td><code>SamplingRatio</code></td>
+                                <td>
+                                    0.0–1.0. Fraction of traces sampled. <code>1.0</code> in dev, much lower
+                                    (0.01–0.1) in production with high traffic.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>PostgresConnectionString</code></td>
+                                <td>Persistent store for OTel-based audit trails. Optional but recommended.</td>
+                            </tr>
+                            <tr>
+                                <td><code>Exporters</code></td>
+                                <td>
+                                    Sub-config for each destination — Jaeger / OTLP, Prometheus, Azure Monitor. Each
+                                    has its own <code>Enabled</code> flag and endpoint.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><code>PiiFiltering</code></td>
+                                <td>Patterns redacted before any trace leaves the process.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2 id="section-cache">AppConfig.Cache</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>CacheType</code></td>
+                                <td><code>Memory</code> | <code>Redis</code>. In-process or distributed.</td>
+                            </tr>
+                            <tr>
+                                <td><code>RedisConnectionString</code></td>
+                                <td>Required when <code>CacheType = Redis</code>. Stored as a secret.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2 id="section-meta">AppConfig.MetaHarness</h2>
+                    <p>The self-optimization loop — proposes changes to skill files, evaluates them, keeps the best.</p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Key</th>
+                                <th>Default</th>
+                                <th>What it does</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>TraceDirectoryRoot</code></td>
+                                <td><code>"traces"</code></td>
+                                <td>Where JSONL execution traces are written for the proposer to grep.</td>
+                            </tr>
+                            <tr>
+                                <td><code>MaxIterations</code></td>
+                                <td><code>10</code></td>
+                                <td>Upper bound on the propose-evaluate-record loop per run.</td>
+                            </tr>
+                            <tr>
+                                <td><code>EvalTasksPath</code></td>
+                                <td><code>"eval-tasks"</code></td>
+                                <td>Directory of JSON task definitions used to score candidates.</td>
+                            </tr>
+                            <tr>
+                                <td><code>MaxRunsToKeep</code></td>
+                                <td><code>20</code></td>
+                                <td>Old run directories beyond this are pruned.</td>
+                            </tr>
+                            <tr>
+                                <td><code>EnableShellTool</code></td>
+                                <td><code>false</code></td>
+                                <td>Whether the proposer is allowed to invoke a shell. <strong>Leave off unless you know what you're doing.</strong></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2 id="section-azure">AppConfig.Azure</h2>
+                    <p>
+                        Activation is opt-in: every Azure service has its own <code>Enabled</code> flag or
+                        connection-string check. Leave the keys blank and the harness simply doesn't wire up that
+                        service.
+                    </p>
+
+                    <ul>
+                        <li><code>ApplicationInsights</code> — telemetry exporter for App Insights.</li>
+                        <li><code>AzureADB2C</code> — JWT validation for the MCP server and AgentHub.</li>
+                        <li><code>AzureDatabase</code> — SQL connection for persistent state.</li>
+                        <li><code>KeyVault</code> — production secret source. Replaces User Secrets in non-dev.</li>
+                        <li><code>GraphApi</code> — Microsoft Graph credentials, optional for M365 connectors.</li>
+                    </ul>
+
+                    <hr />
+
+                    <h2 id="recipes">"I want to..." — common reconfiguration recipes</h2>
+                    <p>If you're skimming for the most common adjustments, this is the section to read.</p>
+
+                    <h3>Switch from Azure OpenAI to OpenAI (or vice versa)</h3>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                        <pre><code># Tell the harness which SDK to use
+dotnet user-secrets set "AppConfig:AI:AgentFramework:ClientType" "OpenAI" \
+  --project src/Content/Presentation/Presentation.ConsoleUI
+
+dotnet user-secrets set "AppConfig:AI:AgentFramework:ApiKey" "sk-..." \
+  --project src/Content/Presentation/Presentation.ConsoleUI
+
+dotnet user-secrets set "AppConfig:AI:AgentFramework:DefaultDeployment" "gpt-4o" \
+  --project src/Content/Presentation/Presentation.ConsoleUI</code></pre>
+                    </div>
+                    <p>Restart the app. <code>ChatClientFactory</code> picks the right SDK based on <code>ClientType</code>.</p>
+
+                    <h3>Let the agent read a folder outside the repo</h3>
+                    <p>
+                        Edit <code>appsettings.Development.json</code> (so it doesn't affect production):
+                    </p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                        <pre><code>"AppConfig": {
+  "Infrastructure": {
+    "FileSystem": {
+      "AllowedBasePaths": [
+        "../../../../../../..",
+        "C:\\projects\\my-other-repo"
+      ]
+    }
+  }
+}</code></pre>
+                    </div>
+                    <p>Be specific — give it the exact folder, not a parent.</p>
+
+                    <h3>Raise the conversation turn cap for long-running tasks</h3>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                        <pre><code>"AppConfig": {
+  "Agent": {
+    "MaxTurnsPerConversation": 30
+  }
+}</code></pre>
+                    </div>
+                    <p>Watch your token budget — long conversations bloat conversation history fast.</p>
+
+                    <h3>Add an external MCP server</h3>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                        <pre><code>"AppConfig": {
+  "AI": {
+    "McpServers": {
+      "Servers": {
+        "internal-tools": {
+          "Type": "Http",
+          "Url": "https://mcp.mycompany.internal/mcp",
+          "Description": "Company internal toolset",
+          "Auth": {
+            "Type": "Bearer",
+            "Token": "${INTERNAL_MCP_TOKEN}"
+          }
+        }
+      }
+    }
+  }
+}</code></pre>
+                    </div>
+                    <p>
+                        Use <code>${ENV_NAME}</code> substitution for any token — never inline secrets in JSON. The
+                        token resolves from <code>INTERNAL_MCP_TOKEN</code> in environment or User Secrets at bind
+                        time.
+                    </p>
+
+                    <h3>Run more autonomously (skip "Ask" prompts)</h3>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                        <pre><code>"AppConfig": {
+  "AI": {
+    "Permissions": {
+      "DefaultAutonomyLevel": "Autonomous"
+    }
+  }
+}</code></pre>
+                    </div>
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Only safe in trusted environments</div>
+                            <p style="margin: 0">
+                                <code>Autonomous</code> means the agent runs tools without asking. Fine for an
+                                automated job, dangerous for an interactive session with a curious user. Governance
+                                rules still apply, but the per-call "are you sure?" prompts are skipped.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3>Enable LLM fallback in production</h3>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                        <pre><code>"AppConfig": {
+  "AI": {
+    "Resilience": {
+      "Enabled": true,
+      "FallbackChain": [
+        { "ClientType": "AzureOpenAI",  "DeploymentId": "gpt-4o", "Capabilities": { "SupportsToolCalling": true, "MaxTokens": 128000 } },
+        { "ClientType": "AzureAIInference", "DeploymentId": "claude-sonnet", "Capabilities": { "SupportsToolCalling": true, "MaxTokens": 200000 } }
+      ]
+    }
+  }
+}</code></pre>
+                    </div>
+
+                    <h3>Quiet the logs in console output</h3>
+                    <p>
+                        If you're running <strong>LoggerUI</strong> alongside the ConsoleUI, set
+                        <code>SuppressConsoleOutput: true</code> so logs flow through the pipe and only agent output
+                        appears in the terminal:
+                    </p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                        <pre><code>"AppConfig": {
+  "Logging": {
+    "SuppressConsoleOutput": true
+  }
+}</code></pre>
+                    </div>
+
+                    <hr />
+
+                    <h2>Validation and binding errors</h2>
+                    <p>
+                        Misconfigured values fail fast at startup, not at the first call. The harness validates every
+                        config section in its <code>Add*Dependencies()</code> extension. If you mistype a key, you'll
+                        usually get a clear message; if you set the wrong <em>type</em> (e.g. a string where an int is
+                        expected), .NET binding throws on bind.
+                    </p>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">How to verify a config is bound correctly</div>
+                            <p style="margin: 0">
+                                Put a breakpoint in <code>App.cs</code> after <code>BuildServiceProvider()</code>,
+                                resolve <code>IOptionsMonitor&lt;AppConfig&gt;</code>, and inspect
+                                <code>CurrentValue</code>. Every property should be populated; any
+                                <code>null</code> where you expected a value is a binding miss — usually a typo in the
+                                JSON key path.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>Where every config class lives</h2>
+                    <p>One file per concept. The path is always <code>Domain.Common/Config/...</code>:</p>
+
+                    <div class="file-tree">
+<span class="ft-dir">src/Content/Domain/Domain.Common/Config/</span>
+├── <span class="ft-file">AppConfig.cs</span>                         <span class="ft-comment">// root</span>
+├── <span class="ft-dir">AI/</span>
+│   ├── <span class="ft-file">AIConfig.cs</span>                      <span class="ft-comment">// AppConfig.AI</span>
+│   ├── <span class="ft-file">AgentFrameworkConfig.cs</span>          <span class="ft-comment">// .AgentFramework</span>
+│   ├── <span class="ft-file">SkillsConfig.cs</span> / <span class="ft-file">AgentsConfig.cs</span>
+│   ├── <span class="ft-dir">MCP/</span>                              <span class="ft-comment">// McpServersConfig, server defs, auth</span>
+│   ├── <span class="ft-dir">Permissions/</span>                      <span class="ft-comment">// PermissionsConfig, tier policies</span>
+│   ├── <span class="ft-dir">Governance/</span>                       <span class="ft-comment">// EscalationConfig, threat levels</span>
+│   ├── <span class="ft-dir">Resilience/</span>                       <span class="ft-comment">// fallback, circuit breaker, retry</span>
+│   ├── <span class="ft-dir">Orchestration/</span>                    <span class="ft-comment">// SubagentConfig, streaming</span>
+│   ├── <span class="ft-dir">RAG/</span>                              <span class="ft-comment">// ingestion, retrieval, reranker, query xform</span>
+│   ├── <span class="ft-dir">ContextManagement/</span>                <span class="ft-comment">// compaction, tool result storage, budget</span>
+│   ├── <span class="ft-dir">Hooks/</span>, <span class="ft-dir">DriftDetection/</span>, <span class="ft-dir">Learnings/</span>
+│   └── <span class="ft-file">GovernanceConfig.cs</span>
+├── <span class="ft-dir">Azure/</span>                                <span class="ft-comment">// AppInsights, B2C, KeyVault, Graph, SQL</span>
+├── <span class="ft-dir">Cache/</span>                                <span class="ft-comment">// CacheConfig</span>
+├── <span class="ft-dir">Connectors/</span>                           <span class="ft-comment">// GitHub, Jira, AzDO, Slack</span>
+├── <span class="ft-dir">Http/</span>                                 <span class="ft-comment">// CORS, auth, OpenAPI, policies</span>
+├── <span class="ft-dir">Infrastructure/</span>                       <span class="ft-comment">// FileSystem, content providers, state mgmt</span>
+├── <span class="ft-dir">MetaHarness/</span>                          <span class="ft-comment">// MetaHarnessConfig</span>
+└── <span class="ft-dir">Observability/</span>                        <span class="ft-comment">// sampling, PII, exporters, pricing</span>
+                    </div>
+
+                    <p>
+                        When in doubt, search for the JSON key in this directory:
+                        <code>grep -r "MyKeyName" src/Content/Domain/Domain.Common/Config/</code>. The property name
+                        almost always matches the JSON key (PascalCase in C#, same in JSON).
+                    </p>
+
+                    <hr />
+
+                    <h2>Where to go from here</h2>
+                    <div class="card-grid">
+                        <a class="card" href="03-big-picture.html">
+                            <span class="card-num">03 · Next</span>
+                            <div class="card-title">The Big Picture</div>
+                            <p class="card-desc">
+                                Now that you know where the knobs are, see the architecture they're controlling.
+                            </p>
+                        </a>
+                        <a class="card" href="12-reference.html">
+                            <span class="card-num">12 · Lookup</span>
+                            <div class="card-title">Cheatsheet &amp; Glossary</div>
+                            <p class="card-desc">
+                                Every command, every acronym. Useful as a constant companion to this config page.
+                            </p>
+                        </a>
+                    </div>
+
+                    <!-- Footer nav -->
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="01-get-running.html">
+                            <div class="page-nav-label">← Previous</div>
+                            <div class="page-nav-title">01 · Get Running in 10 Minutes</div>
+                        </a>
+                        <a class="page-nav-link page-nav-next" href="03-big-picture.html">
+                            <div class="page-nav-label">Next →</div>
+                            <div class="page-nav-title">03 · The Big Picture</div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- TOC -->
+                <aside class="toc" aria-label="On this page">
+                    <div class="toc-title">On this page</div>
+                    <ul class="toc-list"></ul>
+                </aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>

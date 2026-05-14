@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Welcome — Agentic Harness Developer Guide</title>
+        <meta
+            name="description"
+            content="Step-by-step developer onboarding for the Microsoft Agentic Harness. Designed for new engineers cloning the repo for the first time."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <!-- ============ SIDEBAR ============ -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Developer Guide</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Getting Started</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-get-running.html"
+                            ><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Configuration</div>
+                        <a class="sidebar-link" href="02-configuration.html"
+                            ><span class="sidebar-link-num">02</span> Configuration Reference</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Architecture</div>
+                        <a class="sidebar-link" href="03-big-picture.html"
+                            ><span class="sidebar-link-num">03</span> The Big Picture</a
+                        >
+                        <a class="sidebar-link" href="04-message-journey.html"
+                            ><span class="sidebar-link-num">04</span> A Message's Journey</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Systems</div>
+                        <a class="sidebar-link" href="05-skills.html"
+                            ><span class="sidebar-link-num">05</span> Skills System</a
+                        >
+                        <a class="sidebar-link" href="06-tools.html"
+                            ><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a
+                        >
+                        <a class="sidebar-link" href="07-rag.html"
+                            ><span class="sidebar-link-num">07</span> The RAG Pipeline</a
+                        >
+                        <a class="sidebar-link" href="08-mcp.html"
+                            ><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Patterns</div>
+                        <a class="sidebar-link" href="09-patterns.html"
+                            ><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a
+                        >
+                        <a class="sidebar-link" href="10-observability.html"
+                            ><span class="sidebar-link-num">10</span> Observability &amp; Safety</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Building</div>
+                        <a class="sidebar-link" href="11-extending.html"
+                            ><span class="sidebar-link-num">11</span> Extending the Harness</a
+                        >
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Reference</div>
+                        <a class="sidebar-link" href="12-reference.html"
+                            ><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a
+                        >
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- ============ MAIN ============ -->
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <section class="hero">
+                        <span class="eyebrow">Developer Onboarding</span>
+                        <h1 class="hero-title">Welcome to the Agentic Harness.</h1>
+                        <p class="hero-lead">
+                            You've cloned the repo. Maybe your tech lead pointed you here, maybe you're just curious.
+                            Either way — this guide takes you from <em>"what am I looking at?"</em> to
+                            <em>"I just added a new tool to the agent and it works"</em> in a few focused sittings.
+                            We'll skip nothing. We define every acronym. We walk through real code line by line.
+                        </p>
+                        <div class="hero-cta">
+                            <a class="btn btn-primary" href="01-get-running.html"
+                                >Start: Get Running in 10 Minutes <span class="btn-arrow">→</span></a
+                            >
+                            <a class="btn btn-secondary" href="03-big-picture.html">See the Big Picture</a>
+                        </div>
+                    </section>
+
+                    <h2>One concept up front: this is a template</h2>
+                    <p>
+                        Before you start, the most important framing: <strong>this codebase is a template, not a
+                        finished application.</strong> The expectation is that you (or your team) will fork it and
+                        build something specific — a dog-walking scheduler, an internal IT helpdesk, a code review
+                        bot. Whatever your "thing" is.
+                    </p>
+                    <p>
+                        Because of that, every layer is divided into two kinds of projects:
+                    </p>
+                    <ul>
+                        <li>
+                            <strong><code>.Common</code> projects</strong> — the harness itself. The pipeline
+                            behaviors, the agent runtime, RAG, MCP, governance, observability. <em>Treat these like
+                            a library.</em> You'll read them; you usually won't edit them.
+                        </li>
+                        <li>
+                            <strong><code>.Core</code> (and your domain-specific projects)</strong> — your actual
+                            application's business logic. If you're building "PupWalk," your booking command, dog
+                            profile entity, and walker matching service live here.
+                        </li>
+                    </ul>
+                    <p>
+                        Knowing which side of that line a piece of code lives on tells you whether to read-and-respect
+                        it (Common) or freely modify it (Core). We come back to this distinction often — most
+                        prominently on <a href="03-big-picture.html">The Big Picture</a>.
+                    </p>
+
+                    <h2>Who this guide is for</h2>
+                    <p>
+                        You're a developer — possibly junior, possibly senior but new to AI agents, possibly somewhere
+                        in between — who needs to <strong>understand and extend this codebase</strong>. You're not
+                        looking for marketing copy. You're not looking for a conceptual overview (we have
+                        <a href="../agentic-harness-course/index.html">a separate course</a> for that). You want to know
+                        <em>where things live</em>, <em>why they're built that way</em>, and <em>how to change them
+                        safely</em>.
+                    </p>
+                    <p>
+                        We assume you can read C#, you've used dependency injection before, and you've seen a unit test.
+                        We don't assume you know what MediatR is, what an "agent" actually means in this codebase, what
+                        MCP is, or how Clean Architecture works in practice. Those get explained the first time they
+                        come up.
+                    </p>
+
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Not a junior developer?</div>
+                            <p style="margin: 0">
+                                Skim the "Get Running" page, then jump to
+                                <a href="04-message-journey.html">A Message's Journey</a> — that's the single most
+                                useful page for understanding how the codebase actually runs at runtime.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>What you'll be able to do</h2>
+                    <p>By the end of this guide, you'll be comfortable doing the following without asking for help:</p>
+                    <ul>
+                        <li>Clone the repo, wire up your credentials, and have an agent answer a question.</li>
+                        <li>
+                            Trace a single user prompt from the console all the way through validation, the agent
+                            factory, the LLM call, tool execution, and back to the screen.
+                        </li>
+                        <li>Add a new <strong>tool</strong> the agent can call (a function it can execute).</li>
+                        <li>
+                            Add a new <strong>skill</strong> — a Markdown file that teaches the agent what it knows
+                            and when to use which tools.
+                        </li>
+                        <li>Add a new agent type that uses a different combination of skills and tools.</li>
+                        <li>Read traces in Jaeger to debug a failed conversation.</li>
+                        <li>Understand the meta-harness loop well enough to add a new evaluation task.</li>
+                    </ul>
+
+                    <h2>How this guide is organized</h2>
+                    <p>
+                        Each page below answers one specific question. They build on each other, but you can also skip
+                        around once you've finished "Get Running." The pages with a <strong>★</strong> are the ones we
+                        recommend reading in order on your first pass.
+                    </p>
+
+                    <div class="card-grid">
+                        <a class="card" href="01-get-running.html">
+                            <span class="card-num">01 ★</span>
+                            <div class="card-title">Get Running in 10 Minutes</div>
+                            <p class="card-desc">
+                                Clone, install prerequisites, configure secrets, build, and run your first agent
+                                conversation. Includes troubleshooting for the errors you'll actually hit.
+                            </p>
+                        </a>
+                        <a class="card" href="02-configuration.html">
+                            <span class="card-num">02 ★</span>
+                            <div class="card-title">Configuration Reference</div>
+                            <p class="card-desc">
+                                Every knob in <code>appsettings.json</code> — what it does, when to change it, and the
+                                recipes for the most common adjustments. Your constant companion.
+                            </p>
+                        </a>
+                        <a class="card" href="03-big-picture.html">
+                            <span class="card-num">03 ★</span>
+                            <div class="card-title">The Big Picture</div>
+                            <p class="card-desc">
+                                Clean Architecture in this codebase — what each layer owns, what depends on what, and a
+                                "where does X live?" map you'll come back to often.
+                            </p>
+                        </a>
+                        <a class="card" href="04-message-journey.html">
+                            <span class="card-num">04 ★</span>
+                            <div class="card-title">A Message's Journey</div>
+                            <p class="card-desc">
+                                Follow one user prompt from keystroke to LLM response. The single most important page
+                                in this guide.
+                            </p>
+                        </a>
+                        <a class="card" href="05-skills.html">
+                            <span class="card-num">05</span>
+                            <div class="card-title">Skills System</div>
+                            <p class="card-desc">
+                                Three-tier progressive disclosure, how <code>SKILL.md</code> files work, and how the
+                                agent decides what to load into context.
+                            </p>
+                        </a>
+                        <a class="card" href="06-tools.html">
+                            <span class="card-num">06</span>
+                            <div class="card-title">Tools &amp; Keyed DI</div>
+                            <p class="card-desc">
+                                How tools register with the DI container, how the LLM finds them, and the sandboxing
+                                that keeps them safe.
+                            </p>
+                        </a>
+                        <a class="card" href="07-rag.html">
+                            <span class="card-num">07</span>
+                            <div class="card-title">The RAG Pipeline</div>
+                            <p class="card-desc">
+                                Retrieval-Augmented Generation — ingestion, hybrid search, reranking, assembly. Each
+                                stage explained with the actual classes.
+                            </p>
+                        </a>
+                        <a class="card" href="08-mcp.html">
+                            <span class="card-num">08</span>
+                            <div class="card-title">MCP Server &amp; Client</div>
+                            <p class="card-desc">
+                                The Model Context Protocol — how this harness exposes its tools to other agents, and
+                                how it discovers tools from external servers.
+                            </p>
+                        </a>
+                        <a class="card" href="09-patterns.html">
+                            <span class="card-num">09 ★</span>
+                            <div class="card-title">Patterns You'll Use Daily</div>
+                            <p class="card-desc">
+                                <code>Result&lt;T&gt;</code>, the MediatR pipeline, factories, immutability, and the
+                                rules-of-thumb that keep the code consistent.
+                            </p>
+                        </a>
+                        <a class="card" href="10-observability.html">
+                            <span class="card-num">10</span>
+                            <div class="card-title">Observability &amp; Safety</div>
+                            <p class="card-desc">
+                                OpenTelemetry, content safety middleware, governance policies, and how to read a Jaeger
+                                trace when an agent goes off the rails.
+                            </p>
+                        </a>
+                        <a class="card" href="11-extending.html">
+                            <span class="card-num">11 ★</span>
+                            <div class="card-title">Extending the Harness</div>
+                            <p class="card-desc">
+                                Three concrete recipes: add a tool, add a skill, add a new agent. Copy-paste friendly,
+                                with the test patterns to match.
+                            </p>
+                        </a>
+                        <a class="card" href="12-reference.html">
+                            <span class="card-num">12</span>
+                            <div class="card-title">Cheatsheet &amp; Glossary</div>
+                            <p class="card-desc">
+                                Every command you'll need, every config key that matters, every acronym defined in one
+                                place. Bookmark this one.
+                            </p>
+                        </a>
+                    </div>
+
+                    <h2>How to use the page layout</h2>
+                    <p>
+                        A few visual conventions you'll see throughout. They're worth learning once so they don't slow
+                        you down later.
+                    </p>
+
+                    <div class="callout callout-jargon">
+                        <span class="callout-icon">¶</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Jargon callout</div>
+                            <p style="margin: 0">
+                                When you see a purple box like this, we're about to define a term that's not obvious.
+                                You can read it now or skip and come back. Example: <strong>MediatR</strong> — a C#
+                                library that decouples "the thing that wants to happen" (a command) from "the code that
+                                actually makes it happen" (a handler). Both sides depend on a shared interface, not on
+                                each other.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Tip</div>
+                            <p style="margin: 0">
+                                Green boxes are quick wins, idiomatic patterns, or shortcuts that make a task faster.
+                                Read them — they're the fastest way to learn the local conventions.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Heads up</div>
+                            <p style="margin: 0">
+                                Yellow boxes flag things that <em>look</em> simple but have a gotcha. Pay attention to
+                                these — they're usually the things that take an afternoon to debug.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-danger">
+                        <span class="callout-icon">✕</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Don't do this</div>
+                            <p style="margin: 0">
+                                Red boxes mark anti-patterns or footguns. If the instinct is to do the thing in the red
+                                box, stop and read the suggested alternative.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3>Annotated code blocks</h3>
+                    <p>
+                        When code is doing something non-obvious, we'll show it as a two-column block — the actual code
+                        on the left, plain-English explanation on the right. Like this:
+                    </p>
+                    <div class="annotated">
+                        <div class="annotated-row">
+                            <div class="annotated-code">services.AddKeyedSingleton&lt;ITool, FileSystemTool&gt;("file_system");</div>
+                            <div class="annotated-note">
+                                Register the file system tool in the DI container under the key
+                                <code>"file_system"</code>. When a skill says it needs <code>file_system</code>, the
+                                harness will resolve <em>this</em> instance. Different agents can have different tools
+                                under the same key — that's the point of keyed DI.
+                            </div>
+                        </div>
+                        <div class="annotated-row">
+                            <div class="annotated-code">.AddTransient&lt;IPipelineBehavior, ValidationBehavior&gt;();</div>
+                            <div class="annotated-note">
+                                Wires <strong>FluentValidation</strong> into the MediatR pipeline. Every command flows
+                                through this behavior before reaching its handler. Order matters: see
+                                <a href="09-patterns.html#mediatr-pipeline">Patterns → MediatR Pipeline</a>.
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3>Code block headers</h3>
+                    <p>
+                        Code blocks have a header showing the file path and a copy button. The path is clickable in the
+                        repo — if you see <code>src/Content/Application/Application.Core/CQRS/...</code>, that's where
+                        you'll find the real file.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">bash</span>
+                        </div>
+                        <pre><code># Build the entire solution
+dotnet build src/AgenticHarness.slnx
+
+# Run the console UI in interactive mode
+dotnet run --project src/Content/Presentation/Presentation.ConsoleUI</code></pre>
+                    </div>
+
+                    <h2>One important note before you start</h2>
+                    <p>
+                        This codebase is a <strong>template</strong>. The expectation is that you (or your team) will
+                        clone it and modify it to build something specific. The patterns are opinionated on purpose.
+                        Before you change one, read the corresponding page in this guide — most of the choices that look
+                        weird have a reason that's <em>not</em> obvious from the code alone.
+                    </p>
+                    <p>
+                        If you find a place where a pattern looks wrong and the guide doesn't explain why, that's a bug
+                        in the guide. Flag it.
+                    </p>
+
+                    <hr />
+                    <p class="muted">
+                        Ready? <a href="01-get-running.html">Start with "Get Running in 10 Minutes"</a> — by the end of
+                        that page, you'll have the harness running on your machine.
+                    </p>
+
+                    <!-- Footer nav -->
+                    <div class="page-nav">
+                        <div></div>
+                        <a class="page-nav-link page-nav-next" href="01-get-running.html">
+                            <div class="page-nav-label">Next →</div>
+                            <div class="page-nav-title">01 · Get Running in 10 Minutes</div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- TOC -->
+                <aside class="toc" aria-label="On this page">
+                    <div class="toc-title">On this page</div>
+                    <ul class="toc-list"></ul>
+                </aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>

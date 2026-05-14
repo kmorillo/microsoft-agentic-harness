@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>03 · The Big Picture — Agentic Harness Developer Guide</title>
+        <meta name="description" content="The Clean Architecture layout, what each layer owns, and where to find anything in the repo." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Developer Guide</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group"><div class="sidebar-group-title">Getting Started</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-get-running.html"><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Configuration</div>
+                        <a class="sidebar-link" href="02-configuration.html"><span class="sidebar-link-num">02</span> Configuration Reference</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Architecture</div>
+                        <a class="sidebar-link" href="03-big-picture.html"><span class="sidebar-link-num">03</span> The Big Picture</a>
+                        <a class="sidebar-link" href="04-message-journey.html"><span class="sidebar-link-num">04</span> A Message's Journey</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Systems</div>
+                        <a class="sidebar-link" href="05-skills.html"><span class="sidebar-link-num">05</span> Skills System</a>
+                        <a class="sidebar-link" href="06-tools.html"><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a>
+                        <a class="sidebar-link" href="07-rag.html"><span class="sidebar-link-num">07</span> The RAG Pipeline</a>
+                        <a class="sidebar-link" href="08-mcp.html"><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Patterns</div>
+                        <a class="sidebar-link" href="09-patterns.html"><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a>
+                        <a class="sidebar-link" href="10-observability.html"><span class="sidebar-link-num">10</span> Observability &amp; Safety</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Building</div>
+                        <a class="sidebar-link" href="11-extending.html"><span class="sidebar-link-num">11</span> Extending the Harness</a>
+                    </div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Reference</div>
+                        <a class="sidebar-link" href="12-reference.html"><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a>
+                    </div>
+                </nav>
+            </aside>
+
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 03 · Architecture</span>
+                    <h1 class="page-title">The Big Picture</h1>
+                    <p class="page-lead">
+                        Before you read any single file, build a mental map of where things live. This codebase follows
+                        <strong>Clean Architecture</strong> — a deliberate set of dependency rules that keeps business
+                        logic independent of frameworks. We'll cover what each layer owns, the rules that govern them,
+                        and the "where does X live?" lookup table you'll come back to often.
+                    </p>
+
+                    <h2>Clean Architecture in one paragraph</h2>
+                    <p>
+                        The codebase is divided into four concentric layers. <strong>Domain</strong> at the center
+                        knows nothing about frameworks, databases, or HTTP. <strong>Application</strong> wraps Domain
+                        with use-cases (commands, queries, interfaces) but still imports nothing concrete.
+                        <strong>Infrastructure</strong> provides concrete implementations of Application interfaces —
+                        Azure OpenAI clients, MCP servers, file system access.
+                        <strong>Presentation</strong> is the entry point — console UI, SignalR hub, MCP server, MCP
+                        client — that wires everything together. Dependencies point only inward.
+                    </p>
+
+                    <div class="callout callout-jargon">
+                        <span class="callout-icon">¶</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Why this matters</div>
+                            <p style="margin: 0">
+                                When the business rule "an agent must check the budget before calling a tool" lives
+                                in Domain, it survives any change to the LLM provider, the UI, or the database. You
+                                can swap Azure OpenAI for Claude or Console for SignalR without touching it. The
+                                opposite — business logic tangled into a Razor view or a SQL stored procedure — is the
+                                shape of code that becomes legacy.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>The most important distinction: <code>.Common</code> vs <code>.Core</code></h2>
+                    <p>
+                        Before we get to the layers, there's one naming convention you have to internalize early or
+                        you'll spend weeks confused. Every layer has projects whose names end in
+                        <code>.Common</code> (and sometimes <code>.AI.Common</code>) — and at least one project that
+                        is something else, like <code>Application.Core</code>. They mean very different things.
+                    </p>
+
+                    <div class="card-grid">
+                        <a class="card" style="cursor: default">
+                            <span class="card-num">Treat as library</span>
+                            <div class="card-title"><code>.Common</code> / <code>.AI.Common</code> projects</div>
+                            <p class="card-desc">
+                                <strong>This is the harness.</strong> Reusable, template-level code — pipeline
+                                behaviors, factories, the agent runtime, RAG, MCP, governance, observability. You
+                                <em>shouldn't</em> normally edit these, in the same way you don't edit
+                                <code>Microsoft.Extensions.Logging</code>. If you fork the template for a new
+                                application, this is the part you bring along unchanged.
+                            </p>
+                        </a>
+                        <a class="card" style="cursor: default">
+                            <span class="card-num">Treat as your app</span>
+                            <div class="card-title"><code>.Core</code> / your domain projects</div>
+                            <p class="card-desc">
+                                <strong>This is your application.</strong> The specific commands, business rules,
+                                and domain types for whatever you're actually building. If you fork this template to
+                                build a dog-walking platform, your <code>ScheduleWalkCommand</code>,
+                                <code>WalkerProfile</code>, and <code>DogProfile</code> classes go here. Currently
+                                only <code>Application.Core</code> exists, with example agent commands you can extend
+                                or replace.
+                            </p>
+                        </a>
+                    </div>
+
+                    <div class="callout callout-jargon">
+                        <span class="callout-icon">¶</span>
+                        <div class="callout-body">
+                            <div class="callout-title">The dog-walker example, made concrete</div>
+                            <p style="margin: 0">
+                                Imagine you forked this template to build "PupWalk" — an AI-powered dog-walking
+                                scheduler. The pieces would shake out like this:
+                            </p>
+                            <ul style="margin-top: var(--space-2); margin-bottom: 0">
+                                <li>
+                                    <code>Domain.Common</code>, <code>Domain.AI</code>, all the
+                                    <code>*.Common</code> projects — <strong>unchanged</strong>. Same harness.
+                                </li>
+                                <li>
+                                    <code>Application.Core</code> — you'd add (or replace with) commands like
+                                    <code>ScheduleWalkCommand</code>, <code>CancelBookingCommand</code>,
+                                    <code>FindAvailableWalkersQuery</code>.
+                                </li>
+                                <li>
+                                    You'd add a new <code>Domain.PupWalk</code> project for dog/walker/booking
+                                    entities.
+                                </li>
+                                <li>
+                                    You'd add a new <code>Infrastructure.PupWalk</code> for the booking-database
+                                    EF DbContext and Stripe payment client.
+                                </li>
+                                <li>
+                                    <code>Presentation.ConsoleUI</code> stays (great for ops &amp; debugging) plus you
+                                    add a <code>Presentation.PupWalkApi</code> for the customer-facing REST endpoints.
+                                </li>
+                                <li>
+                                    Your skills go in <code>skills/</code> at the repo root:
+                                    <code>skills/walk-coordinator/SKILL.md</code>,
+                                    <code>skills/customer-support/SKILL.md</code>.
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <p>
+                        Throughout this guide, when we say "you'll edit this" we usually mean a
+                        <code>.Core</code> project, an <code>infrastructure.&lt;your-domain&gt;</code> project, or a
+                        Markdown file in <code>skills/</code> or <code>agents/</code>. When we say "the harness does
+                        X" we mean code in a <code>.Common</code> project that you should treat as a black box —
+                        understand it, but don't fork it unless you have a very good reason.
+                    </p>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">A useful rule of thumb</div>
+                            <p style="margin: 0">
+                                Before editing anything in a <code>.Common</code> project, ask: "would another team
+                                forking this template also benefit from my change?" If yes, edit it (and add a test). If
+                                no — if the change is specific to <em>your</em> application — it belongs in
+                                <code>.Core</code> or a new domain-specific project. Keeping that line clean is what
+                                lets the harness keep being a useful template.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>The four layers</h2>
+
+                    <div class="arch-stack">
+                        <div class="arch-layer arch-layer-present">
+                            <div class="arch-layer-name"><span class="pill pill-present">Presentation</span></div>
+                            <div class="arch-layer-projects">
+                                Presentation.ConsoleUI · Presentation.AgentHub (SignalR) ·
+                                Presentation.Common · Infrastructure.AI.MCPServer (WebAPI host)
+                            </div>
+                        </div>
+                        <div class="arch-layer arch-layer-infra">
+                            <div class="arch-layer-name"><span class="pill pill-infra">Infrastructure</span></div>
+                            <div class="arch-layer-projects">
+                                Infrastructure.AI · Infrastructure.AI.MCP · Infrastructure.AI.Connectors ·
+                                Infrastructure.AI.RAG · Infrastructure.AI.Governance ·
+                                Infrastructure.AI.KnowledgeGraph · Infrastructure.Common ·
+                                Infrastructure.APIAccess · Infrastructure.Observability
+                            </div>
+                        </div>
+                        <div class="arch-layer arch-layer-app">
+                            <div class="arch-layer-name"><span class="pill pill-app">Application</span></div>
+                            <div class="arch-layer-projects">
+                                Application.Common · Application.AI.Common · Application.Core (CQRS commands)
+                            </div>
+                        </div>
+                        <div class="arch-layer arch-layer-domain">
+                            <div class="arch-layer-name"><span class="pill pill-domain">Domain</span></div>
+                            <div class="arch-layer-projects">Domain.Common · Domain.AI</div>
+                        </div>
+                    </div>
+
+                    <h3>Domain</h3>
+                    <p>
+                        Pure C#. No NuGet dependencies beyond <code>System.*</code>. Defines the language of the
+                        problem: <code>AgentManifest</code>, <code>SkillDefinition</code>,
+                        <code>ToolDeclaration</code>, <code>WorkflowState</code>, <code>AgentCard</code>,
+                        <code>Result&lt;T&gt;</code>, all the strongly-typed config classes. If you can describe a
+                        concept on a whiteboard without mentioning a vendor or framework, it lives here.
+                    </p>
+
+                    <h3>Application</h3>
+                    <p>
+                        The "what should happen" layer. CQRS commands like <code>ExecuteAgentTurnCommand</code>,
+                        interfaces like <code>IAgentFactory</code> and <code>ISkillLoaderService</code>, FluentValidation
+                        validators, MediatR pipeline behaviors, the <code>AIToolConverter</code> that bridges internal
+                        tools to Microsoft.Extensions.AI. Application can depend on Domain, but it must
+                        <em>never</em> depend on Infrastructure — it only knows interfaces.
+                    </p>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">The litmus test</div>
+                            <p style="margin: 0">
+                                If a file imports anything beyond <code>System.*</code>,
+                                <code>Microsoft.Extensions.*</code>, <code>MediatR</code>, or other Application/Domain
+                                types, it doesn't belong in Application. Push it to Infrastructure.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3>Infrastructure</h3>
+                    <p>
+                        The "how it actually happens" layer. <code>ChatClientFactory</code> talks to Azure OpenAI.
+                        <code>FileSystemService</code> reads disk under sandbox rules. <code>RagPipeline</code>
+                        coordinates ingestion and retrieval. <code>McpClient</code> connects to external MCP servers.
+                        Each Infrastructure project implements one or more interfaces declared in Application.
+                    </p>
+
+                    <h3>Presentation</h3>
+                    <p>
+                        Where execution starts. <code>ConsoleUI/Program.cs</code> is one entry point;
+                        <code>AgentHub</code> is another (SignalR-based realtime); <code>MCPServer</code> exposes
+                        tools to other MCP clients via HTTP. Each Presentation host runs the same composition root —
+                        <code>services.GetServices(...)</code> in <code>Presentation.Common</code> — which calls every
+                        layer's <code>Add*Dependencies()</code> extension.
+                    </p>
+
+                    <hr />
+
+                    <h2>The dependency rule, illustrated</h2>
+                    <p>Solid arrows are "depends on." The arrow always points <em>inward</em>:</p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">dependency direction</span></div>
+                        <pre><code>Presentation ──▶ Application ──▶ Domain
+     │                ▲
+     │                │
+     └──▶ Infrastructure ──▶ Application interfaces
+                       └────▶ Domain (read-only)</code></pre>
+                    </div>
+
+                    <p>Two things to internalize:</p>
+                    <ul>
+                        <li>
+                            <strong>Infrastructure depends on Application, not the other way around.</strong>
+                            <code>Infrastructure.AI</code> references <code>Application.AI.Common</code> to get the
+                            <code>IChatClientFactory</code> interface — and then provides the concrete class. Application
+                            never knows the concrete exists.
+                        </li>
+                        <li>
+                            <strong>Presentation is the only layer that touches everything.</strong> It does the wiring
+                            — calls <code>AddDomainDependencies()</code>, <code>AddApplicationDependencies()</code>,
+                            <code>AddInfrastructureDependencies()</code>, then builds the service provider.
+                        </li>
+                    </ul>
+
+                    <h2>Where to find anything</h2>
+                    <p>Use this table when you know <em>what</em> but not <em>where</em>:</p>
+
+                    <table>
+                        <thead><tr><th>If you're looking for...</th><th>Look in...</th></tr></thead>
+                        <tbody>
+                            <tr>
+                                <td>A configuration class (every <code>AppConfig.*</code> property)</td>
+                                <td><code>Domain.Common/Config/</code></td>
+                            </tr>
+                            <tr>
+                                <td>An agent manifest type, skill definition, tool declaration</td>
+                                <td><code>Domain.AI/Agents/</code>, <code>Domain.AI/Skills/</code>, <code>Domain.AI/Tools/</code></td>
+                            </tr>
+                            <tr>
+                                <td>A CQRS command and its handler</td>
+                                <td><code>Application.Core/CQRS/&lt;feature&gt;/</code></td>
+                            </tr>
+                            <tr>
+                                <td>An interface for an AI service</td>
+                                <td><code>Application.AI.Common/Interfaces/</code></td>
+                            </tr>
+                            <tr>
+                                <td>A MediatR pipeline behavior</td>
+                                <td><code>Application.*.Common/MediatRBehaviors/</code></td>
+                            </tr>
+                            <tr>
+                                <td>The Azure OpenAI / OpenAI client wiring</td>
+                                <td><code>Infrastructure.AI/ChatClientFactory.cs</code></td>
+                            </tr>
+                            <tr>
+                                <td>A built-in tool (file system, calculator, etc.)</td>
+                                <td><code>Infrastructure.AI/Tools/</code></td>
+                            </tr>
+                            <tr>
+                                <td>MCP server endpoint code</td>
+                                <td><code>Infrastructure.AI.MCPServer/</code></td>
+                            </tr>
+                            <tr>
+                                <td>MCP client (consuming external MCP servers)</td>
+                                <td><code>Infrastructure.AI.MCP/</code></td>
+                            </tr>
+                            <tr>
+                                <td>The RAG ingestion + retrieval pipeline</td>
+                                <td><code>Infrastructure.AI.RAG/</code></td>
+                            </tr>
+                            <tr>
+                                <td>OpenTelemetry setup, exporters, span processors</td>
+                                <td><code>Infrastructure.Observability/</code></td>
+                            </tr>
+                            <tr>
+                                <td>DI registration for any layer</td>
+                                <td><code>&lt;Project&gt;/DependencyInjection.cs</code></td>
+                            </tr>
+                            <tr>
+                                <td>SKILL.md files (runtime skill definitions)</td>
+                                <td><code>skills/</code> at the repo root</td>
+                            </tr>
+                            <tr>
+                                <td>AGENT.md files (agent manifests)</td>
+                                <td><code>agents/</code> at the repo root</td>
+                            </tr>
+                            <tr>
+                                <td>Tests</td>
+                                <td><code>src/Content/Tests/&lt;project&gt;.Tests/</code> — one per source project</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h2>DI registration: the composition root</h2>
+                    <p>
+                        Every project has its own <code>DependencyInjection.cs</code> with an
+                        <code>Add{Layer}Dependencies()</code> extension method. The Presentation layer's
+                        <code>services.GetServices(...)</code> calls them in order:
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · composition root pattern</span></div>
+                        <pre><code>// In Presentation.Common — every Presentation host calls this
+services
+    .AddDomainCommonDependencies(appConfig)
+    .AddDomainAIDependencies(appConfig)
+    .AddApplicationCommonDependencies(appConfig)
+    .AddApplicationAICommonDependencies(appConfig)
+    .AddApplicationCoreDependencies(appConfig)
+    .AddInfrastructureCommonDependencies(appConfig)
+    .AddInfrastructureAIDependencies(appConfig)
+    .AddInfrastructureMCPDependencies(appConfig)
+    .AddInfrastructureRAGDependencies(appConfig)
+    .AddInfrastructureObservabilityDependencies(appConfig);</code></pre>
+                    </div>
+
+                    <p>
+                        When you add a new service, you don't touch the composition root — you add the registration to
+                        the relevant layer's <code>DependencyInjection.cs</code>. It gets picked up the next time the
+                        host boots.
+                    </p>
+
+                    <h2>What's in each Infrastructure project</h2>
+                    <p>Infrastructure has the most projects. Here's a quick mental map:</p>
+
+                    <div class="def">
+                        <div class="def-term"><code>Infrastructure.AI</code></div>
+                        <div class="def-desc">The agent runtime — chat clients, agent factory, sandboxed file/calculation tools, state management, A2A host.</div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term"><code>Infrastructure.AI.MCP</code></div>
+                        <div class="def-desc">The MCP <em>client</em> — discovers tools on external MCP servers and wraps them as <code>ITool</code>.</div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term"><code>Infrastructure.AI.MCPServer</code></div>
+                        <div class="def-desc">The MCP <em>server</em> — ASP.NET Core WebAPI that exposes this app's tools, prompts, and resources over MCP/HTTP.</div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term"><code>Infrastructure.AI.RAG</code></div>
+                        <div class="def-desc">Document ingestion, chunking, indexing, retrieval, reranking. The whole RAG pipeline.</div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term"><code>Infrastructure.AI.Connectors</code></div>
+                        <div class="def-desc">Adapters for GitHub, Jira, Azure DevOps, Slack — unified behind <code>IConnectorClient</code>.</div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term"><code>Infrastructure.AI.Governance</code></div>
+                        <div class="def-desc">Policy engine, prompt injection detection, escalation, audit logging.</div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term"><code>Infrastructure.AI.KnowledgeGraph</code></div>
+                        <div class="def-desc">Graph-backed knowledge storage (planned: Neo4j/Kuzu backend; currently teaching-stub).</div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term"><code>Infrastructure.Observability</code></div>
+                        <div class="def-desc">OpenTelemetry pipeline, Jaeger and Prometheus exporters, LLM-aware span processor.</div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term"><code>Infrastructure.APIAccess</code></div>
+                        <div class="def-desc">HTTP resilience policies, retry/circuit-breaker for outgoing HTTP, security middleware.</div>
+                    </div>
+                    <div class="def">
+                        <div class="def-term"><code>Infrastructure.Common</code></div>
+                        <div class="def-desc">Identity service, claim extensions — generic infrastructure not specific to AI.</div>
+                    </div>
+
+                    <hr />
+
+                    <h2>Two rules to internalize</h2>
+
+                    <h3>1 · Direction of the arrow</h3>
+                    <p>
+                        Before you add a project reference, ask: <em>does this point inward?</em>
+                        Application → Domain ✓. Infrastructure → Application ✓.
+                        Domain → anything ✗. Application → Infrastructure ✗.
+                    </p>
+                    <p>
+                        The litmus: open <code>.csproj</code>, look at the <code>&lt;ProjectReference&gt;</code> lines.
+                        They should always point at a layer the same color or further left (Domain) than the current
+                        project's color in the stack diagram above.
+                    </p>
+
+                    <h3>2 · Interfaces live with the consumer</h3>
+                    <p>
+                        If <code>Application.AI.Common</code> needs a chat client, it defines
+                        <code>IChatClientFactory</code> in its own <code>Interfaces/</code> folder.
+                        <code>Infrastructure.AI</code> provides the implementation.
+                        <strong>Don't</strong> put the interface in <code>Infrastructure</code> "near the
+                        implementation" — that breaks the dependency rule.
+                    </p>
+
+                    <hr />
+
+                    <h2>Where to go from here</h2>
+                    <div class="card-grid">
+                        <a class="card" href="04-message-journey.html">
+                            <span class="card-num">04 · Next</span>
+                            <div class="card-title">A Message's Journey</div>
+                            <p class="card-desc">
+                                Now that you know the map, follow one prompt through every layer in detail. The single
+                                most important page in the guide.
+                            </p>
+                        </a>
+                        <a class="card" href="09-patterns.html">
+                            <span class="card-num">09 · Related</span>
+                            <div class="card-title">Patterns You'll Use Daily</div>
+                            <p class="card-desc">
+                                The <code>Result&lt;T&gt;</code> pattern, MediatR behaviors, factories, and the
+                                idioms that show up in every project.
+                            </p>
+                        </a>
+                    </div>
+
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="02-configuration.html">
+                            <div class="page-nav-label">← Previous</div>
+                            <div class="page-nav-title">02 · Configuration Reference</div>
+                        </a>
+                        <a class="page-nav-link page-nav-next" href="04-message-journey.html">
+                            <div class="page-nav-label">Next →</div>
+                            <div class="page-nav-title">04 · A Message's Journey</div>
+                        </a>
+                    </div>
+                </div>
+
+                <aside class="toc" aria-label="On this page">
+                    <div class="toc-title">On this page</div>
+                    <ul class="toc-list"></ul>
+                </aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>

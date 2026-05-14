@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>12 · Cheatsheet &amp; Glossary — Agentic Harness Developer Guide</title>
+        <meta name="description" content="Commands, acronyms, and concept definitions — your bookmark page." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <aside class="sidebar">
+                <div class="sidebar-header"><a class="sidebar-brand" href="index.html"><span class="sidebar-brand-mark">AH</span><span><span class="sidebar-brand-text">Agentic Harness</span><br /><span class="sidebar-brand-sub">Developer Guide</span></span></a></div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group"><div class="sidebar-group-title">Getting Started</div><a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a><a class="sidebar-link" href="01-get-running.html"><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Configuration</div><a class="sidebar-link" href="02-configuration.html"><span class="sidebar-link-num">02</span> Configuration Reference</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Architecture</div><a class="sidebar-link" href="03-big-picture.html"><span class="sidebar-link-num">03</span> The Big Picture</a><a class="sidebar-link" href="04-message-journey.html"><span class="sidebar-link-num">04</span> A Message's Journey</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Systems</div><a class="sidebar-link" href="05-skills.html"><span class="sidebar-link-num">05</span> Skills System</a><a class="sidebar-link" href="06-tools.html"><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a><a class="sidebar-link" href="07-rag.html"><span class="sidebar-link-num">07</span> The RAG Pipeline</a><a class="sidebar-link" href="08-mcp.html"><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Patterns</div><a class="sidebar-link" href="09-patterns.html"><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a><a class="sidebar-link" href="10-observability.html"><span class="sidebar-link-num">10</span> Observability &amp; Safety</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Building</div><a class="sidebar-link" href="11-extending.html"><span class="sidebar-link-num">11</span> Extending the Harness</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Reference</div><a class="sidebar-link" href="12-reference.html"><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a></div>
+                </nav>
+            </aside>
+
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 12 · Reference</span>
+                    <h1 class="page-title">Cheatsheet &amp; Glossary</h1>
+                    <p class="page-lead">
+                        Everything you'll need to look up — commands, file locations, acronyms, and concept
+                        definitions. Bookmark this one. The other pages explain <em>why</em>; this page tells you
+                        <em>what</em> and <em>where</em>.
+                    </p>
+
+                    <h2>Build &amp; run commands</h2>
+                    <table>
+                        <thead><tr><th>What</th><th>Command</th></tr></thead>
+                        <tbody>
+                            <tr><td>Build the solution</td><td><code>dotnet build src/AgenticHarness.slnx</code></td></tr>
+                            <tr><td>Run all tests</td><td><code>dotnet test src/AgenticHarness.slnx</code></td></tr>
+                            <tr><td>Tests with coverage</td><td><code>dotnet test --collect:"XPlat Code Coverage"</code></td></tr>
+                            <tr><td>Run a single test class</td><td><code>dotnet test --filter FullyQualifiedName~MyTestClass</code></td></tr>
+                            <tr><td>Run the console UI (interactive)</td><td><code>dotnet run --project src/Content/Presentation/Presentation.ConsoleUI</code></td></tr>
+                            <tr><td>Run a specific example non-interactively</td><td><code>dotnet run --project &lt;ConsoleUI&gt; -- --example research</code></td></tr>
+                            <tr><td>Run the MCP server</td><td><code>dotnet run --project src/Content/Infrastructure/Infrastructure.AI.MCPServer</code></td></tr>
+                            <tr><td>Run the SignalR Agent Hub</td><td><code>dotnet run --project src/Content/Presentation/Presentation.AgentHub</code></td></tr>
+                        </tbody>
+                    </table>
+
+                    <h2>Secrets management</h2>
+                    <table>
+                        <thead><tr><th>What</th><th>Command</th></tr></thead>
+                        <tbody>
+                            <tr><td>Set a secret</td><td><code>dotnet user-secrets set "Key:Path" "value" --project &lt;path&gt;</code></td></tr>
+                            <tr><td>List all secrets</td><td><code>dotnet user-secrets list --project &lt;path&gt;</code></td></tr>
+                            <tr><td>Remove a secret</td><td><code>dotnet user-secrets remove "Key:Path" --project &lt;path&gt;</code></td></tr>
+                            <tr><td>Clear all secrets</td><td><code>dotnet user-secrets clear --project &lt;path&gt;</code></td></tr>
+                            <tr><td>Run the setup wizard (Windows)</td><td><code>setup-secrets.bat</code></td></tr>
+                        </tbody>
+                    </table>
+
+                    <h2>Project layout cheatsheet</h2>
+                    <div class="file-tree">
+<span class="ft-dir">src/</span>
+├── <span class="ft-file">AgenticHarness.slnx</span>
+└── <span class="ft-dir">Content/</span>
+    ├── <span class="ft-dir">Domain/</span>
+    │   ├── <span class="ft-dir">Domain.Common/</span>         <span class="ft-comment">// configs, helpers, Result&lt;T&gt;</span>
+    │   └── <span class="ft-dir">Domain.AI/</span>             <span class="ft-comment">// AgentManifest, SkillDefinition, etc.</span>
+    ├── <span class="ft-dir">Application/</span>
+    │   ├── <span class="ft-dir">Application.Common/</span>    <span class="ft-comment">// generic behaviors, helpers</span>
+    │   ├── <span class="ft-dir">Application.AI.Common/</span> <span class="ft-comment">// AI-specific interfaces, behaviors</span>
+    │   └── <span class="ft-dir">Application.Core/</span>      <span class="ft-comment">// CQRS commands + handlers</span>
+    ├── <span class="ft-dir">Infrastructure/</span>
+    │   ├── <span class="ft-dir">Infrastructure.Common/</span>
+    │   ├── <span class="ft-dir">Infrastructure.AI/</span>
+    │   ├── <span class="ft-dir">Infrastructure.AI.MCP/</span>
+    │   ├── <span class="ft-dir">Infrastructure.AI.MCPServer/</span>
+    │   ├── <span class="ft-dir">Infrastructure.AI.RAG/</span>
+    │   ├── <span class="ft-dir">Infrastructure.AI.Connectors/</span>
+    │   ├── <span class="ft-dir">Infrastructure.AI.Governance/</span>
+    │   ├── <span class="ft-dir">Infrastructure.AI.KnowledgeGraph/</span>
+    │   ├── <span class="ft-dir">Infrastructure.APIAccess/</span>
+    │   └── <span class="ft-dir">Infrastructure.Observability/</span>
+    ├── <span class="ft-dir">Presentation/</span>
+    │   ├── <span class="ft-dir">Presentation.Common/</span>   <span class="ft-comment">// composition root</span>
+    │   ├── <span class="ft-dir">Presentation.ConsoleUI/</span>
+    │   ├── <span class="ft-dir">Presentation.AgentHub/</span>
+    │   └── <span class="ft-dir">Presentation.LoggerUI/</span>
+    └── <span class="ft-dir">Tests/</span>                     <span class="ft-comment">// one test project per source project</span>
+
+<span class="ft-dir">skills/</span>                              <span class="ft-comment">// SKILL.md files — loaded at runtime</span>
+<span class="ft-dir">agents/</span>                              <span class="ft-comment">// AGENT.md files — loaded at runtime</span>
+<span class="ft-dir">eval-tasks/</span>                          <span class="ft-comment">// meta-harness evaluation tasks</span>
+<span class="ft-dir">documentation/</span>                       <span class="ft-comment">// you are here</span>
+<span class="ft-dir">.meta-harness/</span>                       <span class="ft-comment">// optimization traces &amp; outputs</span>
+                    </div>
+
+                    <h2>Where to look for...</h2>
+                    <table>
+                        <thead><tr><th>If you want to find...</th><th>Look here</th></tr></thead>
+                        <tbody>
+                            <tr><td>A config class</td><td><code>Domain.Common/Config/</code></td></tr>
+                            <tr><td>A CQRS command + handler</td><td><code>Application.Core/CQRS/&lt;feature&gt;/</code></td></tr>
+                            <tr><td>A MediatR pipeline behavior</td><td><code>Application.*.Common/MediatRBehaviors/</code></td></tr>
+                            <tr><td>An AI service interface</td><td><code>Application.AI.Common/Interfaces/</code></td></tr>
+                            <tr><td>A built-in tool</td><td><code>Infrastructure.AI/Tools/</code></td></tr>
+                            <tr><td>DI registration for any layer</td><td><code>&lt;Project&gt;/DependencyInjection.cs</code></td></tr>
+                            <tr><td>OTel setup</td><td><code>Infrastructure.Observability/</code></td></tr>
+                            <tr><td>Skill content (runtime)</td><td><code>skills/&lt;id&gt;/SKILL.md</code></td></tr>
+                            <tr><td>Agent manifests (runtime)</td><td><code>agents/&lt;id&gt;/AGENT.md</code></td></tr>
+                            <tr><td>Tests</td><td><code>src/Content/Tests/</code></td></tr>
+                        </tbody>
+                    </table>
+
+                    <h2>Acronyms &amp; jargon</h2>
+
+                    <div class="def"><div class="def-term">A2A</div><div class="def-desc">Agent-to-Agent protocol — agents publish capabilities at <code>/.well-known/agent.json</code> and delegate tasks over HTTP. Sister to MCP. Implemented in <code>Infrastructure.AI/A2A/</code>.</div></div>
+                    <div class="def"><div class="def-term">AGENT.md</div><div class="def-desc">A Markdown file with frontmatter describing an agent — its domain, allowed tools, skills, autonomy tier, decision framework. Loaded by the agent metadata registry at startup.</div></div>
+                    <div class="def"><div class="def-term">AppConfig</div><div class="def-desc">The root configuration class. Bound from the <code>"AppConfig"</code> section of <code>appsettings.json</code>. See <a href="02-configuration.html">Configuration Reference</a>.</div></div>
+                    <div class="def"><div class="def-term">Autonomy tier</div><div class="def-desc">Permission level assigned to an agent: <code>Restricted</code>, <code>Supervised</code>, or <code>Autonomous</code>. Determines whether tool calls run automatically, prompt for approval, or require explicit allow-listing.</div></div>
+                    <div class="def"><div class="def-term">BM25</div><div class="def-desc">Classic keyword-based retrieval algorithm. Used alongside vector search in the RAG pipeline's hybrid retrieval. See <a href="07-rag.html">RAG Pipeline</a>.</div></div>
+                    <div class="def"><div class="def-term">Clean Architecture</div><div class="def-desc">Architectural style with concentric layers (Domain → Application → Infrastructure → Presentation) and dependencies pointing inward. See <a href="03-big-picture.html">Big Picture</a>.</div></div>
+                    <div class="def"><div class="def-term"><code>.Common</code> projects</div><div class="def-desc">The harness itself — reusable, template-level infrastructure (e.g. <code>Application.Common</code>, <code>Application.AI.Common</code>, <code>Infrastructure.AI</code>, <code>Domain.Common</code>). Treat as a library; don't edit unless improving the template for all consumers. See <a href="03-big-picture.html">Big Picture</a>.</div></div>
+                    <div class="def"><div class="def-term"><code>.Core</code> projects</div><div class="def-desc">Your application's specific business logic — the commands, queries, and rules that make this fork different from any other. Currently <code>Application.Core</code> ships with example agent commands. In a fork you'd add domain-specific projects (e.g. <code>Domain.PupWalk</code>, <code>Infrastructure.PupWalk</code>) alongside.</div></div>
+                    <div class="def"><div class="def-term">CQRS</div><div class="def-desc">Command/Query Responsibility Segregation — commands mutate state, queries read state, each has a dedicated handler. Implemented via MediatR in <code>Application.Core/CQRS/</code>.</div></div>
+                    <div class="def"><div class="def-term">CRAG</div><div class="def-desc">Corrective RAG — evaluates retrieval confidence and triggers refinement or rejection when confidence is low.</div></div>
+                    <div class="def"><div class="def-term">DI</div><div class="def-desc">Dependency Injection. Microsoft.Extensions.DependencyInjection is the container. See "keyed DI" for the harness's extension of it.</div></div>
+                    <div class="def"><div class="def-term">EWMA</div><div class="def-desc">Exponentially Weighted Moving Average. Used by <code>DriftDetection</code> to detect quality regressions over time.</div></div>
+                    <div class="def"><div class="def-term">FAISS</div><div class="def-desc">Facebook AI Similarity Search — vector index library used as one of two vector store options (the other is Azure AI Search).</div></div>
+                    <div class="def"><div class="def-term">FluentValidation</div><div class="def-desc">C# validation library. Validators live alongside their commands and are run by <code>RequestValidationBehavior</code>.</div></div>
+                    <div class="def"><div class="def-term">HyDE</div><div class="def-desc">Hypothetical Document Embedding — query transform that generates a fake "ideal answer", embeds it, and retrieves against the fake answer's embedding.</div></div>
+                    <div class="def"><div class="def-term">IOptionsMonitor</div><div class="def-desc">.NET pattern for accessing configuration that hot-reloads when the underlying file changes. Always preferred over <code>IOptions</code>. See <a href="09-patterns.html">Patterns</a>.</div></div>
+                    <div class="def"><div class="def-term">ITool</div><div class="def-desc">Internal tool interface. Every tool the agent can call implements this — file system, calculator, MCP wrappers, RAG retrievers.</div></div>
+                    <div class="def"><div class="def-term">JSONL</div><div class="def-desc">JSON Lines — one JSON object per line. Used for structured logs and meta-harness traces.</div></div>
+                    <div class="def"><div class="def-term">JWT</div><div class="def-desc">JSON Web Token. Used for authenticating MCP server endpoints via Entra ID.</div></div>
+                    <div class="def"><div class="def-term">Keyed DI</div><div class="def-desc">.NET 8+ feature allowing multiple implementations of an interface to coexist under string keys. The harness's central extensibility mechanism.</div></div>
+                    <div class="def"><div class="def-term">LLM</div><div class="def-desc">Large Language Model. The agent's brain — GPT-4o, Claude, etc.</div></div>
+                    <div class="def"><div class="def-term">MCP</div><div class="def-desc">Model Context Protocol — open standard for tool/prompt/resource exchange between AI agents and tool servers. See <a href="08-mcp.html">MCP Server &amp; Client</a>.</div></div>
+                    <div class="def"><div class="def-term">MediatR</div><div class="def-desc">C# library implementing the mediator pattern. Used to dispatch commands and apply pipeline behaviors.</div></div>
+                    <div class="def"><div class="def-term">Meta-harness</div><div class="def-desc">The optimization loop — proposes changes to skill files, evaluates them, keeps the best.</div></div>
+                    <div class="def"><div class="def-term">OTel / OpenTelemetry</div><div class="def-desc">Open standard for traces, metrics, and logs. See <a href="10-observability.html">Observability &amp; Safety</a>.</div></div>
+                    <div class="def"><div class="def-term">PII</div><div class="def-desc">Personally Identifiable Information. Filtered from logs, traces, and tool responses.</div></div>
+                    <div class="def"><div class="def-term">Progressive disclosure</div><div class="def-desc">The three-tier skill loading model — index card, folder, filing cabinet — that keeps the token budget under control. See <a href="05-skills.html">Skills System</a>.</div></div>
+                    <div class="def"><div class="def-term">RAG</div><div class="def-desc">Retrieval-Augmented Generation. Bring relevant chunks from your documents into the agent's context. See <a href="07-rag.html">RAG Pipeline</a>.</div></div>
+                    <div class="def"><div class="def-term">RAPTOR</div><div class="def-desc">A hierarchical document-summarization strategy for RAG. Builds a tree of summaries so retrieval can target fine or coarse granularity.</div></div>
+                    <div class="def"><div class="def-term">ReDoS</div><div class="def-desc">Regular Expression Denial of Service. The <code>MaxSubcommandLimit</code> permission setting guards against this in pattern matching.</div></div>
+                    <div class="def"><div class="def-term">Result&lt;T&gt;</div><div class="def-desc">The pattern for expected failures. Returns success/failure with optional error details instead of throwing. See <a href="09-patterns.html">Patterns</a>.</div></div>
+                    <div class="def"><div class="def-term">RRF</div><div class="def-desc">Reciprocal Rank Fusion — algorithm for merging multiple ranked lists into one. Used in hybrid RAG retrieval.</div></div>
+                    <div class="def"><div class="def-term">Sandbox</div><div class="def-desc">The path-validated restriction on file system access. The agent thinks it has a file system; it actually has a cage.</div></div>
+                    <div class="def"><div class="def-term">SKILL.md</div><div class="def-desc">A Markdown file with frontmatter that defines what an agent knows for a given role. Loaded by <code>SkillLoaderService</code> at startup.</div></div>
+                    <div class="def"><div class="def-term">Span / Trace</div><div class="def-desc">OpenTelemetry concepts. A span is one operation; spans nest into traces. We instrument every command, agent turn, tool call, and LLM request.</div></div>
+                    <div class="def"><div class="def-term">Tier 1 / 2 / 3</div><div class="def-desc">The three skill loading levels — index card (~100 tokens), folder (~5K), filing cabinet (unbounded).</div></div>
+                    <div class="def"><div class="def-term">Token budget</div><div class="def-desc">Cap on how many tokens an agent session can consume. Configured via <code>AppConfig.Agent.DefaultTokenBudget</code>; tracked by <code>IContextBudgetTracker</code>.</div></div>
+                    <div class="def"><div class="def-term">User Secrets</div><div class="def-desc">.NET's development-only encrypted-at-rest secret store. Run <code>dotnet user-secrets set</code> to populate.</div></div>
+
+                    <h2>The 60-second mental model</h2>
+                    <p>If you read only this section: <strong>this codebase is a Clean Architecture .NET 10 template for AI agents.</strong> Skills (Markdown files) tell agents what they know. Tools (C# classes) tell agents what they can do. MediatR pipeline behaviors wrap every request with safety, validation, observability, and audit. The agent loop is owned by <code>Microsoft.Agents.AI</code>. Everything is observable via OpenTelemetry. Configuration lives in strongly-typed classes bound from <code>appsettings.json</code> + User Secrets. Add new tools by implementing <code>ITool</code> and registering them in keyed DI. Add new skills by dropping a <code>SKILL.md</code> in <code>skills/</code>. Test everything. Don't disable the sandbox.</p>
+
+                    <hr />
+
+                    <h2>You're done</h2>
+                    <p>You've completed the developer onboarding guide. From here:</p>
+                    <ul>
+                        <li>Re-read <a href="04-message-journey.html">A Message's Journey</a> — it'll click differently now.</li>
+                        <li>Browse the <a href="../../skills/">skills/</a> folder for examples of real <code>SKILL.md</code> files.</li>
+                        <li>Open Jaeger and run a few examples to watch the trace timeline.</li>
+                        <li>Pick a small feature to add. Use <a href="11-extending.html">Extending the Harness</a> as your template.</li>
+                    </ul>
+                    <p class="muted">Found a gap in this guide? That's a bug. File it.</p>
+
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="11-extending.html"><div class="page-nav-label">← Previous</div><div class="page-nav-title">11 · Extending the Harness</div></a>
+                        <a class="page-nav-link page-nav-next" href="index.html"><div class="page-nav-label">↑ Back to start</div><div class="page-nav-title">00 · Welcome</div></a>
+                    </div>
+                </div>
+                <aside class="toc" aria-label="On this page"><div class="toc-title">On this page</div><ul class="toc-list"></ul></aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>

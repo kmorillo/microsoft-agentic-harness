@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>10 · Observability &amp; Safety — Agentic Harness Developer Guide</title>
+        <meta name="description" content="OpenTelemetry, content safety middleware, governance, escalation — how the harness stays observable and safe." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <aside class="sidebar">
+                <div class="sidebar-header"><a class="sidebar-brand" href="index.html"><span class="sidebar-brand-mark">AH</span><span><span class="sidebar-brand-text">Agentic Harness</span><br /><span class="sidebar-brand-sub">Developer Guide</span></span></a></div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group"><div class="sidebar-group-title">Getting Started</div><a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a><a class="sidebar-link" href="01-get-running.html"><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Configuration</div><a class="sidebar-link" href="02-configuration.html"><span class="sidebar-link-num">02</span> Configuration Reference</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Architecture</div><a class="sidebar-link" href="03-big-picture.html"><span class="sidebar-link-num">03</span> The Big Picture</a><a class="sidebar-link" href="04-message-journey.html"><span class="sidebar-link-num">04</span> A Message's Journey</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Systems</div><a class="sidebar-link" href="05-skills.html"><span class="sidebar-link-num">05</span> Skills System</a><a class="sidebar-link" href="06-tools.html"><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a><a class="sidebar-link" href="07-rag.html"><span class="sidebar-link-num">07</span> The RAG Pipeline</a><a class="sidebar-link" href="08-mcp.html"><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Patterns</div><a class="sidebar-link" href="09-patterns.html"><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a><a class="sidebar-link" href="10-observability.html"><span class="sidebar-link-num">10</span> Observability &amp; Safety</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Building</div><a class="sidebar-link" href="11-extending.html"><span class="sidebar-link-num">11</span> Extending the Harness</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Reference</div><a class="sidebar-link" href="12-reference.html"><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a></div>
+                </nav>
+            </aside>
+
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 10 · Patterns</span>
+                    <h1 class="page-title">Observability &amp; Safety</h1>
+                    <p class="page-lead">
+                        Agents are non-deterministic systems that call APIs, write files, and answer with confidence
+                        even when they're wrong. You need to see inside them — and stop them when they go astray.
+                        This page covers both: the observability pipeline and the safety layers that wrap every turn.
+                    </p>
+
+                    <h2>The observability pipeline</h2>
+                    <p>
+                        Everything in the harness is instrumented with OpenTelemetry. Every MediatR command opens a
+                        span. Every agent turn opens a child span. Every tool call opens a child of that. Every LLM
+                        request opens a child of <em>that</em>. You can drill from "this conversation failed" all the
+                        way down to "the third sub-call to GPT-4o returned a malformed JSON".
+                    </p>
+
+                    <div class="callout callout-jargon">
+                        <span class="callout-icon">¶</span>
+                        <div class="callout-body">
+                            <div class="callout-title">OpenTelemetry, briefly</div>
+                            <p style="margin: 0">
+                                An open standard for emitting <strong>traces</strong>, <strong>metrics</strong>, and
+                                <strong>logs</strong> from running code.
+                                <br /><br />
+                                A <strong>span</strong> is a record of one operation — when it started, when it
+                                ended, whether it succeeded, plus arbitrary key/value tags. Think of a span as
+                                "here's one timed thing that happened, with notes attached."
+                                <br /><br />
+                                Spans <strong>nest</strong>. The outer "HandleAgentTurn" span contains a "CallLLM"
+                                span, which contains three "InvokeTool" spans, each of which might contain
+                                "ReadFile" spans. The whole nested tree for one user request is a <strong>trace</strong>.
+                                <br /><br />
+                                <strong>Metrics</strong> are different — they're aggregated numbers emitted separately
+                                (counters, histograms, gauges) that show patterns over time without recording every
+                                individual event.
+                                <br /><br />
+                                We export traces to <strong>Jaeger</strong> (a free trace viewer you run locally or
+                                in your cluster), metrics to <strong>Prometheus</strong>, and optionally everything to
+                                <strong>Azure Monitor</strong> in production.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3>What gets instrumented</h3>
+                    <ul>
+                        <li>Every MediatR request — via <code>RequestTracingBehavior</code>.</li>
+                        <li>Every agent turn — span attributes include agent name, conversation ID, turn number, input/output tokens, cost.</li>
+                        <li>Every tool call — span attributes include tool name, operation, latency, success/failure.</li>
+                        <li>Every LLM request — via the Microsoft.Extensions.AI built-in tracing, augmented by our custom <code>LlmSpanProcessor</code> that recognizes spans from Agents.AI / Semantic Kernel and enriches them with agentic context.</li>
+                        <li>RAG retrievals — span per query transform, retrieval, rerank, assembly.</li>
+                    </ul>
+
+                    <h3>Setting up Jaeger locally</h3>
+                    <p>Run Jaeger with one Docker command, then point the OTLP exporter at it:</p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                        <pre><code># Start Jaeger all-in-one
+docker run -d --name jaeger \
+  -p 16686:16686 \
+  -p 4317:4317 \
+  jaegertracing/all-in-one:latest
+
+# Browse to http://localhost:16686</code></pre>
+                    </div>
+                    <p>
+                        Configure the harness to export to Jaeger via the OTLP endpoint in
+                        <code>AppConfig.Observability.Exporters.Otlp.Endpoint</code>. Run an agent example. Refresh
+                        Jaeger and you'll see the conversation timeline span-by-span.
+                    </p>
+
+                    <h3>The PostgreSQL audit store</h3>
+                    <p>
+                        OTel traces are great for debugging but ephemeral. For long-term audit
+                        (compliance, post-incident review, governance), the harness writes a structured record per
+                        turn to PostgreSQL via <code>IObservabilityStore</code>. The connection string lives in
+                        <code>AppConfig.Observability.PostgresConnectionString</code>. Schema includes turn-level
+                        token usage, cost, tool invocations, and message previews truncated to 500 chars.
+                    </p>
+
+                    <hr />
+
+                    <h2>Safety layers, top to bottom</h2>
+                    <p>"Safety" in this codebase isn't one thing. It's a stack of independent layers, each catching a different class of problem.</p>
+
+                    <h3>1 · Prompt injection detection</h3>
+                    <p>
+                        <code>PromptInjectionBehavior</code> runs deterministic detectors over every user input —
+                        looking for known patterns ("ignore previous instructions", suspicious base64 blobs,
+                        instruction-resembling content in unexpected places). Threats above
+                        <code>InjectionBlockThreshold</code> halt the request before it reaches the LLM.
+                    </p>
+
+                    <h3>2 · Content safety middleware</h3>
+                    <p>
+                        Wrapped around the chat client itself (in <code>AgentFactory</code>). Filters configurable
+                        content categories — PII, profanity, classified information — both on user input and LLM
+                        output. The harness ships with sane defaults; tighten or loosen via
+                        <code>AppConfig.AI.Governance</code>.
+                    </p>
+
+                    <h3>3 · Governance policy engine</h3>
+                    <p>
+                        <code>GovernancePolicyBehavior</code> consults YAML policy files (configured via
+                        <code>AppConfig.AI.Governance.PolicyPaths</code>) that encode organizational rules:
+                        "this tool can only be called from this autonomy tier with this approval level", "these
+                        topics escalate to a human", etc. Conflict resolution defaults to
+                        <code>PriorityFirstMatch</code>.
+                    </p>
+
+                    <h3>4 · Tool permissions</h3>
+                    <p>
+                        <code>ToolPermissionBehavior</code> evaluates each tool call against the agent's autonomy
+                        tier (<code>Restricted</code>, <code>Supervised</code>, <code>Autonomous</code>). When the
+                        decision is <code>Ask</code>, the user is prompted; <code>Deny</code> short-circuits.
+                        Repeated denials for the same pattern auto-deny after
+                        <code>DenialRateLimitThreshold</code> attempts.
+                    </p>
+
+                    <h3>5 · The sandbox</h3>
+                    <p>
+                        Tools that touch the filesystem do so through path validators. The agent thinks it has a file
+                        system; it actually has a fenced subset. Covered in detail on
+                        <a href="06-tools.html">Tools &amp; Keyed DI</a>.
+                    </p>
+
+                    <h3>6 · MCP security scanning</h3>
+                    <p>
+                        Tools from external MCP servers are scanned at registration time. Suspicious schemas are
+                        logged and skipped. See <a href="08-mcp.html">MCP Server &amp; Client</a>.
+                    </p>
+
+                    <h3>7 · Response sanitization</h3>
+                    <p>
+                        <code>ResponseSanitizationBehavior</code> redacts known PII / secret patterns from
+                        tool responses before they reach the LLM. Findings above
+                        <code>ResponseBlockThreshold</code> block the response entirely.
+                    </p>
+
+                    <h3>8 · Human escalation</h3>
+                    <p>
+                        When the governance engine decides a decision exceeds the agent's authority, it raises an
+                        <strong>escalation</strong>. Escalations have a priority level
+                        (<code>Informational</code>, <code>Blocking</code>, <code>Critical</code>) and configurable
+                        timeouts and approval strategies (<code>AnyOf</code>, <code>AllOf</code>). Records persist
+                        under <code>.agent-sessions/escalations/</code> for audit. See
+                        <code>AppConfig.AI.Governance.Escalation</code>.
+                    </p>
+
+                    <h2>The audit trail</h2>
+                    <p>
+                        <code>AuditTrailBehavior</code> writes a tamper-evident record of every governance decision —
+                        what was requested, what the rule said, who approved or denied, when. Combined with the
+                        PostgreSQL observability store, you have a full reconstruction path for any conversation: who
+                        said what, what the agent decided, what it called, what came back.
+                    </p>
+
+                    <h2>Drift detection and learnings</h2>
+                    <p>
+                        Two longer-term feedback loops:
+                    </p>
+                    <ul>
+                        <li>
+                            <strong>Drift detection</strong> — EWMA-based scoring of quality regressions across runs.
+                            When per-task scores trend down, the system flags a drift event. Config:
+                            <code>AppConfig.AI.DriftDetection</code>.
+                        </li>
+                        <li>
+                            <strong>Learnings</strong> — cross-session feedback that biases retrieval, skill loading,
+                            and tool selection. Has decay (older learnings weight less) and pruning (forgotten if no
+                            longer relevant). Config: <code>AppConfig.AI.Learnings</code>.
+                        </li>
+                    </ul>
+
+                    <h2>The meta-harness loop</h2>
+                    <p>
+                        Beyond per-run safety, the harness can optimize <em>itself</em>. The meta-harness loop
+                        (<code>RunHarnessOptimizationCommand</code>) does this iteratively:
+                    </p>
+                    <ol>
+                        <li><strong>Snapshot</strong> — capture current skill files as the baseline.</li>
+                        <li><strong>Propose</strong> — a coding agent reads recent execution traces (JSONL files in <code>.meta-harness/traces/</code>), reasons about why turns failed, and outputs a proposal — which skill files to change, how, and what it observed.</li>
+                        <li><strong>Evaluate</strong> — run the proposed skill files against the benchmark task suite in <code>eval-tasks/</code> and score by regex match.</li>
+                        <li><strong>Regression gate</strong> — verify the candidate doesn't regress on tasks prior winners already solved (threshold default 80%).</li>
+                        <li><strong>Record</strong> — promote to new best if score improved <em>and</em> regression gate passed.</li>
+                    </ol>
+                    <p>This is the system that turns drift detection into improvement: signals from observability feed into proposals, which feed back into the skills the agent uses next time.</p>
+
+                    <h2>Reading a Jaeger trace</h2>
+                    <p>When debugging a failed conversation:</p>
+                    <ol>
+                        <li>Find the <code>RunConversation</code> span — that's the root.</li>
+                        <li>Look at its child <code>ExecuteAgentTurn</code> spans — each one is a turn.</li>
+                        <li>Inside the failing turn, find the LLM call (usually a span with vendor-specific naming like <code>chat.completions</code>) and look at its child tool calls.</li>
+                        <li>If a tool returned an error, check its <code>error</code> tag and stack. If the LLM produced bad output, check the token counts and the input messages tag.</li>
+                    </ol>
+
+                    <hr />
+
+                    <h2>Where to go from here</h2>
+                    <div class="card-grid">
+                        <a class="card" href="11-extending.html">
+                            <span class="card-num">11 · Next</span>
+                            <div class="card-title">Extending the Harness</div>
+                            <p class="card-desc">Apply everything from chapters 03–10 — three end-to-end recipes for new capabilities.</p>
+                        </a>
+                        <a class="card" href="02-configuration.html#section-governance">
+                            <span class="card-num">02 · Related</span>
+                            <div class="card-title">Governance &amp; Permissions config</div>
+                            <p class="card-desc">Every safety knob, with defaults and rationale.</p>
+                        </a>
+                    </div>
+
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="09-patterns.html"><div class="page-nav-label">← Previous</div><div class="page-nav-title">09 · Patterns You'll Use Daily</div></a>
+                        <a class="page-nav-link page-nav-next" href="11-extending.html"><div class="page-nav-label">Next →</div><div class="page-nav-title">11 · Extending the Harness</div></a>
+                    </div>
+                </div>
+                <aside class="toc" aria-label="On this page"><div class="toc-title">On this page</div><ul class="toc-list"></ul></aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>

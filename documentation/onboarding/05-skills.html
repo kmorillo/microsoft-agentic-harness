@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>05 · Skills System — Agentic Harness Developer Guide</title>
+        <meta name="description" content="How SKILL.md files work, three-tier progressive disclosure, and how to add a new skill." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <aside class="sidebar">
+                <div class="sidebar-header"><a class="sidebar-brand" href="index.html"><span class="sidebar-brand-mark">AH</span><span><span class="sidebar-brand-text">Agentic Harness</span><br /><span class="sidebar-brand-sub">Developer Guide</span></span></a></div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group"><div class="sidebar-group-title">Getting Started</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-get-running.html"><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Configuration</div>
+                        <a class="sidebar-link" href="02-configuration.html"><span class="sidebar-link-num">02</span> Configuration Reference</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Architecture</div>
+                        <a class="sidebar-link" href="03-big-picture.html"><span class="sidebar-link-num">03</span> The Big Picture</a>
+                        <a class="sidebar-link" href="04-message-journey.html"><span class="sidebar-link-num">04</span> A Message's Journey</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Systems</div>
+                        <a class="sidebar-link" href="05-skills.html"><span class="sidebar-link-num">05</span> Skills System</a>
+                        <a class="sidebar-link" href="06-tools.html"><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a>
+                        <a class="sidebar-link" href="07-rag.html"><span class="sidebar-link-num">07</span> The RAG Pipeline</a>
+                        <a class="sidebar-link" href="08-mcp.html"><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Patterns</div>
+                        <a class="sidebar-link" href="09-patterns.html"><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a>
+                        <a class="sidebar-link" href="10-observability.html"><span class="sidebar-link-num">10</span> Observability &amp; Safety</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Building</div>
+                        <a class="sidebar-link" href="11-extending.html"><span class="sidebar-link-num">11</span> Extending the Harness</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Reference</div>
+                        <a class="sidebar-link" href="12-reference.html"><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a></div>
+                </nav>
+            </aside>
+
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 05 · Systems</span>
+                    <h1 class="page-title">Skills System</h1>
+                    <p class="page-lead">
+                        Skills are how this harness teaches an agent what it knows, what it can do, and when to do it.
+                        They're plain Markdown files — humans write them, agents read them, the harness loads them in
+                        three tiers to keep the token budget under control. This is the most Claude-Code-inspired
+                        part of the codebase.
+                    </p>
+
+                    <h2>The mental model</h2>
+                    <p>
+                        Think of a skill as a "job description" the agent receives at runtime. The job description
+                        says: <em>here's your role, here are the tools you can use, here's how to think about typical
+                        tasks, and here are the deeper references if you need them.</em> The harness can have dozens
+                        of skill files on disk, but only one is "in role" at any given turn.
+                    </p>
+
+                    <h2>The three tiers — progressive disclosure</h2>
+                    <p>
+                        An LLM has a finite context window. If you eagerly load every detail of every skill at startup,
+                        you blow the budget before the first user message lands. The harness solves this the same way
+                        Claude Code does: skills are loaded in three tiers, only as deeply as needed.
+                    </p>
+
+                    <table>
+                        <thead><tr><th>Tier</th><th>What's in it</th><th>Approx. tokens</th><th>When loaded</th></tr></thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Tier 1 — Index Card</strong></td>
+                                <td>ID, name, description, category, tags</td>
+                                <td>~100</td>
+                                <td>At agent startup. The agent always sees the index for every available skill.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Tier 2 — Folder</strong></td>
+                                <td>Full instructions, behavioral guidelines, tool declarations</td>
+                                <td>~5,000</td>
+                                <td>When the agent (or the orchestrator) selects this skill for the turn.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Tier 3 — Filing Cabinet</strong></td>
+                                <td>Scripts, reference docs, templates, examples, schemas</td>
+                                <td>Unbounded</td>
+                                <td>Only when the skill <em>actively executes</em> and needs that resource.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Why this works</div>
+                            <p style="margin: 0">
+                                At 100 tokens per skill, even 50 skills add only ~5K tokens to the startup budget —
+                                enough to let the agent <em>know what it has access to</em> without committing
+                                resources. Tier 2 is loaded one-at-a-time per turn. Tier 3 is loaded only when a tool
+                                physically opens that file. The token budget is never spent speculatively.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>Anatomy of a <code>SKILL.md</code> file</h2>
+                    <p>
+                        Skills live under <code>skills/</code> at the repo root (configured via
+                        <code>AppConfig.AI.Skills.BasePath</code>). Each skill is a single Markdown file with two
+                        parts: a block of structured metadata at the top, and human-readable instructions below.
+                    </p>
+
+                    <div class="callout callout-jargon">
+                        <span class="callout-icon">¶</span>
+                        <div class="callout-body">
+                            <div class="callout-title">YAML, frontmatter, and Markdown — quick definitions</div>
+                            <p style="margin: 0">
+                                <strong>Markdown</strong> is the lightweight plain-text formatting language you're
+                                already used to from READMEs (<code>#</code> headings, <code>**bold**</code>, etc.).
+                                <strong>YAML</strong> is a structured text format that looks like indented
+                                <code>key: value</code> pairs — much friendlier for humans than JSON.
+                                <strong>Frontmatter</strong> is a block of YAML at the top of a Markdown file, fenced
+                                between two <code>---</code> lines. It's how a Markdown file carries metadata (id,
+                                tags, dependencies) that tooling can parse without parsing the prose.
+                            </p>
+                        </div>
+                    </div>
+
+                    <p>Here's what a real <code>SKILL.md</code> looks like:</p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">markdown · skills/research/SKILL.md</span></div>
+                        <pre><code>---
+id: research
+name: Research Agent
+description: Finds and synthesizes information from documents and the web.
+category: information-gathering
+tags: [research, search, summarize]
+allowed-tools:
+  - file_system_read
+  - document_search
+  - web_search
+deployment: gpt-4o      # optional override of AppConfig default
+context-loading:
+  references:
+    - ./references/citation-style.md
+  templates:
+    - ./templates/summary.md
+---
+
+# Research Agent
+
+## Role
+You are a thorough research assistant. When given a question, you:
+1. Identify what is and isn't known.
+2. Use the document_search and web_search tools to gather sources.
+3. Synthesize findings with citations.
+
+## Behavioral guidelines
+- Always cite sources by URL or document ID.
+- Prefer primary sources over summaries.
+- If sources conflict, surface the conflict rather than picking one.
+...</code></pre>
+                    </div>
+
+                    <p>
+                        The frontmatter is the Tier-1 + Tier-2 metadata: <code>id</code>, <code>name</code>,
+                        <code>description</code> are the index card; <code>allowed-tools</code> and
+                        <code>context-loading</code> drive what gets loaded. The Markdown body is the Tier-2 content —
+                        the agent's instructions for this role.
+                    </p>
+
+                    <h3>The <code>SkillDefinition</code> domain type</h3>
+                    <p>When the loader parses a <code>SKILL.md</code>, it produces a <code>SkillDefinition</code>:</p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · Domain.AI/Skills/SkillDefinition.cs</span></div>
+                        <pre><code>public sealed record SkillDefinition
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required string Description { get; init; }
+    public required string Instructions { get; init; }   // Markdown body
+    public IReadOnlyList&lt;string&gt; AllowedTools { get; init; } = [];
+    public ContextLoading ContextLoading { get; init; } = new();
+    public string? Deployment { get; init; }
+    // ... category, tags, etc.
+}</code></pre>
+                    </div>
+
+                    <p>
+                        Notice it's a record with init-only properties — once a skill is loaded, it's immutable. To
+                        change skill behavior at runtime, the harness produces a new <code>SkillDefinition</code> (or
+                        a <code>SkillAmendment</code>) and replaces the entry.
+                    </p>
+
+                    <h2>How a skill becomes an agent</h2>
+                    <p>The runtime journey of a skill, end-to-end:</p>
+
+                    <ol class="steps">
+                        <li class="step">
+                            <div class="step-title">Discovery at startup</div>
+                            <p><code>SkillLoaderService</code> walks <code>AppConfig.AI.Skills.BasePath</code> (and any <code>AdditionalPaths</code>) at startup, finds every <code>SKILL.md</code>, parses the frontmatter into <code>SkillDefinition</code>, and registers each in <code>ISkillRegistry</code>. Only the Tier-1 metadata is in memory at this point — the Markdown body is held lazily.</p>
+                        </li>
+                        <li class="step">
+                            <div class="step-title">Selection per turn</div>
+                            <p>When <code>ExecuteAgentTurnCommandHandler</code> runs, it looks up the requested skill ID. If the agent manifest references multiple skills, the orchestrator or selector picks one based on the user message and the skill descriptions (Tier-1 metadata is enough for this).</p>
+                        </li>
+                        <li class="step">
+                            <div class="step-title">Tier-2 promotion</div>
+                            <p>The selected skill's full instructions (Markdown body) are loaded and stitched into the system prompt. Now the agent knows <em>how</em> to play this role.</p>
+                        </li>
+                        <li class="step">
+                            <div class="step-title">Tool resolution</div>
+                            <p>For each entry in <code>allowed-tools</code>, the harness resolves a keyed singleton from DI — <code>sp.GetRequiredKeyedService&lt;ITool&gt;("file_system_read")</code> — then converts it to an <code>AITool</code> via <code>AIToolConverter</code> and attaches it to the agent. See <a href="06-tools.html">Tools &amp; Keyed DI</a>.</p>
+                        </li>
+                        <li class="step">
+                            <div class="step-title">Tier-3 access at runtime</div>
+                            <p>If the skill's <code>context-loading.references</code> list includes a file path, that file isn't read until the agent's <code>file_system_read</code> tool actually opens it. The path is exposed via the tool, not preloaded into the prompt.</p>
+                        </li>
+                    </ol>
+
+                    <h2>The context budget tracker</h2>
+                    <p>
+                        While the above is happening, <code>IContextBudgetTracker</code> keeps a running count of how
+                        many tokens are committed to: the system prompt, loaded skill content, tool schemas, and
+                        conversation history. When the budget reaches its threshold, the
+                        <code>ITieredContextAssembler</code> stops promoting Tier-2 content and the orchestrator falls
+                        back to Tier-1 descriptions only.
+                    </p>
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Token budget is per-agent, not per-message</div>
+                            <p style="margin: 0">
+                                <code>AppConfig.Agent.DefaultTokenBudget</code> applies to the whole agent session,
+                                not a single message. Long conversations accumulate history — eventually the budget
+                                tracker forces compaction (older messages are summarized) or short-circuits skill
+                                loading. If you're seeing skills "disappear" mid-conversation, the tracker is
+                                preserving budget.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>Adding a new skill</h2>
+                    <p>The end-to-end recipe — covered in more detail on <a href="11-extending.html">Extending the Harness</a>:</p>
+                    <ol>
+                        <li>Create a folder under <code>skills/&lt;your-skill-id&gt;/</code>.</li>
+                        <li>Add a <code>SKILL.md</code> with frontmatter (id, name, description, allowed-tools) and a Markdown body with the instructions.</li>
+                        <li>Add any Tier-3 references under <code>references/</code>, <code>templates/</code>, or <code>scripts/</code> in that folder.</li>
+                        <li>Make sure every tool in <code>allowed-tools</code> is registered in DI under that key.</li>
+                        <li>(Optionally) reference the skill from an <code>AGENT.md</code> so an orchestrator can route to it.</li>
+                    </ol>
+                    <p>You don't need to redeploy or recompile. The skill loader picks it up at next startup. For dev iteration, the <code>SkillChangedEventArgs</code> infrastructure supports hot reload — touching a <code>SKILL.md</code> reloads it without restarting the host.</p>
+
+                    <h2>Skill amendments and learnings</h2>
+                    <p>
+                        Skills aren't static. The <strong>meta-harness</strong> (see <a href="10-observability.html">Observability &amp; Safety</a>) can propose <code>SkillAmendment</code>s based on what the agent has learned across runs — tweaks to instructions, added examples, refined tool restrictions. These flow through the same loader pipeline and become part of the next session's Tier-2 content.
+                    </p>
+
+                    <hr />
+
+                    <h2>Where to go from here</h2>
+                    <div class="card-grid">
+                        <a class="card" href="06-tools.html">
+                            <span class="card-num">06 · Next</span>
+                            <div class="card-title">Tools &amp; Keyed DI</div>
+                            <p class="card-desc">The other half of a skill — what the agent can actually <em>do</em>. How tools register and how the LLM finds them.</p>
+                        </a>
+                        <a class="card" href="11-extending.html">
+                            <span class="card-num">11 · Related</span>
+                            <div class="card-title">Extending the Harness</div>
+                            <p class="card-desc">Step-by-step recipe for adding a new skill with its own tools and tests.</p>
+                        </a>
+                    </div>
+
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="04-message-journey.html"><div class="page-nav-label">← Previous</div><div class="page-nav-title">04 · A Message's Journey</div></a>
+                        <a class="page-nav-link page-nav-next" href="06-tools.html"><div class="page-nav-label">Next →</div><div class="page-nav-title">06 · Tools &amp; Keyed DI</div></a>
+                    </div>
+                </div>
+                <aside class="toc" aria-label="On this page"><div class="toc-title">On this page</div><ul class="toc-list"></ul></aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>

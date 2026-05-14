@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>11 · Extending the Harness — Agentic Harness Developer Guide</title>
+        <meta name="description" content="Three end-to-end recipes — add a tool, add a skill, add a new agent. Copy-paste friendly with test patterns." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <aside class="sidebar">
+                <div class="sidebar-header"><a class="sidebar-brand" href="index.html"><span class="sidebar-brand-mark">AH</span><span><span class="sidebar-brand-text">Agentic Harness</span><br /><span class="sidebar-brand-sub">Developer Guide</span></span></a></div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group"><div class="sidebar-group-title">Getting Started</div><a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a><a class="sidebar-link" href="01-get-running.html"><span class="sidebar-link-num">01</span> Get Running in 10 Minutes</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Configuration</div><a class="sidebar-link" href="02-configuration.html"><span class="sidebar-link-num">02</span> Configuration Reference</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Architecture</div><a class="sidebar-link" href="03-big-picture.html"><span class="sidebar-link-num">03</span> The Big Picture</a><a class="sidebar-link" href="04-message-journey.html"><span class="sidebar-link-num">04</span> A Message's Journey</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Systems</div><a class="sidebar-link" href="05-skills.html"><span class="sidebar-link-num">05</span> Skills System</a><a class="sidebar-link" href="06-tools.html"><span class="sidebar-link-num">06</span> Tools &amp; Keyed DI</a><a class="sidebar-link" href="07-rag.html"><span class="sidebar-link-num">07</span> The RAG Pipeline</a><a class="sidebar-link" href="08-mcp.html"><span class="sidebar-link-num">08</span> MCP Server &amp; Client</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Patterns</div><a class="sidebar-link" href="09-patterns.html"><span class="sidebar-link-num">09</span> Patterns You'll Use Daily</a><a class="sidebar-link" href="10-observability.html"><span class="sidebar-link-num">10</span> Observability &amp; Safety</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Building</div><a class="sidebar-link" href="11-extending.html"><span class="sidebar-link-num">11</span> Extending the Harness</a></div>
+                    <div class="sidebar-group"><div class="sidebar-group-title">Reference</div><a class="sidebar-link" href="12-reference.html"><span class="sidebar-link-num">12</span> Cheatsheet &amp; Glossary</a></div>
+                </nav>
+            </aside>
+
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 11 · Building</span>
+                    <h1 class="page-title">Extending the Harness</h1>
+                    <p class="page-lead">
+                        Three end-to-end recipes for the changes you'll make most: adding a tool, adding a skill, and
+                        adding a new agent that combines both. Every recipe is copy-paste friendly and includes the
+                        tests that should accompany the change.
+                    </p>
+
+                    <h2>Common vs Core — where does new code live?</h2>
+                    <p>
+                        Before any recipe, the most important question: <strong>am I adding harness infrastructure,
+                        or my application's logic?</strong> The answer decides which project owns the code.
+                    </p>
+                    <table>
+                        <thead><tr><th>If the new thing is...</th><th>It lives in...</th></tr></thead>
+                        <tbody>
+                            <tr>
+                                <td>
+                                    A generic capability any future fork would want — e.g. "summarize HTML", "convert
+                                    units", "render Markdown"
+                                </td>
+                                <td>An existing <code>.Common</code> / <code>.AI.Common</code> project. You're improving the template.</td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    Specific to your application — e.g. "look up customer record", "schedule a dog
+                                    walk", "create a Salesforce opportunity"
+                                </td>
+                                <td>A <code>.Core</code> project, or a new domain-specific project you add (e.g. <code>Infrastructure.PupWalk</code>).</td>
+                            </tr>
+                            <tr>
+                                <td>
+                                    The agent's <em>instructions</em> for what to do
+                                </td>
+                                <td>
+                                    A Markdown file in <code>skills/</code> at the repo root. No project, no compile.
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">When in doubt, start in <code>.Core</code> or new</div>
+                            <p style="margin: 0">
+                                It's easy to <em>promote</em> code from your application project up into a
+                                <code>.Common</code> project later, once you're sure it's general. It's painful to
+                                untangle application-specific assumptions baked into a <code>.Common</code> project
+                                after the fact. Start narrow; widen only with evidence.
+                            </p>
+                        </div>
+                    </div>
+
+                    <p>
+                        The recipes below use <code>Infrastructure.AI/Tools/</code> as the destination for the
+                        example tool because temperature conversion is generic. For a tool specific to <em>your</em>
+                        application — say, a Stripe-charging tool for PupWalk — you'd create
+                        <code>Infrastructure.PupWalk/Tools/</code> instead. Same pattern, different project.
+                    </p>
+
+                    <h2>Recipe 1 · Add a new tool</h2>
+                    <p>Scenario: you want the agent to be able to convert temperatures. We'll build a <code>TemperatureConverterTool</code> with <code>celsius_to_fahrenheit</code> and <code>fahrenheit_to_celsius</code> operations.</p>
+
+                    <ol class="steps">
+                        <li class="step">
+                            <div class="step-title">Define the interface (only if it's a new contract)</div>
+                            <p>For tools, you don't need a new interface — they all implement <code>ITool</code>. Skip if your tool is just another implementation.</p>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Implement <code>ITool</code></div>
+                            <p>Create the file under <code>Infrastructure.AI/Tools/TemperatureConverterTool.cs</code>:</p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">C# · TemperatureConverterTool.cs</span></div>
+                                <pre><code>using Application.AI.Common.Interfaces.Tools;
+
+namespace Infrastructure.AI.Tools;
+
+public sealed class TemperatureConverterTool : ITool
+{
+    public string Name =&gt; "temperature_converter";
+    public string Description =&gt; "Converts temperatures between Celsius and Fahrenheit.";
+    public IReadOnlyList&lt;string&gt; SupportedOperations =&gt;
+        ["celsius_to_fahrenheit", "fahrenheit_to_celsius"];
+
+    public Task&lt;ToolResult&gt; ExecuteAsync(
+        string operation,
+        IReadOnlyDictionary&lt;string, object?&gt; parameters,
+        CancellationToken cancellationToken)
+    {
+        if (!parameters.TryGetValue("value", out var raw) || raw is null)
+            return Task.FromResult(ToolResult.Fail("Missing required parameter 'value'."));
+
+        if (!double.TryParse(raw.ToString(), out var value))
+            return Task.FromResult(ToolResult.Fail($"'value' must be a number, got '{raw}'."));
+
+        var output = operation switch
+        {
+            "celsius_to_fahrenheit" =&gt; value * 9 / 5 + 32,
+            "fahrenheit_to_celsius" =&gt; (value - 32) * 5 / 9,
+            _ =&gt; double.NaN
+        };
+
+        return Task.FromResult(ToolResult.Success(output.ToString("F2")));
+    }
+}</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Register in keyed DI</div>
+                            <p>Open <code>Infrastructure.AI/DependencyInjection.cs</code> and add the registration:</p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">C# · DependencyInjection.cs</span></div>
+                                <pre><code>services.AddKeyedSingleton&lt;ITool, TemperatureConverterTool&gt;("temperature_converter");</code></pre>
+                            </div>
+                            <p>The key string must match what skills will use in their <code>allowed-tools</code>.</p>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Write the test</div>
+                            <p>Create <code>src/Content/Tests/Infrastructure.AI.Tests/Tools/TemperatureConverterToolTests.cs</code>:</p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">C# · TemperatureConverterToolTests.cs</span></div>
+                                <pre><code>public class TemperatureConverterToolTests
+{
+    private readonly TemperatureConverterTool _sut = new();
+
+    [Fact]
+    public async Task ExecuteAsync_CelsiusToFahrenheit_ConvertsCorrectly()
+    {
+        var result = await _sut.ExecuteAsync(
+            "celsius_to_fahrenheit",
+            new Dictionary&lt;string, object?&gt; { ["value"] = 100 },
+            CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Be("212.00");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_MissingValue_ReturnsFailure()
+    {
+        var result = await _sut.ExecuteAsync(
+            "celsius_to_fahrenheit",
+            new Dictionary&lt;string, object?&gt;(),
+            CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().Contain("Missing");
+    }
+}</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Reference it from a skill</div>
+                            <p>In any <code>SKILL.md</code> that should be able to use the tool, add it to <code>allowed-tools</code>:</p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">markdown</span></div>
+                                <pre><code>---
+allowed-tools:
+  - temperature_converter
+---</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Verify</div>
+                            <p>Build and test:</p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">bash</span></div>
+                                <pre><code>dotnet build src/AgenticHarness.slnx
+dotnet test src/AgenticHarness.slnx --filter FullyQualifiedName~TemperatureConverter</code></pre>
+                            </div>
+                            <p>Then run the console UI, pick an agent referencing the skill, and ask "what is 100 degrees Celsius in Fahrenheit?" Watch it call the tool.</p>
+                        </li>
+                    </ol>
+
+                    <hr />
+
+                    <h2>Recipe 2 · Add a new skill</h2>
+                    <p>Scenario: you want a skill that turns the agent into a "code reviewer." This is purely a Markdown change — no C# required.</p>
+
+                    <ol class="steps">
+                        <li class="step">
+                            <div class="step-title">Create the skill folder</div>
+                            <p>At the repo root, create <code>skills/code-reviewer/</code>.</p>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Write the SKILL.md</div>
+                            <p>Create <code>skills/code-reviewer/SKILL.md</code>:</p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">markdown · skills/code-reviewer/SKILL.md</span></div>
+                                <pre><code>---
+id: code-reviewer
+name: Code Reviewer
+description: Reviews code changes for bugs, style, and design issues.
+category: development
+tags: [code, review, quality]
+allowed-tools:
+  - file_system_read
+context-loading:
+  references:
+    - ./references/review-checklist.md
+---
+
+# Code Reviewer
+
+## Role
+You review code with the rigor of a senior engineer. You catch bugs others
+miss, you push back on premature abstractions, and you say what you mean.
+
+## Behavioral guidelines
+- Be specific. "This is bad" is not a review; "this allocates on every call,
+  consider caching" is.
+- Categorize findings: BUG / STYLE / DESIGN / NIT.
+- If you don't have enough context to judge, say so — don't fake it.
+- Quote line ranges when referring to specific code.
+
+## When invoked
+1. Use file_system_read to load the file(s) under review.
+2. Check ./references/review-checklist.md for the team's standards.
+3. Produce findings grouped by category, with line references.</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Add the reference content</div>
+                            <p>Create <code>skills/code-reviewer/references/review-checklist.md</code> with whatever standards your team uses. This is Tier-3 content — only loaded when the agent actually reads the file via <code>file_system_read</code>.</p>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Verify the loader picks it up</div>
+                            <p>Restart the host. The skill loader will discover the new <code>SKILL.md</code> at startup. From the console UI, you can now route requests to <code>"code-reviewer"</code> as an <code>AgentName</code>.</p>
+                            <div class="callout callout-tip">
+                                <span class="callout-icon">✓</span>
+                                <div class="callout-body">
+                                    <div class="callout-title">No C# needed</div>
+                                    <p style="margin: 0">
+                                        Skills are <em>data</em>. You don't recompile to add or modify them. This is
+                                        the whole point of the SKILL.md format — non-developers can contribute skills,
+                                        and you can A/B test variants without redeploying.
+                                    </p>
+                                </div>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Test the skill</div>
+                            <p>Skills can be tested at the harness level. Create <code>src/Content/Tests/Application.Core.Tests/Skills/CodeReviewerSkillTests.cs</code> that loads the skill and asserts the metadata:</p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">C# · CodeReviewerSkillTests.cs</span></div>
+                                <pre><code>public class CodeReviewerSkillTests
+{
+    [Fact]
+    public async Task SkillLoader_LoadsCodeReviewerSkill()
+    {
+        var loader = TestHarness.GetService&lt;ISkillLoaderService&gt;();
+        var skill = await loader.LoadAsync("code-reviewer");
+
+        skill.Should().NotBeNull();
+        skill!.AllowedTools.Should().Contain("file_system_read");
+        skill.Instructions.Should().Contain("Code Reviewer");
+    }
+}</code></pre>
+                            </div>
+                            <p>For end-to-end testing of the skill's behavior, see the patterns in <code>Application.Core.Tests</code> for the existing research and orchestrator skills.</p>
+                        </li>
+                    </ol>
+
+                    <hr />
+
+                    <h2>Recipe 3 · Add a new agent</h2>
+                    <p>Scenario: you want an agent that combines the new code reviewer skill with a Git-aware skill (a hypothetical <code>git-history</code> skill). Agents are declared in <code>AGENT.md</code> files, which reference one or more skills.</p>
+
+                    <ol class="steps">
+                        <li class="step">
+                            <div class="step-title">Create the agent folder</div>
+                            <p>At the repo root, create <code>agents/code-review-bot/</code>.</p>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Write the AGENT.md</div>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">markdown · agents/code-review-bot/AGENT.md</span></div>
+                                <pre><code>---
+id: code-review-bot
+name: Code Review Bot
+description: Reviews pull requests by combining git history analysis with code review.
+domain: development
+category: review
+tags: [code, review, git, pull-requests]
+skill: code-reviewer        # primary skill — entry point
+autonomy: Supervised
+state-config:
+  trackChanges: true
+decision-framework:
+  type: GO_NO_GO
+  gates:
+    - name: PR is reviewable
+      check: pr_has_diff
+    - name: Files within scope
+      check: scope_allowlist_matches
+skills:
+  - code-reviewer
+  - git-history
+---
+
+# Code Review Bot
+
+## Role
+You are the team's automated code review assistant. For each pull request:
+1. Use git-history to understand the change's context.
+2. Use code-reviewer to evaluate the diff for issues.
+3. Synthesize findings into a structured review comment.
+
+## Decision framework
+- GO: every gate passes, review is published.
+- NO-GO: any gate fails, escalate to a human.</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Verify the agent loader picks it up</div>
+                            <p>Restart. The agent metadata registry now contains <code>code-review-bot</code>. The handler in <code>ExecuteAgentTurnCommandHandler</code> uses <code>_agentRegistry.TryGet(name)?.Skill</code> to resolve the agent name into a skill ID — for this agent, that's <code>code-reviewer</code>. The agent now routes correctly.</p>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Register the autonomy tier policy (if non-default)</div>
+                            <p>If this agent should run with a tighter or looser permission set than the default, add a tier policy to <code>appsettings.json</code>:</p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">json</span></div>
+                                <pre><code>"Permissions": {
+  "TierPolicies": {
+    "Supervised": {
+      "DefaultBehavior": "Ask",
+      "ToolOverrides": {
+        "file_system_read": "Allow",
+        "git_log": "Allow",
+        "git_diff": "Allow"
+      }
+    }
+  }
+}</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Test end-to-end</div>
+                            <p>Create an integration test that drives the agent through <code>RunConversationCommand</code>:</p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">C# · CodeReviewBotIntegrationTests.cs</span></div>
+                                <pre><code>public class CodeReviewBotIntegrationTests : IClassFixture&lt;TestHarnessFixture&gt;
+{
+    private readonly TestHarnessFixture _fixture;
+
+    public CodeReviewBotIntegrationTests(TestHarnessFixture fixture) =&gt; _fixture = fixture;
+
+    [Fact]
+    public async Task ReviewBot_FindsBugsInSampleDiff()
+    {
+        var mediator = _fixture.GetService&lt;IMediator&gt;();
+        var result = await mediator.Send(new RunConversationCommand
+        {
+            AgentName = "code-review-bot",
+            UserMessage = "Review the sample diff at ./test-fixtures/buggy.diff",
+        });
+
+        result.Success.Should().BeTrue();
+        result.FinalResponse.Should().Contain("BUG");
+    }
+}</code></pre>
+                            </div>
+                            <p>Use <code>WebApplicationFactory&lt;Program&gt;</code> patterns in <code>TestHarnessFixture</code> to wire an in-memory composition of the harness — the same way the existing integration tests do.</p>
+                        </li>
+                    </ol>
+
+                    <hr />
+
+                    <h2>The general "add a new X" mental model</h2>
+                    <p>The above recipes share a structure. Any new capability follows the same pattern:</p>
+                    <ol>
+                        <li><strong>Domain</strong> — model the concept if it's new (usually an interface in Application, with model types in Domain).</li>
+                        <li><strong>Application</strong> — interface lives here, command/handler if it's a use case.</li>
+                        <li><strong>Infrastructure</strong> — implement the interface.</li>
+                        <li><strong>DI</strong> — register in the right project's <code>DependencyInjection.cs</code>.</li>
+                        <li><strong>Configuration</strong> — add the config POCO under <code>Domain.Common/Config/</code> if there's anything tunable.</li>
+                        <li><strong>Tests</strong> — unit tests for the implementation, integration tests for the wired-up behavior.</li>
+                        <li><strong>Wire from a skill / agent / behavior</strong> — make it discoverable to the agent.</li>
+                    </ol>
+
+                    <h2>Things to avoid</h2>
+                    <ul>
+                        <li><strong>Skipping DI registration</strong> — your code compiles and your tests "pass" in isolation, but the agent never sees the new tool. Run the harness end-to-end before merging.</li>
+                        <li><strong>Bypassing factories</strong> — never construct <code>AIAgent</code>, <code>IChatClient</code>, or <code>AgentExecutionContext</code> directly. Lost content safety, OTel, and config consistency.</li>
+                        <li><strong>Skipping the SKILL.md frontmatter</strong> — without it, the loader can't discover the skill. Validate frontmatter renders correctly with the loader tests.</li>
+                        <li><strong>Hardcoding paths or model names</strong> — pull from <code>AppConfig</code> via <code>IOptionsMonitor</code>. Never embed credentials or endpoints.</li>
+                    </ul>
+
+                    <hr />
+
+                    <h2>Where to go from here</h2>
+                    <div class="card-grid">
+                        <a class="card" href="12-reference.html">
+                            <span class="card-num">12 · Next</span>
+                            <div class="card-title">Cheatsheet &amp; Glossary</div>
+                            <p class="card-desc">Every command, every acronym. The bookmark page.</p>
+                        </a>
+                        <a class="card" href="04-message-journey.html">
+                            <span class="card-num">04 · Recap</span>
+                            <div class="card-title">A Message's Journey</div>
+                            <p class="card-desc">Re-read this now with the new perspective of having extended the harness yourself.</p>
+                        </a>
+                    </div>
+
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="10-observability.html"><div class="page-nav-label">← Previous</div><div class="page-nav-title">10 · Observability &amp; Safety</div></a>
+                        <a class="page-nav-link page-nav-next" href="12-reference.html"><div class="page-nav-label">Next →</div><div class="page-nav-title">12 · Cheatsheet &amp; Glossary</div></a>
+                    </div>
+                </div>
+                <aside class="toc" aria-label="On this page"><div class="toc-title">On this page</div><ul class="toc-list"></ul></aside>
+            </main>
+        </div>
+        <script src="assets/js/main.js"></script>
+    </body>
+</html>
