@@ -23,7 +23,11 @@ This harness solves those problems with real engineering, not abstractions on to
 
 ## Learn How It Works
 
-**[Inside the Agentic Harness — Interactive Course](documentation/agentic-harness-course/index.html)** — A visual, scroll-based course that teaches how the harness works through animated diagrams, plain-English code translations, and interactive quizzes. No coding background required. Open `documentation/agentic-harness-course/index.html` in your browser.
+Two learning resources, depending on what you need:
+
+- **[Developer Onboarding Guide](https://mckruz.github.io/microsoft-agentic-harness/)** — Step-by-step walkthrough of the codebase aimed at engineers who are forking this template to build something. 13 pages covering getting running, every config knob, the Clean Architecture layout, a full message-journey trace, the skills/tools/RAG/MCP systems, observability, and end-to-end recipes for extending the harness. Read this if you're going to write code.
+
+- **[Inside the Agentic Harness — Interactive Course](documentation/agentic-harness-course/index.html)** — A visual, scroll-based course that teaches how the harness works through animated diagrams, plain-English code translations, and interactive quizzes. No coding background required. Open `documentation/agentic-harness-course/index.html` in your browser. Read this if you're trying to understand what the system *does* conceptually.
 
 ---
 
