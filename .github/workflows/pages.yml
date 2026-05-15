@@ -1,0 +1,49 @@
+name: Deploy Onboarding Guide to GitHub Pages
+
+# Publishes documentation/onboarding/ as the project's GitHub Pages site.
+# Runs whenever the onboarding folder (or this workflow) changes on main.
+# Uses the modern "Pages from Actions" source — no gh-pages branch needed.
+#
+# After this workflow runs successfully for the first time, enable Pages in:
+#   Settings → Pages → Source: "GitHub Actions"
+# The site URL will appear in the workflow run summary.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'documentation/onboarding/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; let in-progress runs finish before queuing another.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload onboarding folder as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: documentation/onboarding
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
