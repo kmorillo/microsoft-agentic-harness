@@ -21,6 +21,13 @@ namespace Presentation.AgentHub.AgUi;
 [JsonDerivedType(typeof(EscalationRequestedEvent), AgUiEventType.EscalationRequested)]
 [JsonDerivedType(typeof(EscalationResolvedEvent), AgUiEventType.EscalationResolved)]
 [JsonDerivedType(typeof(EscalationExpiringEvent), AgUiEventType.EscalationExpiring)]
+[JsonDerivedType(typeof(DriftWarnEvent), AgUiEventType.DriftWarn)]
+[JsonDerivedType(typeof(DriftAlertEvent), AgUiEventType.DriftAlert)]
+[JsonDerivedType(typeof(DriftEscalateEvent), AgUiEventType.DriftEscalate)]
+[JsonDerivedType(typeof(DriftResolvedEvent), AgUiEventType.DriftResolved)]
+[JsonDerivedType(typeof(LearningCapturedEvent), AgUiEventType.LearningCaptured)]
+[JsonDerivedType(typeof(LearningAppliedEvent), AgUiEventType.LearningApplied)]
+[JsonDerivedType(typeof(LearningForgottenEvent), AgUiEventType.LearningForgotten)]
 public abstract record AgUiEvent;
 
 /// <summary>
@@ -184,4 +191,192 @@ public sealed record EscalationExpiringEvent : AgUiEvent
     /// <summary>Seconds remaining before the escalation times out.</summary>
     [JsonPropertyName("remainingSeconds")]
     public required int RemainingSeconds { get; init; }
+}
+
+/// <summary>
+/// Signals that quality drift was detected at warning severity.
+/// The agent's output quality has deviated from baseline but not critically.
+/// </summary>
+public sealed record DriftWarnEvent : AgUiEvent
+{
+    /// <summary>The scope level at which drift was measured (e.g. "Agent", "Skill").</summary>
+    [JsonPropertyName("scope")]
+    public required string Scope { get; init; }
+
+    /// <summary>Identifier of the entity within the scope.</summary>
+    [JsonPropertyName("scopeIdentifier")]
+    public required string ScopeIdentifier { get; init; }
+
+    /// <summary>Per-dimension deviation values keyed by dimension name.</summary>
+    [JsonPropertyName("dimensions")]
+    public required IReadOnlyDictionary<string, double> Dimensions { get; init; }
+
+    /// <summary>Maximum deviation across all dimensions (sigma units).</summary>
+    [JsonPropertyName("maxDeviation")]
+    public required double MaxDeviation { get; init; }
+
+    /// <summary>Severity classification string.</summary>
+    [JsonPropertyName("severity")]
+    public required string Severity { get; init; }
+}
+
+/// <summary>
+/// Signals that quality drift was detected at alert severity.
+/// Includes the baseline ID for correlation with baseline store records.
+/// </summary>
+public sealed record DriftAlertEvent : AgUiEvent
+{
+    /// <summary>The scope level at which drift was measured.</summary>
+    [JsonPropertyName("scope")]
+    public required string Scope { get; init; }
+
+    /// <summary>Identifier of the entity within the scope.</summary>
+    [JsonPropertyName("scopeIdentifier")]
+    public required string ScopeIdentifier { get; init; }
+
+    /// <summary>Per-dimension deviation values keyed by dimension name.</summary>
+    [JsonPropertyName("dimensions")]
+    public required IReadOnlyDictionary<string, double> Dimensions { get; init; }
+
+    /// <summary>Maximum deviation across all dimensions (sigma units).</summary>
+    [JsonPropertyName("maxDeviation")]
+    public required double MaxDeviation { get; init; }
+
+    /// <summary>Severity classification string.</summary>
+    [JsonPropertyName("severity")]
+    public required string Severity { get; init; }
+
+    /// <summary>The baseline this score was compared against.</summary>
+    [JsonPropertyName("baselineId")]
+    public required string BaselineId { get; init; }
+}
+
+/// <summary>
+/// Signals that quality drift was detected at escalation severity.
+/// An escalation request has been triggered and is awaiting human review.
+/// </summary>
+public sealed record DriftEscalateEvent : AgUiEvent
+{
+    /// <summary>The scope level at which drift was measured.</summary>
+    [JsonPropertyName("scope")]
+    public required string Scope { get; init; }
+
+    /// <summary>Identifier of the entity within the scope.</summary>
+    [JsonPropertyName("scopeIdentifier")]
+    public required string ScopeIdentifier { get; init; }
+
+    /// <summary>Per-dimension deviation values keyed by dimension name.</summary>
+    [JsonPropertyName("dimensions")]
+    public required IReadOnlyDictionary<string, double> Dimensions { get; init; }
+
+    /// <summary>Maximum deviation across all dimensions (sigma units).</summary>
+    [JsonPropertyName("maxDeviation")]
+    public required double MaxDeviation { get; init; }
+
+    /// <summary>Severity classification string.</summary>
+    [JsonPropertyName("severity")]
+    public required string Severity { get; init; }
+
+    /// <summary>The baseline this score was compared against.</summary>
+    [JsonPropertyName("baselineId")]
+    public required string BaselineId { get; init; }
+
+    /// <summary>
+    /// Escalation correlation ID. Empty when the escalation has not yet been queued;
+    /// clients correlate drift-escalate events with escalation-requested events by timestamp and scope.
+    /// </summary>
+    [JsonPropertyName("escalationId")]
+    public required string EscalationId { get; init; }
+}
+
+/// <summary>
+/// Signals that a previously detected drift has been resolved through
+/// learning application, baseline adjustment, manual dismissal, or escalation resolution.
+/// </summary>
+public sealed record DriftResolvedEvent : AgUiEvent
+{
+    /// <summary>The drift event that was resolved.</summary>
+    [JsonPropertyName("eventId")]
+    public required string EventId { get; init; }
+
+    /// <summary>How the drift was resolved (e.g. "LearningApplied", "BaselineAdjusted").</summary>
+    [JsonPropertyName("resolutionType")]
+    public required string ResolutionType { get; init; }
+
+    /// <summary>Identifier of the resolving entity (learning ID, escalation ID, etc.).</summary>
+    [JsonPropertyName("resolvedBy")]
+    public required string ResolvedBy { get; init; }
+
+    /// <summary>When the drift was resolved.</summary>
+    [JsonPropertyName("resolvedAt")]
+    public required DateTimeOffset ResolvedAt { get; init; }
+}
+
+/// <summary>
+/// Signals that the agent has captured a new learning. Emitted after a
+/// <c>RememberCommand</c> successfully persists a learning entry.
+/// </summary>
+public sealed record LearningCapturedEvent : AgUiEvent
+{
+    /// <summary>Unique identifier for the learning entry.</summary>
+    [JsonPropertyName("learningId")]
+    public required string LearningId { get; init; }
+
+    /// <summary>Learning category (e.g. "FactualCorrection", "StylePreference").</summary>
+    [JsonPropertyName("category")]
+    public required string Category { get; init; }
+
+    /// <summary>Agent ID this learning is scoped to, if any.</summary>
+    [JsonPropertyName("agentId")]
+    public string? AgentId { get; init; }
+
+    /// <summary>Team ID this learning is scoped to, if any.</summary>
+    [JsonPropertyName("teamId")]
+    public string? TeamId { get; init; }
+
+    /// <summary>Whether this is a global learning.</summary>
+    [JsonPropertyName("isGlobal")]
+    public required bool IsGlobal { get; init; }
+
+    /// <summary>Human-readable description of the learning source.</summary>
+    [JsonPropertyName("sourceDescription")]
+    public required string SourceDescription { get; init; }
+}
+
+/// <summary>
+/// Signals that a previously captured learning was applied during agent execution.
+/// The learning's content influenced the agent's response or tool usage.
+/// </summary>
+public sealed record LearningAppliedEvent : AgUiEvent
+{
+    /// <summary>The learning that was applied.</summary>
+    [JsonPropertyName("learningId")]
+    public required string LearningId { get; init; }
+
+    /// <summary>The agent that applied the learning.</summary>
+    [JsonPropertyName("agentId")]
+    public required string AgentId { get; init; }
+
+    /// <summary>Learning category for display.</summary>
+    [JsonPropertyName("category")]
+    public required string Category { get; init; }
+
+    /// <summary>Optional summary of the context in which the learning was applied.</summary>
+    [JsonPropertyName("contextSummary")]
+    public string? ContextSummary { get; init; }
+}
+
+/// <summary>
+/// Signals that a learning has been forgotten (soft-deleted) and will no longer
+/// influence future agent behavior.
+/// </summary>
+public sealed record LearningForgottenEvent : AgUiEvent
+{
+    /// <summary>The learning that was forgotten.</summary>
+    [JsonPropertyName("learningId")]
+    public required string LearningId { get; init; }
+
+    /// <summary>Reason for forgetting this learning.</summary>
+    [JsonPropertyName("reason")]
+    public required string Reason { get; init; }
 }

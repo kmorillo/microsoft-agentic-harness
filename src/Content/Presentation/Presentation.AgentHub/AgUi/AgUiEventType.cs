@@ -67,4 +67,25 @@ public static class AgUiEventType
 
     /// <summary>Warns that a pending escalation is approaching its timeout deadline.</summary>
     public const string EscalationExpiring = "ESCALATION_EXPIRING";
+
+    /// <summary>Signals that drift was detected at warn severity.</summary>
+    public const string DriftWarn = "DRIFT_WARN";
+
+    /// <summary>Signals that drift was detected at alert severity.</summary>
+    public const string DriftAlert = "DRIFT_ALERT";
+
+    /// <summary>Signals that drift was detected at escalate severity.</summary>
+    public const string DriftEscalate = "DRIFT_ESCALATE";
+
+    /// <summary>Signals that a previously detected drift has been resolved.</summary>
+    public const string DriftResolved = "DRIFT_RESOLVED";
+
+    /// <summary>Signals that a new learning has been captured.</summary>
+    public const string LearningCaptured = "LEARNING_CAPTURED";
+
+    /// <summary>Signals that a learning was applied during agent execution.</summary>
+    public const string LearningApplied = "LEARNING_APPLIED";
+
+    /// <summary>Signals that a learning has been forgotten (soft-deleted).</summary>
+    public const string LearningForgotten = "LEARNING_FORGOTTEN";
 }
