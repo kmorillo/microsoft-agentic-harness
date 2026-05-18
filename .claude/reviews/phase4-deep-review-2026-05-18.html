@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase 4 Deep Code Review — Planner &amp; Sandbox</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #c9d1d9; --text-muted: #8b949e; --text-bright: #f0f6fc;
+    --critical: #f85149; --critical-bg: #3d1116;
+    --high: #d29922; --high-bg: #3d2e00;
+    --medium: #58a6ff; --medium-bg: #0c2d6b;
+    --low: #8b949e; --low-bg: #1c2128;
+    --success: #3fb950; --success-bg: #0d2818;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 2rem; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  h1 { color: var(--text-bright); font-size: 1.8rem; margin-bottom: 0.5rem; }
+  h2 { color: var(--text-bright); font-size: 1.4rem; margin: 2rem 0 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+  h3 { color: var(--text-bright); font-size: 1.1rem; margin: 1.5rem 0 0.5rem; }
+  .subtitle { color: var(--text-muted); margin-bottom: 2rem; }
+  .verdict-banner { padding: 1rem 1.5rem; border-radius: 8px; margin: 1.5rem 0; font-weight: 600; font-size: 1.1rem; }
+  .verdict-block { background: var(--critical-bg); border: 1px solid var(--critical); color: var(--critical); }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 1.5rem 0; }
+  .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.5rem; text-align: center; }
+  .stat-card .number { font-size: 2rem; font-weight: 700; }
+  .stat-card .label { color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; }
+  .stat-critical .number { color: var(--critical); }
+  .stat-high .number { color: var(--high); }
+  .stat-medium .number { color: var(--medium); }
+  .stat-low .number { color: var(--low); }
+  .stat-ok .number { color: var(--success); }
+  .finding { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin: 1rem 0; }
+  .finding-critical { border-left: 4px solid var(--critical); }
+  .finding-high { border-left: 4px solid var(--high); }
+  .finding-medium { border-left: 4px solid var(--medium); }
+  .finding-low { border-left: 4px solid var(--low); }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; margin-right: 0.5rem; }
+  .tag-critical { background: var(--critical-bg); color: var(--critical); }
+  .tag-high { background: var(--high-bg); color: var(--high); }
+  .tag-medium { background: var(--medium-bg); color: var(--medium); }
+  .tag-low { background: var(--low-bg); color: var(--low); }
+  .tag-layer { background: #1c2128; color: #79c0ff; border: 1px solid #388bfd33; }
+  .tag-security { background: #3d1116; color: #ff7b72; border: 1px solid #f8514933; }
+  .finding-title { font-weight: 600; color: var(--text-bright); margin: 0.25rem 0; }
+  .finding-file { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.8rem; color: var(--text-muted); margin: 0.25rem 0; }
+  .finding-body { margin-top: 0.75rem; font-size: 0.9rem; }
+  .finding-fix { margin-top: 0.75rem; padding: 0.75rem; background: var(--bg); border-radius: 6px; font-size: 0.85rem; }
+  .finding-fix strong { color: var(--success); }
+  code { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.85em; background: #1c2128; padding: 2px 6px; border-radius: 4px; }
+  pre { background: #1c2128; padding: 1rem; border-radius: 6px; overflow-x: auto; font-size: 0.8rem; margin: 0.5rem 0; }
+  pre code { background: none; padding: 0; }
+  .layer-section { margin: 2rem 0; }
+  .strengths { background: var(--success-bg); border: 1px solid var(--success); border-radius: 8px; padding: 1.25rem; margin: 1rem 0; }
+  .strengths h3 { color: var(--success); margin-top: 0; }
+  .strengths ul { padding-left: 1.5rem; }
+  .strengths li { margin: 0.25rem 0; }
+  table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+  th, td { padding: 0.5rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-bright); background: var(--surface); font-size: 0.85rem; text-transform: uppercase; }
+  td { font-size: 0.9rem; }
+  .priority-list { margin: 1rem 0; padding-left: 1.5rem; }
+  .priority-list li { margin: 0.5rem 0; }
+  details { margin: 0.5rem 0; }
+  details summary { cursor: pointer; color: var(--text-bright); font-weight: 500; }
+  details summary:hover { color: var(--medium); }
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin: 1.5rem 0; }
+  .toc a { color: var(--medium); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .toc ul { padding-left: 1.5rem; }
+  .toc li { margin: 0.25rem 0; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Phase 4: Planner &amp; Sandbox — Deep Code Review</h1>
+<p class="subtitle">188 files &bull; ~18,700 lines &bull; 6 parallel review agents &bull; 2026-05-18</p>
+
+<div class="verdict-banner verdict-block">VERDICT: BLOCK — 3 critical correctness bugs + 5 critical test gaps + security issues in sandbox executors</div>
+
+<div class="stats-grid">
+  <div class="stat-card stat-critical"><div class="number">8</div><div class="label">Critical</div></div>
+  <div class="stat-card stat-high"><div class="number">26</div><div class="label">High</div></div>
+  <div class="stat-card stat-medium"><div class="number">39</div><div class="label">Medium</div></div>
+  <div class="stat-card stat-low"><div class="number">24</div><div class="label">Low</div></div>
+  <div class="stat-card stat-ok"><div class="number">188</div><div class="label">Files Reviewed</div></div>
+</div>
+
+<nav class="toc">
+  <strong>Contents</strong>
+  <ul>
+    <li><a href="#critical">Critical Findings (Must Fix)</a></li>
+    <li><a href="#high-security">High — Security</a></li>
+    <li><a href="#high-correctness">High — Correctness &amp; Design</a></li>
+    <li><a href="#medium">Medium Findings (Selected)</a></li>
+    <li><a href="#strengths">Strengths</a></li>
+    <li><a href="#fix-priority">Recommended Fix Priority</a></li>
+  </ul>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="critical">Critical Findings</h2>
+
+<div class="finding finding-critical">
+  <span class="tag tag-critical">Critical</span><span class="tag tag-layer">Infrastructure</span>
+  <div class="finding-title">C-1: CancelAsync and RetryStepAsync are silent no-ops returning Success</div>
+  <div class="finding-file">Infrastructure.AI/Planner/PlanExecutor.cs:71-81</div>
+  <div class="finding-body">Both methods log a message and return <code>Result.Success()</code> without doing anything. Callers (CQRS handlers) believe the operation succeeded. A user invoking Cancel on a running plan would receive a success response while the plan continues executing.</div>
+  <div class="finding-fix"><strong>Fix:</strong> Return <code>Result.Fail("Not yet implemented")</code> or implement actual cancellation via the per-plan <code>CancellationTokenSource</code>.</div>
+</div>
+
+<div class="finding finding-critical">
+  <span class="tag tag-critical">Critical</span><span class="tag tag-layer">Infrastructure</span>
+  <div class="finding-title">C-2: Double version increment — interceptor + manual entity.Version++</div>
+  <div class="finding-file">Infrastructure.AI/Planner/EfCorePlanStateStore.cs:143,261,295 + Persistence/SqliteVersionInterceptor.cs:40-57</div>
+  <div class="finding-body"><code>EfCorePlanStateStore</code> manually increments <code>entity.Version++</code> in 3 places. <code>SqliteVersionInterceptor</code> also increments Version on all modified entities during <code>SavingChanges</code>. Every save increments by 2, breaking optimistic concurrency — the WHERE clause uses the original value, causing silent version drift.</div>
+  <div class="finding-fix"><strong>Fix:</strong> Remove all <code>entity.Version++</code> lines from <code>EfCorePlanStateStore</code>. Let the interceptor handle it exclusively.</div>
+</div>
+
+<div class="finding finding-critical">
+  <span class="tag tag-critical">Critical</span><span class="tag tag-layer">Infrastructure</span>
+  <div class="finding-title">C-3: AllowedExpressionRegex contradicts IsExpressionSafe dot rejection</div>
+  <div class="finding-file">Infrastructure.AI/Planner/StepExecutors/ConditionalBranchStepExecutor.cs:72-84, 237</div>
+  <div class="finding-body">Line 77 rejects expressions containing <code>.</code>, but <code>AllowedExpressionRegex</code> at line 237 includes <code>\.</code> in its character class. The <code>UnsafeExpressionRegex</code> checks for patterns like <code>System\.</code> which can never match because dot rejection happens first — making the entire unsafe pattern check dead code. The security boundary is incoherent.</div>
+  <div class="finding-fix"><strong>Fix:</strong> Remove <code>\.</code> from <code>AllowedExpressionRegex</code>. Remove <code>System\.</code> etc. from <code>UnsafeExpressionRegex</code> (dead code). Or restructure so safety checks are coherent.</div>
+</div>
+
+<div class="finding finding-critical">
+  <span class="tag tag-critical">Critical</span><span class="tag tag-security">Security</span>
+  <div class="finding-title">C-4: Operator precedence bug in conditional evaluator</div>
+  <div class="finding-file">Infrastructure.AI/Planner/StepExecutors/ConditionalBranchStepExecutor.cs:120-140</div>
+  <div class="finding-body">Code splits on <code>&amp;&amp;</code> first (calling it "lower precedence") then <code>||</code>. But <code>&amp;&amp;</code> has HIGHER precedence than <code>||</code>. Expression <code>a || b &amp;&amp; c</code> evaluates as <code>(a || b) &amp;&amp; c</code> instead of <code>a || (b &amp;&amp; c)</code>. This will produce wrong branch decisions in plans with compound conditions.</div>
+  <div class="finding-fix"><strong>Fix:</strong> Swap: split on <code>||</code> first (lower precedence, <code>.Any()</code>), then <code>&amp;&amp;</code> (higher precedence, <code>.All()</code>).</div>
+</div>
+
+<div class="finding finding-critical">
+  <span class="tag tag-critical">Critical</span><span class="tag tag-security">Security</span>
+  <div class="finding-title">C-5: Command injection via unsanitized Arguments in ProcessSandboxExecutor</div>
+  <div class="finding-file">Infrastructure.AI/Sandbox/ProcessSandboxExecutor.cs:118-119</div>
+  <div class="finding-body"><code>AllowedPrograms</code> check validates the executable name but <code>request.Arguments</code> is passed directly to <code>ProcessStartInfo.Arguments</code> without sanitization. Shell metacharacters (<code>&amp;</code>, <code>|</code>, <code>;</code>) in Arguments can inject arbitrary commands. Same class of issue in <code>DockerSandboxExecutor.cs:153-157</code> where Arguments is passed as a single Docker Cmd entry.</div>
+  <div class="finding-fix"><strong>Fix:</strong> Switch to <code>ProcessStartInfo.ArgumentList</code> (separate entries, no shell interpretation). Change <code>SandboxExecutionRequest.Arguments</code> from <code>string?</code> to <code>IReadOnlyList&lt;string&gt;?</code>.</div>
+</div>
+
+<div class="finding finding-critical">
+  <span class="tag tag-critical">Critical</span><span class="tag tag-security">Security</span>
+  <div class="finding-title">C-6: AllowedPrograms bypass — open by default when list is empty</div>
+  <div class="finding-file">Infrastructure.AI/Sandbox/ProcessSandboxExecutor.cs:107-109</div>
+  <div class="finding-body">When <code>AllowedPrograms</code> is empty (the default), the check is skipped entirely — any executable can launch. For a security boundary, this should be closed-by-default: empty allowlist = refuse execution.</div>
+  <div class="finding-fix"><strong>Fix:</strong> If <code>AllowedPrograms.Count == 0</code>, throw <code>UnauthorizedAccessException</code>.</div>
+</div>
+
+<div class="finding finding-critical">
+  <span class="tag tag-critical">Critical</span><span class="tag tag-layer">Tests</span>
+  <div class="finding-title">C-7: No tests for command injection, sandbox bypass, or HMAC weak keys</div>
+  <div class="finding-file">Multiple test files</div>
+  <div class="finding-body">Security-critical paths have zero adversarial test coverage:
+    <ul style="margin-top:0.5rem;padding-left:1.5rem">
+      <li>No command injection tests for ProcessSandboxExecutor or DockerSandboxExecutor</li>
+      <li>No test for sandbox-disabled capability bypass</li>
+      <li>No HMAC weak key rejection test (key &lt; 32 bytes)</li>
+      <li>No AllowedPrograms enforcement tests</li>
+      <li>No Docker container escape vector tests (--privileged flag, PID namespace)</li>
+    </ul>
+  </div>
+  <div class="finding-fix"><strong>Fix:</strong> Add adversarial tests for each vector before production deployment.</div>
+</div>
+
+<div class="finding finding-critical">
+  <span class="tag tag-critical">Critical</span><span class="tag tag-layer">Tests</span>
+  <div class="finding-title">C-8: Retry/backoff system entirely untested at integration level</div>
+  <div class="finding-file">Infrastructure.AI.Tests/Planner/PlanExecutorTests.cs</div>
+  <div class="finding-body">Every PlanExecutor test uses <code>RetryPolicy { MaxRetries = 0 }</code>. Zero testing of: steps that fail and retry, exponential backoff delays, <code>OnExhausted = SkipStep</code> behavior, or <code>AttemptCount</code> incrementing. The entire retry subsystem is untested.</div>
+  <div class="finding-fix"><strong>Fix:</strong> Add tests with <code>MaxRetries &gt; 0</code>, a step executor that fails N times then succeeds, and verify attempt counts + delays.</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="high-security">High — Security</h2>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-security">Security</span>
+  <div class="finding-title">H-S1: Attestation FailureReason leaks internal details</div>
+  <div class="finding-file">Infrastructure.AI/Attestation/HmacAttestationService.cs:88, EfCoreAttestationStore.cs:50</div>
+  <div class="finding-body">Exception messages (paths, stack info) stored in attestation records persisted to DB. <code>"Docker error: {ex.Message}"</code> and <code>"Execution failed: {ex.Message}"</code> leak internals to records that may be surfaced to agents.</div>
+  <div class="finding-fix"><strong>Fix:</strong> Hash/sanitize failure reasons. Store full details in internal audit log, not attestation record.</div>
+</div>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-security">Security</span>
+  <div class="finding-title">H-S2: Docker workspace always mounted read-write, ignoring permission profile</div>
+  <div class="finding-file">Infrastructure.AI/Sandbox/DockerSandboxExecutor.cs:170</div>
+  <div class="finding-body"><code>Binds = [$"{workspaceDir}:/workspace:rw"]</code> — AllowedPaths/DeniedPaths from ToolPermissionProfile are never consulted. A read-only tool gets write access.</div>
+  <div class="finding-fix"><strong>Fix:</strong> Check <code>RequiredCapabilities.HasFlag(ToolCapability.FileWrite)</code> to decide <code>:rw</code> vs <code>:ro</code>.</div>
+</div>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-security">Security</span>
+  <div class="finding-title">H-S3: No CPU limit enforcement in Docker containers</div>
+  <div class="finding-file">Infrastructure.AI/Sandbox/DockerSandboxExecutor.cs:162-175</div>
+  <div class="finding-body"><code>HostConfig</code> sets Memory and PidsLimit but not NanoCPUs/CpuPeriod/CpuQuota. <code>ResourceLimits.CpuTimeSeconds</code> is ignored for Docker — containers get unlimited CPU.</div>
+</div>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-security">Security</span>
+  <div class="finding-title">H-S4: Hardcoded Postgres credentials in template appsettings.json</div>
+  <div class="finding-file">Presentation.AgentHub/appsettings.json:279, Presentation.ConsoleUI/appsettings.json:207</div>
+  <div class="finding-body"><code>"Password=observability"</code> in connection strings. Template consumers will copy this. Violates project security rules.</div>
+  <div class="finding-fix"><strong>Fix:</strong> Replace with <code>"PLACEHOLDER -- set via user-secrets"</code>.</div>
+</div>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-security">Security</span>
+  <div class="finding-title">H-S5: Attestation replay protection absent</div>
+  <div class="finding-file">Infrastructure.AI/Attestation/HmacAttestationService.cs</div>
+  <div class="finding-body"><code>VerifyAsync</code> checks HMAC signature but no timestamp freshness or nonce uniqueness. A 6-month-old attestation verifies as valid. Same attestation can be presented multiple times.</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="high-correctness">High — Correctness &amp; Design</h2>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-layer">Infrastructure</span>
+  <div class="finding-title">H-D1: Static PlanLocks dictionary leaks SemaphoreSlim forever</div>
+  <div class="finding-file">Infrastructure.AI/Planner/PlanExecutor.cs:26</div>
+  <div class="finding-body"><code>ConcurrentDictionary&lt;PlanId, SemaphoreSlim&gt; PlanLocks</code> never removes entries. Each plan execution adds one that persists for process lifetime. Unbounded memory leak in long-running services.</div>
+</div>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-layer">Infrastructure</span>
+  <div class="finding-title">H-D2: ErrorRecovery.Escalate falls through without escalation</div>
+  <div class="finding-file">Infrastructure.AI/Planner/PlanExecutor.cs:339-340</div>
+  <div class="finding-body"><code>Escalate</code> case falls through with <code>FailStep</code> behavior. <code>_escalationService</code> is injected but never called in PlanExecutor.</div>
+</div>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-layer">Infrastructure</span>
+  <div class="finding-title">H-D3: UpdateStepStateAsync Result is fire-and-forget</div>
+  <div class="finding-file">Infrastructure.AI/Planner/PlanExecutor.cs:469</div>
+  <div class="finding-body"><code>TransitionStepAsync</code> calls <code>await _stateStore.UpdateStepStateAsync()</code> but never checks the Result. Persistence failures cause silent in-memory/DB state divergence.</div>
+</div>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-layer">Infrastructure</span>
+  <div class="finding-title">H-D4: ListPlansAsync applies status filter in-memory after materializing 100 entities</div>
+  <div class="finding-file">Infrastructure.AI/Planner/EfCorePlanStateStore.cs:358-389</div>
+  <div class="finding-body">Eager-loads Steps + ExecutionState + Edges for 100 plans, then filters status in memory. Sorting also in memory instead of query.</div>
+</div>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-layer">Presentation</span>
+  <div class="finding-title">H-D5: Missing Options binding — config values silently ignored at runtime</div>
+  <div class="finding-file">Infrastructure.AI/DependencyInjection.cs</div>
+  <div class="finding-body"><code>LlmPlanGeneratorService</code> takes <code>IOptionsMonitor&lt;PlannerOptions&gt;</code> and <code>DockerSandboxExecutor</code> takes <code>IOptionsMonitor&lt;SandboxOptions&gt;</code>, but neither is bound to a config section via <code>services.Configure&lt;T&gt;()</code>. All appsettings.json values for Planner and Sandbox are silently ignored — defaults used instead.</div>
+  <div class="finding-fix"><strong>Fix:</strong> Add <code>services.Configure&lt;PlannerOptions&gt;(configuration.GetSection("AppConfig:AI:Planner"))</code> and equivalent for SandboxOptions.</div>
+</div>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-layer">Application</span>
+  <div class="finding-title">H-D6: Duplicate SandboxOptions class across layers</div>
+  <div class="finding-file">Application.AI.Common/Models/Sandbox/SandboxOptions.cs + Domain.Common/Config/AI/Sandbox/SandboxOptions.cs</div>
+  <div class="finding-body">Two classes named <code>SandboxOptions</code> with overlapping concerns. Both bind from "AI:Sandbox". Creates ambiguity for template consumers about which to configure and risks binding collisions.</div>
+</div>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-layer">Application</span>
+  <div class="finding-title">H-D7: CapabilityEnforcer depends on concrete class, not interface</div>
+  <div class="finding-file">Application.AI.Common/Services/Sandbox/CapabilityEnforcer.cs:14</div>
+  <div class="finding-body">Constructor takes <code>ToolPermissionProfileResolver</code> (concrete) instead of an interface. Violates DI conventions. Makes CapabilityEnforcer hard to test in isolation.</div>
+</div>
+
+<div class="finding finding-high">
+  <span class="tag tag-high">High</span><span class="tag tag-layer">Style</span>
+  <div class="finding-title">H-D8: 4 files exceed 400-line limit</div>
+  <div class="finding-body">
+    <table>
+      <tr><th>File</th><th>Lines</th><th>Limit</th></tr>
+      <tr><td>PlanExecutor.cs</td><td>621</td><td>400</td></tr>
+      <tr><td>AgUiEvents.cs</td><td>555</td><td>400</td></tr>
+      <tr><td>DependencyInjection.cs (Infra.AI)</td><td>474</td><td>400</td></tr>
+      <tr><td>EfCorePlanStateStore.cs</td><td>437</td><td>400</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="medium">Medium Findings (Selected Highlights)</h2>
+
+<div class="finding finding-medium">
+  <span class="tag tag-medium">Medium</span>
+  <div class="finding-title">M-1: SandboxConfig vs SandboxOptions dual-config with duplicate ToolOverrides</div>
+  <div class="finding-body">Both config classes have a <code>ToolOverrides</code> dictionary of the same type. Ambiguous which wins at runtime. Template consumers will be confused.</div>
+</div>
+
+<div class="finding finding-medium">
+  <span class="tag tag-medium">Medium</span>
+  <div class="finding-title">M-2: "default-approver" magic string in HumanGateConfig</div>
+  <div class="finding-body"><code>Approvers = ["default-approver"]</code> is a magic string. No validation that approvers exist. A gate with a non-existent approver blocks indefinitely.</div>
+</div>
+
+<div class="finding finding-medium">
+  <span class="tag tag-medium">Medium</span>
+  <div class="finding-title">M-3: Missing validators — SystemPrompt, Approvers list, ConditionalBranch same-target</div>
+  <div class="finding-body"><code>LlmCallConfigValidator</code> skips SystemPrompt validation. <code>HumanGateConfigValidator</code> doesn't check Approvers is non-empty. <code>ConditionalBranchConfigValidator</code> doesn't check TrueEdge != FalseEdge.</div>
+</div>
+
+<div class="finding finding-medium">
+  <span class="tag tag-medium">Medium</span>
+  <div class="finding-title">M-4: Race condition in WindowsProcessResourceLimiter._lastProcessId</div>
+  <div class="finding-body">Between reading <code>_lastProcessId</code> and accessing the manager from <code>_managers</code>, a concurrent <code>Apply</code> could dispose the manager. Use-after-dispose race.</div>
+</div>
+
+<div class="finding finding-medium">
+  <span class="tag tag-medium">Medium</span>
+  <div class="finding-title">M-5: EfCoreAttestationStore missing try/catch around JSON deserialization</div>
+  <div class="finding-body">Malformed attestation JSON or schema changes cause unhandled <code>JsonException</code>. No tests for this store at all.</div>
+</div>
+
+<div class="finding finding-medium">
+  <span class="tag tag-medium">Medium</span>
+  <div class="finding-title">M-6: LlmPlanOutputMapper.ParseEdgeType silently defaults unknown types to ControlFlow</div>
+  <div class="finding-body">Unlike <code>ParseStepType</code> which throws on unknowns, <code>ParseEdgeType</code> silently falls back. Malformed LLM output creates wrong DAG semantics.</div>
+</div>
+
+<div class="finding finding-medium">
+  <span class="tag tag-medium">Medium</span>
+  <div class="finding-title">M-7: Default duplication — MaxParallelSteps, PlanTimeout, MaxSubPlanDepth in 3 places</div>
+  <div class="finding-body">Same defaults in <code>PlanConfiguration</code>, <code>PlannerOptions</code>, and <code>PlanExecutionContext</code>. Will drift when someone changes one but not the others.</div>
+</div>
+
+<div class="finding finding-medium">
+  <span class="tag tag-medium">Medium</span>
+  <div class="finding-title">M-8: 11 AgUiEventType constants with no corresponding record types or JsonDerivedType</div>
+  <div class="finding-body">Reserved event types will fail silently on deserialization. Need <code>[Remarks]</code> documentation noting they're planned/reserved.</div>
+</div>
+
+<div class="finding finding-medium">
+  <span class="tag tag-medium">Medium</span>
+  <div class="finding-title">M-9: SandboxConfig registered via AddOptions without BindConfiguration</div>
+  <div class="finding-body"><code>services.AddOptions&lt;SandboxConfig&gt;()</code> creates empty defaults. appsettings.json values never reach the instance.</div>
+</div>
+
+<div class="finding finding-medium">
+  <span class="tag tag-medium">Medium</span>
+  <div class="finding-title">M-10: Inconsistent assertion libraries in tests (Assert vs FluentAssertions)</div>
+  <div class="finding-body">Some files use xUnit <code>Assert.*</code>, others use FluentAssertions <code>.Should()</code>, some mix both. Project convention favors FluentAssertions.</div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="strengths">Strengths</h2>
+
+<div class="strengths">
+  <h3>What's Done Well</h3>
+  <ul>
+    <li><strong>Immutability:</strong> Consistent <code>sealed record</code> usage across all domain models. <code>IReadOnlyList&lt;T&gt;</code> on all non-config public surfaces.</li>
+    <li><strong>XML Documentation:</strong> Comprehensive across nearly all public types and members — excellent for a template.</li>
+    <li><strong>Docker Hardening:</strong> <code>CapDrop: ALL</code>, <code>no-new-privileges</code>, <code>ReadonlyRootfs</code>, <code>User: 65534:65534</code>, network isolation. Textbook container security.</li>
+    <li><strong>HMAC Implementation:</strong> <code>HMACSHA256.HashData</code> (static), <code>FixedTimeEquals</code> for timing-safe comparison, <code>ZeroMemory</code> for cleanup. Versioned key rotation.</li>
+    <li><strong>Security Model:</strong> Deny-overrides-allow in CapabilityEnforcer. Path normalization with traversal detection. Host matching with port stripping.</li>
+    <li><strong>Clean CQRS:</strong> Consistent command/query/handler/validator triplets. Proper Result pattern throughout.</li>
+    <li><strong>Strongly-typed IDs:</strong> <code>PlanId</code> and <code>PlanStepId</code> prevent primitive obsession.</li>
+    <li><strong>EF Core:</strong> Proper <code>IDbContextFactory</code> for short-lived contexts. Good entity configurations with value converters.</li>
+    <li><strong>Keyed DI:</strong> Step executors registered with <code>StepType</code> enum keys, following established project patterns.</li>
+    <li><strong>Test Volume:</strong> ~5,600 lines of tests across 37 files covering most happy paths and basic error cases.</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="fix-priority">Recommended Fix Priority</h2>
+
+<h3>Tier 1: Must Fix Before Merge (Correctness + Security)</h3>
+<ol class="priority-list">
+  <li><strong>C-4:</strong> Fix operator precedence in ConditionalBranchStepExecutor (wrong branch decisions)</li>
+  <li><strong>C-2:</strong> Remove manual <code>entity.Version++</code> — let interceptor handle (concurrency corruption)</li>
+  <li><strong>C-1:</strong> Return <code>Result.Fail</code> from unimplemented Cancel/Retry (silent data loss)</li>
+  <li><strong>C-5:</strong> Switch to <code>ArgumentList</code> in both sandbox executors (command injection)</li>
+  <li><strong>C-6:</strong> Closed-by-default AllowedPrograms (sandbox bypass)</li>
+  <li><strong>H-D5:</strong> Add missing Options bindings for PlannerOptions/SandboxOptions (config ignored)</li>
+</ol>
+
+<h3>Tier 2: Fix Before Production Deploy</h3>
+<ol class="priority-list">
+  <li><strong>H-S2:</strong> Docker mount respects read/write permissions from profile</li>
+  <li><strong>H-S3:</strong> Docker CPU limit enforcement</li>
+  <li><strong>H-D1:</strong> SemaphoreSlim cleanup in PlanLocks</li>
+  <li><strong>H-D3:</strong> Check UpdateStepStateAsync Result</li>
+  <li><strong>H-S4:</strong> Remove hardcoded Postgres credentials from template configs</li>
+  <li><strong>C-7/C-8:</strong> Add missing security and retry test coverage</li>
+</ol>
+
+<h3>Tier 3: Fix Before GA / Template Release</h3>
+<ol class="priority-list">
+  <li><strong>H-D6:</strong> Consolidate duplicate SandboxOptions class</li>
+  <li><strong>H-D7:</strong> Extract IToolPermissionProfileResolver interface</li>
+  <li><strong>H-D8:</strong> Split oversized files (PlanExecutor, AgUiEvents, DI, StateStore)</li>
+  <li><strong>H-D2:</strong> Wire ErrorRecovery.Escalate to _escalationService</li>
+  <li>All MEDIUM validation gaps (M-2, M-3, M-6)</li>
+  <li><strong>M-9:</strong> Bind SandboxConfig to configuration section</li>
+</ol>
+
+<hr style="margin:3rem 0 1rem;border-color:var(--border)">
+<p style="color:var(--text-muted);font-size:0.8rem;">Generated by 6 parallel code-reviewer agents &bull; Claude Opus 4.6 &bull; 2026-05-18</p>
+
+</div>
+</body>
+</html>

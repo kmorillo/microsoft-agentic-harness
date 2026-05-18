@@ -140,7 +140,7 @@ public sealed class EfCorePlanStateStore : IPlanStateStore
         entity.AttestationJson = state.Attestation is not null
             ? JsonSerializer.Serialize(state.Attestation, JsonOptions)
             : null;
-        entity.Version++;
+        // Version incremented by SqliteVersionInterceptor on save
 
         var step = await ctx.PlanSteps
             .AsNoTracking()
@@ -258,7 +258,7 @@ public sealed class EfCorePlanStateStore : IPlanStateStore
             entity.AttestationJson = state.Attestation is not null
                 ? JsonSerializer.Serialize(state.Attestation, JsonOptions)
                 : null;
-            entity.Version++;
+            // Version incremented by SqliteVersionInterceptor on save
         }
 
         ctx.PlanExecutionLogs.Add(new PlanExecutionLogEntity
@@ -292,7 +292,7 @@ public sealed class EfCorePlanStateStore : IPlanStateStore
         foreach (var entity in entities.Where(e => e.Status == StepExecutionStatus.Running))
         {
             entity.Status = StepExecutionStatus.Ready;
-            entity.Version++;
+            // Version incremented by SqliteVersionInterceptor on save
         }
 
         ctx.PlanExecutionLogs.Add(new PlanExecutionLogEntity
@@ -304,19 +304,7 @@ public sealed class EfCorePlanStateStore : IPlanStateStore
 
         await ctx.SaveChangesAsync(ct);
 
-        var stateMap = entities.ToDictionary(
-            e => new PlanStepId(e.StepId),
-            e => new StepExecutionState
-            {
-                StepId = new PlanStepId(e.StepId),
-                Status = e.Status,
-                AttemptCount = e.AttemptCount,
-                StartedAt = e.StartedAt,
-                CompletedAt = e.CompletedAt,
-                Output = e.Output,
-                ErrorMessage = e.ErrorMessage,
-                Attestation = DeserializeAttestation(e.AttestationJson),
-            });
+        var stateMap = MapToStepStateDictionary(entities);
 
         _logger.LogInformation("Resumed plan {PlanId}, {StateCount} step states loaded", planId.Value, stateMap.Count);
         return Result<IReadOnlyDictionary<PlanStepId, StepExecutionState>>.Success(stateMap);
@@ -337,21 +325,8 @@ public sealed class EfCorePlanStateStore : IPlanStateStore
             return Result<IReadOnlyDictionary<PlanStepId, StepExecutionState>>.Success(
                 new Dictionary<PlanStepId, StepExecutionState>());
 
-        var stateMap = entities.ToDictionary(
-            e => new PlanStepId(e.StepId),
-            e => new StepExecutionState
-            {
-                StepId = new PlanStepId(e.StepId),
-                Status = e.Status,
-                AttemptCount = e.AttemptCount,
-                StartedAt = e.StartedAt,
-                CompletedAt = e.CompletedAt,
-                Output = e.Output,
-                ErrorMessage = e.ErrorMessage,
-                Attestation = DeserializeAttestation(e.AttestationJson),
-            });
-
-        return Result<IReadOnlyDictionary<PlanStepId, StepExecutionState>>.Success(stateMap);
+        return Result<IReadOnlyDictionary<PlanStepId, StepExecutionState>>.Success(
+            MapToStepStateDictionary(entities));
     }
 
     /// <inheritdoc />
@@ -374,17 +349,17 @@ public sealed class EfCorePlanStateStore : IPlanStateStore
         if (to.HasValue)
             query = query.Where(g => g.CreatedAt <= to.Value);
 
-        var entities = await query.Take(100).ToListAsync(ct);
-        entities = entities.OrderByDescending(g => g.CreatedAt).ToList();
-
         if (statusFilter.HasValue)
-        {
-            entities = entities
-                .Where(g => g.Steps.Any(s => s.ExecutionState?.Status == statusFilter.Value))
-                .ToList();
-        }
+            query = query.Where(g => g.Steps.Any(s => s.ExecutionState != null && s.ExecutionState.Status == statusFilter.Value));
 
-        var plans = entities.Select(MapToDomain).ToList();
+        var entities = await query
+            .Take(100)
+            .ToListAsync(ct);
+
+        var plans = entities
+            .OrderByDescending(e => e.CreatedAt)
+            .Select(MapToDomain)
+            .ToList();
         return Result<IReadOnlyList<PlanGraph>>.Success(plans);
     }
 
@@ -419,6 +394,22 @@ public sealed class EfCorePlanStateStore : IPlanStateStore
             ParentPlanId = entity.ParentPlanId.HasValue ? new PlanId(entity.ParentPlanId.Value) : null,
         };
     }
+
+    private static StepExecutionState MapToStepState(StepExecutionStateEntity e) => new()
+    {
+        StepId = new PlanStepId(e.StepId),
+        Status = e.Status,
+        AttemptCount = e.AttemptCount,
+        StartedAt = e.StartedAt,
+        CompletedAt = e.CompletedAt,
+        Output = e.Output,
+        ErrorMessage = e.ErrorMessage,
+        Attestation = DeserializeAttestation(e.AttestationJson),
+    };
+
+    private static Dictionary<PlanStepId, StepExecutionState> MapToStepStateDictionary(
+        IEnumerable<StepExecutionStateEntity> entities)
+        => entities.ToDictionary(e => new PlanStepId(e.StepId), MapToStepState);
 
     private static ToolExecutionAttestation? DeserializeAttestation(string? json)
     {

@@ -23,6 +23,15 @@ public sealed record SandboxExecutionRequest
     /// <summary>Executable to launch. Falls back to <see cref="ToolName"/> if null.</summary>
     public string? Command { get; init; }
 
-    /// <summary>Command-line arguments for the subprocess.</summary>
+    /// <summary>
+    /// Command-line arguments as individual entries. Preferred over <see cref="Arguments"/>
+    /// because each entry is passed directly without shell interpretation, preventing injection.
+    /// </summary>
+    public IReadOnlyList<string>? ArgumentList { get; init; }
+
+    /// <summary>
+    /// Command-line arguments as a single string. Deprecated — use <see cref="ArgumentList"/>
+    /// to avoid shell metacharacter injection. Ignored when <see cref="ArgumentList"/> is set.
+    /// </summary>
     public string? Arguments { get; init; }
 }

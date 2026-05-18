@@ -57,9 +57,6 @@ public sealed class ToolUseStepExecutor : IPlanStepExecutor
             };
         }
 
-        await _notifier.NotifyStepStartedAsync(
-            _executionContext.CurrentPlanId ?? new PlanId(Guid.Empty), step.Id, step.Name, StepType.ToolUse, ct);
-
         var profile = await _capabilityEnforcer.ResolveProfileAsync(config.ToolName, ct);
         var isolationLevel = DetermineIsolation(config, profile, step);
 

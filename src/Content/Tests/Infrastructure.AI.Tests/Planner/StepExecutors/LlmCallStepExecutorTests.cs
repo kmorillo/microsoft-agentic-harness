@@ -115,19 +115,4 @@ public sealed class LlmCallStepExecutorTests
         Assert.Equal("Summarize.", captured!.SystemPrompt);
         Assert.Contains("upstream data", captured.UserMessages);
     }
-
-    [Fact]
-    public async Task ExecuteAsync_NotifiesStepStarted()
-    {
-        var config = new LlmCallConfig { SystemPrompt = "Test.", ModelDeploymentKey = "gpt-4" };
-        var step = CreateStep(config);
-
-        _sender.Setup(s => s.Send(It.IsAny<RunConversationCommand>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ConversationResult { Success = true, FinalResponse = "ok", Turns = [] });
-
-        await _sut.ExecuteAsync(step, new Dictionary<PlanStepId, string>(), CancellationToken.None);
-
-        _notifier.Verify(n => n.NotifyStepStartedAsync(
-            _context.CurrentPlanId!.Value, step.Id, step.Name, StepType.LlmCall, It.IsAny<CancellationToken>()), Times.Once);
-    }
 }

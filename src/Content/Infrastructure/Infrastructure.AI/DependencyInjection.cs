@@ -271,6 +271,15 @@ public static class DependencyInjection
         RegisterPlannerServices(services);
         RegisterSandboxServices(services);
 
+        services.AddOptions<Planner.PlannerOptions>()
+            .Configure<IOptionsMonitor<AppConfig>>((opts, app) =>
+            {
+                var cfg = app.CurrentValue.AI.AgentFramework;
+                if (!string.IsNullOrEmpty(cfg.DefaultDeployment))
+                    opts.GenerationModel = cfg.DefaultDeployment;
+                opts.ClientType = cfg.ClientType;
+            });
+
         return services;
     }
 

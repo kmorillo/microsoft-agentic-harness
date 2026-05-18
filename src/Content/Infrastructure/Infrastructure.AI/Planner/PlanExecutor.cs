@@ -65,19 +65,21 @@ public sealed class PlanExecutor : IPlanExecutor
         finally
         {
             planLock.Release();
+            if (planLock.CurrentCount == 1 && PlanLocks.TryRemove(planId, out var removed))
+                removed.Dispose();
         }
     }
 
     public Task<Result> CancelAsync(PlanId planId, CancellationToken ct)
     {
         _logger.LogInformation("Plan {PlanId} cancellation requested", planId);
-        return Task.FromResult(Result.Success());
+        return Task.FromResult(Result.Fail("Plan cancellation is not yet implemented."));
     }
 
     public Task<Result> RetryStepAsync(PlanId planId, PlanStepId stepId, CancellationToken ct)
     {
         _logger.LogInformation("Retry requested for step {StepId} in plan {PlanId}", stepId, planId);
-        return Task.FromResult(Result.Success());
+        return Task.FromResult(Result.Fail("Step retry is not yet implemented."));
     }
 
     private async Task<Result<PlanExecutionSummary>> ExecuteCoreAsync(PlanId planId, PlanExecutionContext context, CancellationToken ct)
@@ -466,7 +468,9 @@ public sealed class PlanExecutor : IPlanExecutor
         };
 
         stepStates[stepId] = newState;
-        await _stateStore.UpdateStepStateAsync(newState, ct);
+        var updateResult = await _stateStore.UpdateStepStateAsync(newState, ct);
+        if (!updateResult.IsSuccess)
+            _logger.LogError("Failed to persist state for step {StepId}: {Errors}", stepId, string.Join(", ", updateResult.Errors));
         await _notifier.NotifyStateUpdateAsync(planId, stepId, previousStatus, newStatus, ct);
     }
 

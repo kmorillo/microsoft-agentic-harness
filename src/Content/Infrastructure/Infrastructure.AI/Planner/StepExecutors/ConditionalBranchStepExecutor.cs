@@ -126,17 +126,17 @@ public sealed partial class ConditionalBranchStepExecutor : IPlanStepExecutor
             .Replace(" OR ", " || ", StringComparison.OrdinalIgnoreCase)
             .Replace("NOT ", "!", StringComparison.OrdinalIgnoreCase);
 
-        // Split on && first (lower precedence), then ||
-        if (normalized.Contains("&&"))
-        {
-            var parts = SplitRespectingParens(normalized, "&&");
-            return parts.All(p => EvaluateCondition(p.Trim(), context, depth + 1));
-        }
-
+        // Split on || first (lower precedence), then &&
         if (normalized.Contains("||"))
         {
             var parts = SplitRespectingParens(normalized, "||");
             return parts.Any(p => EvaluateCondition(p.Trim(), context, depth + 1));
+        }
+
+        if (normalized.Contains("&&"))
+        {
+            var parts = SplitRespectingParens(normalized, "&&");
+            return parts.All(p => EvaluateCondition(p.Trim(), context, depth + 1));
         }
 
         // Handle parentheses
@@ -231,9 +231,9 @@ public sealed partial class ConditionalBranchStepExecutor : IPlanStepExecutor
         return parts;
     }
 
-    [GeneratedRegex(@"(System\.|File\.|Process\.|Reflection\.|Assembly\.|Type\.|Activator\.|Marshal\.|unsafe|dynamic|typeof|nameof)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(unsafe|dynamic|typeof|nameof)", RegexOptions.IgnoreCase)]
     private static partial Regex UnsafeExpressionRegex();
 
-    [GeneratedRegex(@"^[\w\s\.\(\)>=<!&|""\d\-\+\*\/]+$")]
+    [GeneratedRegex(@"^[\w\s\(\)>=<!&|""\d\-\+\*\/]+$")]
     private static partial Regex AllowedExpressionRegex();
 }

@@ -122,23 +122,4 @@ public sealed class HumanGateStepExecutorTests
         Assert.True(argValue.Length <= 203);
         Assert.EndsWith("...", argValue);
     }
-
-    [Fact]
-    public async Task ExecuteAsync_NotifiesStepStarted()
-    {
-        _escalationService.Setup(s => s.QueueEscalationAsync(It.IsAny<EscalationRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Guid.NewGuid());
-
-        var config = new HumanGateConfig
-        {
-            EscalationMessage = "Approve?",
-            ApprovalStrategy = ApprovalStrategy.AnyOf
-        };
-        var step = CreateStep(config);
-
-        await _sut.ExecuteAsync(step, new Dictionary<PlanStepId, string>(), CancellationToken.None);
-
-        _notifier.Verify(n => n.NotifyStepStartedAsync(
-            _context.CurrentPlanId!.Value, step.Id, step.Name, StepType.HumanGate, It.IsAny<CancellationToken>()), Times.Once);
-    }
 }

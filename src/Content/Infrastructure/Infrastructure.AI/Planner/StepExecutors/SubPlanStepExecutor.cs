@@ -62,9 +62,6 @@ public sealed class SubPlanStepExecutor : IPlanStepExecutor
             };
         }
 
-        await _notifier.NotifyStepStartedAsync(
-            _executionContext.CurrentPlanId ?? new PlanId(Guid.Empty), step.Id, step.Name, StepType.SubPlanInvocation, ct);
-
         var childPlanId = await ResolveChildPlanId(config, ct);
         if (childPlanId is null)
         {

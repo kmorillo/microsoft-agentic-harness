@@ -150,11 +150,15 @@ public sealed class DockerSandboxExecutor : ISandboxExecutor
         var hasNetworkAccess = request.PermissionProfile.RequiredCapabilities
             .HasFlag(ToolCapability.NetworkAccess);
 
-        var cmd = request.Command != null
-            ? string.IsNullOrEmpty(request.Arguments)
-                ? [request.Command]
-                : new List<string> { request.Command, request.Arguments }
-            : null;
+        List<string>? cmd = null;
+        if (request.Command is not null)
+        {
+            cmd = [request.Command];
+            if (request.ArgumentList is { Count: > 0 })
+                cmd.AddRange(request.ArgumentList);
+            else if (!string.IsNullOrEmpty(request.Arguments))
+                cmd.Add(request.Arguments);
+        }
 
         return new CreateContainerParameters
         {
@@ -167,7 +171,9 @@ public sealed class DockerSandboxExecutor : ISandboxExecutor
                 NetworkMode = hasNetworkAccess ? "bridge" : "none",
                 ReadonlyRootfs = true,
                 AutoRemove = false,
-                Binds = [$"{workspaceDir}:/workspace:rw"],
+                Binds = [request.PermissionProfile.RequiredCapabilities.HasFlag(ToolCapability.FileWrite)
+                    ? $"{workspaceDir}:/workspace:rw"
+                    : $"{workspaceDir}:/workspace:ro"],
                 PidsLimit = request.Limits.MaxSubprocesses,
                 SecurityOpt = ["no-new-privileges:true"],
                 CapDrop = ["ALL"]

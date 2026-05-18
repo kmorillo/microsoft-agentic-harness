@@ -49,9 +49,6 @@ public sealed class HumanGateStepExecutor : IPlanStepExecutor
             };
         }
 
-        await _notifier.NotifyStepStartedAsync(
-            _executionContext.CurrentPlanId ?? new PlanId(Guid.Empty), step.Id, step.Name, StepType.HumanGate, ct);
-
         var request = new EscalationRequest
         {
             EscalationId = Guid.NewGuid(),

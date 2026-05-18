@@ -62,9 +62,6 @@ public sealed class LlmCallStepExecutor : IPlanStepExecutor
             }
         };
 
-        await _notifier.NotifyStepStartedAsync(
-            _executionContext.CurrentPlanId ?? new PlanId(Guid.Empty), step.Id, step.Name, StepType.LlmCall, ct);
-
         var result = await _sender.Send(command, ct);
         sw.Stop();
 

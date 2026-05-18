@@ -104,8 +104,11 @@ public sealed class ProcessSandboxExecutor : ISandboxExecutor
     {
         var command = request.Command ?? request.ToolName;
 
-        if (request.PermissionProfile.AllowedPrograms.Count > 0
-            && !request.PermissionProfile.AllowedPrograms.Contains(
+        if (request.PermissionProfile.AllowedPrograms.Count == 0)
+            throw new UnauthorizedAccessException(
+                "No allowed programs configured in the permission profile. Sandbox is closed-by-default.");
+
+        if (!request.PermissionProfile.AllowedPrograms.Contains(
                 command, StringComparer.OrdinalIgnoreCase))
         {
             throw new UnauthorizedAccessException(
@@ -115,7 +118,6 @@ public sealed class ProcessSandboxExecutor : ISandboxExecutor
         var psi = new ProcessStartInfo
         {
             FileName = command,
-            Arguments = request.Arguments ?? string.Empty,
             WorkingDirectory = workspaceDir,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -123,6 +125,16 @@ public sealed class ProcessSandboxExecutor : ISandboxExecutor
             UseShellExecute = false,
             CreateNoWindow = true
         };
+
+        if (request.ArgumentList is { Count: > 0 })
+        {
+            foreach (var arg in request.ArgumentList)
+                psi.ArgumentList.Add(arg);
+        }
+        else if (!string.IsNullOrEmpty(request.Arguments))
+        {
+            psi.Arguments = request.Arguments;
+        }
 
         var process = new Process { StartInfo = psi };
         process.Start();

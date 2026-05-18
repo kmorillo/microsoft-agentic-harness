@@ -143,7 +143,8 @@ public class ProcessSandboxExecutorTests : IDisposable
         Limits = new ResourceLimits(),
         PermissionProfile = new ToolPermissionProfile
         {
-            RequiredCapabilities = ToolCapability.None
+            RequiredCapabilities = ToolCapability.None,
+            AllowedPrograms = [command]
         },
         Command = command,
         Arguments = arguments,

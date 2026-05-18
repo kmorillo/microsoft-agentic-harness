@@ -245,7 +245,7 @@ public class DockerSandboxExecutorTests
 
         captured.Should().NotBeNull();
         captured!.HostConfig.Binds.Should().ContainSingle()
-            .Which.Should().EndWith(":/workspace:rw");
+            .Which.Should().EndWith(":/workspace:ro");
     }
 
     [Fact]
