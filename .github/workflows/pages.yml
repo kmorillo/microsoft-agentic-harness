@@ -1,7 +1,12 @@
-name: Deploy Onboarding Guide to GitHub Pages
+name: Deploy Documentation to GitHub Pages
 
-# Publishes documentation/onboarding/ as the project's GitHub Pages site.
-# Runs whenever the onboarding folder (or this workflow) changes on main.
+# Publishes two sites to GitHub Pages:
+#   /                          → documentation/onboarding/        (Developer Onboarding Guide)
+#   /agentic-harness-course/   → documentation/agentic-harness-course/ (Interactive Course)
+# This layout preserves the existing onboarding URL and matches the
+# relative link from onboarding → course (../agentic-harness-course/).
+#
+# Runs whenever either folder (or this workflow) changes on main.
 # Uses the modern "Pages from Actions" source — no gh-pages branch needed.
 #
 # After this workflow runs successfully for the first time, enable Pages in:
@@ -13,6 +18,7 @@ on:
     branches: [main]
     paths:
       - 'documentation/onboarding/**'
+      - 'documentation/agentic-harness-course/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -39,10 +45,20 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload onboarding folder as Pages artifact
+      - name: Stage site contents
+        # Onboarding lives at the site root; the interactive course is nested
+        # under /agentic-harness-course/ so the existing relative link from
+        # the onboarding guide resolves correctly.
+        run: |
+          mkdir -p _site
+          cp -R documentation/onboarding/. _site/
+          mkdir -p _site/agentic-harness-course
+          cp -R documentation/agentic-harness-course/. _site/agentic-harness-course/
+
+      - name: Upload site as Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: documentation/onboarding
+          path: _site
 
       - name: Deploy to GitHub Pages
         id: deployment
