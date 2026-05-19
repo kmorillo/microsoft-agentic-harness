@@ -131,20 +131,28 @@ public sealed class RagOrchestrator : IRagOrchestrator
                     complexity is null ? "null" : "ok",
                     decision is null ? "null" : "ok");
             }
-            else if (decision.SkipRetrieval)
-            {
-                _logger.LogInformation(
-                    "Complexity routing: skipping retrieval for {Complexity} query",
-                    decision.Complexity);
-                return new RagAssembledContext
-                {
-                    AssembledText = string.Empty,
-                    TotalTokens = 0,
-                    WasTruncated = false,
-                };
-            }
             else
             {
+                activity?.SetTag("rag.query.complexity", decision.Complexity.ToString().ToLowerInvariant());
+                activity?.SetTag("rag.query.skip_retrieval", decision.SkipRetrieval);
+                activity?.SetTag("rag.query.complexity_confidence", complexity.Confidence);
+                activity?.SetTag("rag.query.use_reranking", decision.UseReranking);
+                activity?.SetTag("rag.query.use_crag", decision.UseCragEvaluation);
+                activity?.SetTag("rag.query.effective_top_k", decision.TopK);
+
+                if (decision.SkipRetrieval)
+                {
+                    _logger.LogInformation(
+                        "Complexity routing: skipping retrieval for {Complexity} query",
+                        decision.Complexity);
+                    return new RagAssembledContext
+                    {
+                        AssembledText = string.Empty,
+                        TotalTokens = 0,
+                        WasTruncated = false,
+                    };
+                }
+
                 return await ExecuteRoutedPipelineAsync(query, decision, collectionName, cancellationToken);
             }
         }
