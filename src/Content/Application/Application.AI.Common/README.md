@@ -16,7 +16,7 @@ This project depends on Application.Common (pipeline behaviors, logging), Domain
                     └────────────┬────────────┘
                                  │
                     ┌────────────▼────────────┐
-                    │     Infrastructure.AI    │  (implements the 41 interfaces defined here)
+                    │     Infrastructure.AI    │  (implements the 51 interfaces defined here)
                     └────────────┬────────────┘
                                  │
         ┌────────────────────────┼──────────────────────────┐
@@ -34,7 +34,7 @@ This project depends on Application.Common (pipeline behaviors, logging), Domain
             └───────────────┘  └───────────────┘  └─────────────────┘
 ```
 
-This is an Application layer project, so it defines interfaces (contracts) and orchestration logic but never touches external services directly. It cannot reference HTTP clients, database connections, or AI SDK implementations -- only their abstractions. The 41 interfaces it defines are implemented by Infrastructure projects.
+This is an Application layer project, so it defines interfaces (contracts) and orchestration logic but never touches external services directly. It cannot reference HTTP clients, database connections, or AI SDK implementations -- only their abstractions. The 51 interfaces it defines are implemented by Infrastructure projects.
 
 ## Key Concepts
 
@@ -144,7 +144,7 @@ if (result.IsBlocked)
 
 Output screening happens at the agent orchestration loop level (after the LLM responds), since the pipeline behavior only has access to the typed *request*, not the generic response.
 
-### The 41 Interfaces
+### The 51 Interfaces
 
 The interface surface defines the contracts that Infrastructure must implement:
 
@@ -152,6 +152,7 @@ The interface surface defines the contracts that Infrastructure must implement:
 |----------|-----------|---------|
 | **Agent** | `IAgentFactory`, `IChatClientFactory`, `IAgentExecutionContext` | Agent creation and LLM client management |
 | **Agents** | `IAgentMailbox`, `ISubagentProfileRegistry`, `ISubagentToolResolver` | Inter-agent messaging, subagent orchestration |
+| **Attestation** | `IAttestationService`, `IAttestationStore` | HMAC-signed execution attestations and audit persistence |
 | **Compaction** | `IContextCompactionService`, `IAutoCompactStateMachine`, `ICompactionStrategyExecutor` | Context window reduction when budget exhausted |
 | **Config** | `IConfigDiscoveryService` | Filesystem config file discovery |
 | **Connectors** | `IConnectorClient`, `IConnectorClientFactory`, `ConnectorToolAdapter` | External service integrations as tools |
@@ -162,9 +163,11 @@ The interface surface defines the contracts that Infrastructure must implement:
 | **Memory** | `IAgentHistoryStore` | Conversation history persistence |
 | **MetaHarness** | `IEvaluationService`, `IHarnessProposer`, `ISnapshotBuilder` | Automated harness optimization |
 | **Permissions** | `IDenialTracker`, `IPatternMatcher`, `IPermissionRuleProvider`, `ISafetyGateRegistry` | Tool access control |
+| **Planner** | `IPlanExecutor`, `IPlanValidator`, `IPlanStateStore`, `IPlanProgressNotifier`, `IPlanStepExecutor`, `IPlanGenerator` | DAG-based plan execution, validation, persistence, and generation |
 | **Prompts** | `ISystemPromptComposer`, `IPromptSectionProvider`, `IPromptSectionCache`, `IPromptCacheTracker` | System prompt assembly and caching |
 | **RAG** | `IRagOrchestrator`, `IHybridRetriever`, `IVectorStore`, `IReranker`, `ICragEvaluator`, etc. | Full RAG pipeline (14 interfaces) |
 | **Safety** | `ITextContentSafetyService` | Content screening |
+| **Sandbox** | `ISandboxExecutor`, `ICapabilityEnforcer`, `IProcessResourceLimiter` | Sandboxed tool execution with capability-based permissions |
 | **Skills** | `ISkillContentProvider` | Skill resource loading |
 | **Tools** | `ITool`, `IToolConverter`, `IToolExecutionStrategy`, `IToolConcurrencyClassifier`, `IFileSystemService` | Tool abstraction and execution |
 | **Traces** | `IExecutionTraceStore`, `ITraceWriter` | Execution trace persistence |
@@ -201,7 +204,22 @@ Application.AI.Common/
 ├── Helpers/
 │   ├── PromptTemplateHelper.cs        # Mustache-style {{variable}} substitution
 │   └── TokenEstimationHelper.cs       # Approximate token counting
-├── Interfaces/                        # 41 contracts across 15 subdirectories
+├── Interfaces/                        # 51 contracts across 18 subdirectories
+│   ├── Attestation/
+│   │   ├── IAttestationService.cs     # HMAC sign/verify tool execution attestations
+│   │   └── IAttestationStore.cs       # Persist/retrieve attestations for audit trail
+│   ├── Planner/
+│   │   ├── IPlanExecutor.cs           # ExecuteAsync, CancelAsync, RetryStepAsync
+│   │   ├── IPlanValidator.cs          # DAG validation (cycles, reachability, edges)
+│   │   ├── IPlanStateStore.cs         # SavePlan, LoadPlan, UpdateStepState, Checkpoint, Resume
+│   │   ├── IPlanProgressNotifier.cs   # Real-time step/plan progress notifications
+│   │   ├── IPlanStepExecutor.cs       # Step-type-specific execution (keyed by StepType)
+│   │   └── IPlanGenerator.cs          # LLM-based plan generation from natural language
+│   ├── Sandbox/
+│   │   ├── ISandboxExecutor.cs        # Isolated tool execution (keyed by SandboxIsolationLevel)
+│   │   ├── ICapabilityEnforcer.cs     # Three-phase capability permission resolution
+│   │   └── IProcessResourceLimiter.cs # OS-level process resource limits (Job Objects)
+│   ├── ... (15 other subdirectories)
 ├── MediatRBehaviors/
 │   ├── AgentContextPropagationBehavior.cs  # Sets scoped agent identity
 │   ├── AuditTrailBehavior.cs          # Records who/what/when/outcome
@@ -256,6 +274,20 @@ Application.AI.Common/
 | `IRagOrchestrator` | Full RAG pipeline entry point | DocumentSearchTool, SearchDocumentsHandler |
 | `ITool` | Framework-independent tool contract | All tool implementations |
 | `IGovernancePolicyEngine` | Policy evaluation | GovernancePolicyBehavior |
+| **Planner** | | |
+| `IPlanExecutor` | DAG plan execution with checkpoint/resume | ExecutePlanCommandHandler |
+| `IPlanValidator` | Structural + semantic plan validation | PlanExecutor, CreatePlanCommandHandler |
+| `IPlanStateStore` | Plan persistence with optimistic concurrency | PlanExecutor, all Planner CQRS handlers |
+| `IPlanProgressNotifier` | Real-time plan/step progress events | PlanExecutor, Presentation layer |
+| `IPlanStepExecutor` | Step-type-specific execution (keyed DI) | PlanExecutor.Scheduling |
+| `IPlanGenerator` | LLM-based plan generation | GeneratePlanCommandHandler |
+| **Sandbox** | | |
+| `ISandboxExecutor` | Isolated tool execution (keyed DI) | ToolUseStepExecutor |
+| `ICapabilityEnforcer` | Capability-based permission enforcement | ToolUseStepExecutor, sandbox executors |
+| `IProcessResourceLimiter` | OS-level process resource limits | ProcessSandboxExecutor |
+| **Attestation** | | |
+| `IAttestationService` | HMAC sign/verify execution results | Sandbox executors, ToolUseStepExecutor |
+| `IAttestationStore` | Attestation audit trail persistence | PlanExecutor, audit queries |
 
 ## Common Tasks
 

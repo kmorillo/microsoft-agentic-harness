@@ -132,6 +132,46 @@ Eval tasks are simple JSON files you drop in `eval/tasks/`:
 
 After a run, the winning candidate's skill files land in `.meta-harness/optimizations/{run-id}/_proposed/`. Promoting them is a single copy command.
 
+### Planner: DAG-Based Task Decomposition
+
+The orchestrator can decompose a task into sub-agents, but those sub-agents still work in a flat loop. The planner adds structure: it turns a high-level goal into a directed acyclic graph (DAG) where each node is an executable step with explicit dependencies, and the executor runs them with bounded concurrency while respecting those edges.
+
+Five step types cover the common patterns:
+
+- **LLM Call** — send a prompt to a model, receive a completion
+- **Tool Use** — invoke a harness tool inside the sandbox
+- **Human Gate** — pause execution until a human approves, with configurable timeout and auto-escalation
+- **Conditional Branch** — evaluate a condition against prior step outputs and route execution accordingly
+- **Sub-Plan Invocation** — embed an entire plan as a step, enabling recursive decomposition
+
+Each step declares its own error recovery strategy: **Retry** (with configurable backoff — fixed, linear, or exponential), **Fail Step** (mark failed, continue the plan around it), **Escalate** (promote to human gate), or **Skip & Continue** (treat as successful with empty output). The executor applies these automatically — a transient LLM timeout retries three times before failing, while a human gate escalation pauses the plan and notifies the UI.
+
+Plans are fully persistent. The `EfCorePlanStateStore` checkpoints every step transition to SQLite via EF Core, so an interrupted plan — whether from a crash, a deployment, or a deliberate pause — resumes from the last completed step. Individual steps can be cancelled and retried at runtime through `CancelPlanCommand` and `RetryPlanStepCommand`.
+
+The planner also generates plans from natural language. `GeneratePlanCommand` sends a goal description to an LLM with schema constraints, and the `LlmPlanGeneratorService` parses the structured output into a validated `PlanGraph`. The validator enforces DAG properties (no cycles), checks that all edge targets exist, and ensures every step has a valid configuration for its type.
+
+### Sandbox: Isolated Tool Execution
+
+Tools run inside the orchestration loop, which means a misbehaving tool could read files it shouldn't, spawn processes, or consume unbounded resources. The sandbox prevents this by enforcing isolation at execution time.
+
+Two isolation levels are available:
+
+**Process isolation** uses Windows Job Objects to constrain a tool's spawned process. The `WindowsProcessResourceLimiter` sets hard limits on memory, CPU time, and child process count. The tool runs in its own process but cannot exceed its resource envelope. On non-Windows platforms, a no-op limiter allows the same code paths to run without OS-specific APIs.
+
+**Container isolation** runs the tool inside a Docker container with a read-only root filesystem. The `DockerSandboxExecutor` builds a container from a configurable base image, mounts only the paths the tool's capability profile allows, and tears it down after execution. Network access is blocked unless the tool's profile explicitly grants `NetworkAccess`.
+
+Security is closed-by-default. Every tool must declare the capabilities it needs through the `ToolCapabilityAttribute`: `FileRead`, `FileWrite`, `NetworkAccess`, `ProcessSpawn`. A `ToolPermissionProfile` maps these declarations to concrete mount paths and resource limits. If a tool doesn't declare `FileWrite`, it gets read-only mounts — even if the underlying filesystem is writable.
+
+**HMAC attestation** ensures tamper evidence. After every sandboxed execution, the `HmacAttestationService` produces a `ToolExecutionAttestation` containing the tool name, a SHA-256 hash of the input, a SHA-256 hash of the output, a timestamp, and an HMAC signature over the entire record. Attestations are persisted through the `EfCoreAttestationStore`. Any downstream consumer can verify that a tool's output hasn't been modified since execution.
+
+### AG-UI Protocol Events
+
+The harness streams real-time progress to the WebUI through SignalR using the AG-UI event protocol. The `AgUiEventWriter` emits strongly-typed events that the React frontend consumes for live visualization of agent activity.
+
+34 event types span 8 categories: **Run lifecycle** (start, finish, error, step boundaries), **Streaming** (text message deltas), **Tool calls** (start, arguments, end, result), **State** (snapshots and JSON-Patch deltas), **Escalation** (requested, resolved, expiring), **Drift** (warn, alert, escalate, resolved), **Learning** (captured, applied, forgotten), and **Plan** (plan start, step start, step complete, state delta, sandbox status, plan complete, plan failed).
+
+Plan events are the Phase 4 additions. When a plan starts executing, the frontend receives `PLAN_STARTED` with the full DAG structure. As each step runs, `PLAN_STEP_STARTED` and `PLAN_STEP_COMPLETED` fire with status, duration, and error details. `PLAN_STATE_DELTA` streams incremental updates for long-running steps. `SANDBOX_STATUS` reports resource usage and attestation hashes for tool execution steps. `PLAN_COMPLETED` and `PLAN_FAILED` signal terminal states.
+
 ---
 
 ## Architecture
@@ -142,7 +182,7 @@ The project follows Clean Architecture with strict dependency inversion. Each la
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        Presentation Layer                          │
 │  ConsoleUI (Spectre.Console)  ·  LoggerUI  ·  AgentHub (SignalR)  │
-│  WebUI (React + TypeScript)   ·  MCP Server (WebAPI)              │
+│  WebUI (React + TypeScript)   ·  MCP Server  ·  AG-UI Events      │
 ├─────────────────────────────────────────────────────────────────────┤
 │                        Application Layer                           │
 │  CQRS Commands/Handlers  ·  Agent Factories  ·  Context Budget    │
@@ -150,10 +190,12 @@ The project follows Clean Architecture with strict dependency inversion. Each la
 ├─────────────────────────────────────────────────────────────────────┤
 │                       Infrastructure Layer                         │
 │  Azure OpenAI / AI Foundry  ·  MCP Client  ·  Connectors          │
+│  Planner (DAG executor)  ·  Sandbox (process/container isolation)  │
 │  Observability (OTel)  ·  State Management  ·  API Access          │
 ├─────────────────────────────────────────────────────────────────────┤
 │                          Domain Layer                              │
 │  Agent Manifests  ·  Skill Definitions  ·  Tool Declarations      │
+│  Plan Graphs  ·  Sandbox Capabilities  ·  Attestation Models      │
 │  A2A Agent Cards  ·  Workflow State  ·  Configuration Hierarchy    │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -173,7 +215,10 @@ src/
 │       ├── Agents/                     AgentManifest, AgentExecutionContext, SkillReference
 │       ├── Skills/                     SkillDefinition, ContextContract, ContextLoading
 │       ├── Tools/                      ToolDeclaration
-│       └── A2A/                        AgentCard
+│       ├── A2A/                        AgentCard
+│       ├── Planner/                    PlanGraph, PlanStep, PlanEdge, StepType, ErrorRecovery
+│       ├── Sandbox/                    SandboxExecutionRequest, ToolCapability, ResourceLimits
+│       └── Attestation/               ToolExecutionAttestation
 │
 ├── Content/Application/
 │   ├── Application.Common/
@@ -189,11 +234,17 @@ src/
 │   └── Application.Core/
 │       ├── Agents/Skills/              SKILL.md files per agent
 │       ├── CQRS/Agents/               ExecuteAgentTurn, RunConversation, RunOrchestratedTask
-│       └── CQRS/MetaHarness/          RunHarnessOptimization (propose→evaluate outer loop)
+│       ├── CQRS/MetaHarness/          RunHarnessOptimization (propose→evaluate outer loop)
+│       └── CQRS/Planner/             GeneratePlan, CreatePlan, ExecutePlan, CancelPlan, RetryPlanStep
 │
 ├── Content/Infrastructure/
 │   ├── Infrastructure.Common/          Identity service, claim extensions
-│   ├── Infrastructure.AI/              ChatClientFactory, A2AAgentHost, sandboxed tools, state management
+│   ├── Infrastructure.AI/
+│   │   ├── Planner/                    PlanExecutor (4 partials), EfCorePlanStateStore, step executors
+│   │   ├── Sandbox/                    ProcessSandboxExecutor, DockerSandboxExecutor, Job Objects
+│   │   ├── Attestation/               HmacAttestationService, EfCoreAttestationStore
+│   │   ├── Persistence/               PlannerDbContext, EF Core entities, SQLite migrations
+│   │   └── ...                        ChatClientFactory, A2AAgentHost, state management
 │   ├── Infrastructure.AI.Connectors/   Unified external API adapters with ITool bridge
 │   ├── Infrastructure.AI.MCP/          MCP client — discover and invoke remote tools
 │   ├── Infrastructure.AI.MCPServer/    MCP server — expose tools/prompts/resources via HTTP
@@ -205,7 +256,8 @@ src/
     ├── Presentation.ConsoleUI/         Interactive menu + 6 runnable examples
     ├── Presentation.LoggerUI/          Named pipe log viewer
     ├── Presentation.AgentHub/          SignalR hub — real-time streaming to the WebUI
-    │   └── Auth/                       DevAuthHandler (dev bypass), Azure AD integration
+    │   ├── Auth/                       DevAuthHandler (dev bypass), Azure AD integration
+    │   └── AgUi/                       AG-UI event protocol (34 event types, SSE streaming)
     └── Presentation.WebUI/             React + TypeScript SPA
         ├── src/features/chat/          Streaming chat panel with message history
         ├── src/features/telemetry/     Live span tree for observability
@@ -361,6 +413,8 @@ The ConsoleUI launches an interactive [Spectre.Console](https://spectreconsole.n
 
 **Go deeper:** **MCP Tools Discovery** connects to external MCP servers and pulls in remote tools at runtime. **Tool Converter Demo** shows the `ITool` to `AITool` bridge that makes keyed DI tools visible to the LLM. **Persistent Agent** creates a long-running agent on Azure AI Foundry with threads that survive across sessions. **A2A Agent-to-Agent** demonstrates the full discovery-and-delegation protocol between distributed agents.
 
+**For structured execution:** The **Plan Execution** pipeline lets you create a multi-step plan from a natural-language goal, validate its DAG structure, and execute it with dependency ordering, bounded concurrency, and checkpoint/resume. Steps that fail retry automatically or escalate to a human gate. Interrupt a running plan and resume it later — the SQLite checkpoint store picks up exactly where it left off.
+
 **For self-improvement:** The **Meta-Harness Optimizer** runs the propose→evaluate loop against your own skill files. Drop eval tasks in `eval/tasks/`, run `--example optimize`, and it will suggest targeted improvements to your agent's skills based on causal trace analysis.
 
 ---
@@ -380,6 +434,8 @@ The ConsoleUI launches an interactive [Spectre.Console](https://spectreconsole.n
 | `AppConfig.Cache` | Cache backend (`CacheType`: Memory or Redis) |
 | `AppConfig.Logging` | Log output (`LogsBasePath`, `PipeName` for named pipe streaming) |
 | `MetaHarness` | Optimization settings: `EvalTasksPath`, `SeedCandidatePath`, `MaxIterations`, `ProposerModel`, `EvaluatorModel`, `ScoreImprovementThreshold`, `RegressionSuiteThreshold` (0.8), `ConsecutiveNoImprovementLimit` (5) |
+| `Planner` | Plan generation: `GenerationModel`, `ClientType`, `GenerationTemperature` (0.3), `GenerationMaxTokens` (4096) |
+| `Attestation` | HMAC attestation keys: `HmacKeys[]` (version + Base64 key), `CurrentKeyVersion` — keys in User Secrets (dev) or Key Vault (prod) |
 
 ---
 

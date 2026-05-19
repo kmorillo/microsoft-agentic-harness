@@ -144,6 +144,76 @@ Four built-in section providers:
 - `ToolConcurrencyClassifier` categorizes each tool as ReadOnly or WriteSerial.
 - `BatchedToolExecutionStrategy` partitions calls by classification, runs reads in parallel (bounded by semaphore), writes sequentially, then returns results in original request order.
 
+### Plan Execution Engine (Phase 4)
+
+**What it is:** A DAG-based plan executor that schedules, runs, and recovers multi-step plans with bounded concurrency and checkpoint/resume support.
+
+**Why it exists:** Agents need to decompose complex tasks into structured plans with dependencies, parallelism, and failure recovery. A flat list of sequential steps is insufficient when steps can run in parallel, branch conditionally, or require human approval gates.
+
+**How it works:**
+
+The `PlanExecutor` is split into four partial files by responsibility:
+
+1. **PlanExecutor.cs** -- Entry points and orchestration loop. Loads the plan from `IPlanStateStore`, validates via `IPlanValidator`, resumes from checkpoint if available, and enters the scheduling loop. Public methods: `ExecuteAsync`, `CancelAsync`, `RetryStepAsync`.
+2. **PlanExecutor.Scheduling.cs** -- DAG scheduling and ready-queue management. Determines which steps have all dependencies satisfied, dispatches them via `SemaphoreSlim`-bounded concurrency, and feeds completed outputs to downstream steps.
+3. **PlanExecutor.Recovery.cs** -- Failure handling with configurable policies (retry with backoff, escalate to human, skip with downstream propagation). Manages state transitions and marks downstream steps as Skipped when an upstream step fails irrecoverably.
+4. **PlanExecutor.Summary.cs** -- Builds `PlanExecutionSummary` from completed step states, including per-step durations, output previews, and overall success/failure status.
+
+Step executors are registered via keyed DI on `StepType`:
+
+| Executor | StepType | Purpose |
+|----------|----------|---------|
+| `LlmCallStepExecutor` | `LlmCall` | Sends a prompt to an LLM via `IChatClientFactory` |
+| `ToolUseStepExecutor` | `ToolUse` | Resolves and executes an `ITool` with sandbox enforcement |
+| `HumanGateStepExecutor` | `HumanGate` | Blocks until human approval via `IPlanProgressNotifier` |
+| `ConditionalBranchStepExecutor` | `ConditionalBranch` | Evaluates a condition and activates one branch path |
+| `SubPlanStepExecutor` | `SubPlanInvocation` | Recursively executes a child plan via `IPlanExecutor` |
+
+**Plan generation:** `LlmPlanGeneratorService` generates a `PlanGraph` from natural-language task descriptions via LLM inference. The raw LLM output is parsed by `LlmPlanOutputMapper` into domain types, then validated before persistence.
+
+### Plan State Persistence (Phase 4)
+
+**What it is:** An EF Core-backed store for plan graphs, step execution states, checkpoints, and execution history, using SQLite with optimistic concurrency.
+
+**Why it exists:** Plans must survive process restarts, and concurrent step updates must not silently overwrite each other. The store provides fault-tolerant checkpoint/resume semantics and an audit trail of all state transitions.
+
+**How it works:**
+
+`EfCorePlanStateStore` is split into three partial files:
+
+1. **EfCorePlanStateStore.cs** -- Write operations: `SavePlanAsync`, `UpdateStepStateAsync`, `CheckpointAsync`. Each write uses a short-lived `DbContext` from `IDbContextFactory<PlannerDbContext>`.
+2. **EfCorePlanStateStore.Reads.cs** -- Read operations: `LoadPlanAsync`, `LoadStepStatesAsync`, `ListPlansAsync`, `GetExecutionHistoryAsync`, `ResumeAsync`. Resume resets any `Running` steps back to `Ready` for re-dispatch.
+3. **EfCorePlanStateStore.Mappers.cs** -- Entity-to-domain mapping helpers that convert between EF Core entities (`PlanGraphEntity`, `PlanStepEntity`, `PlanEdgeEntity`, `StepExecutionStateEntity`, `PlanExecutionLogEntity`) and domain value objects.
+
+`PlannerDbContext` is registered via `IDbContextFactory` for short-lived scoped contexts. `SqliteVersionInterceptor` auto-increments a `Version` column on every `SaveChanges`, enabling optimistic concurrency detection without manual version tracking.
+
+### Sandbox Executors (Phase 4)
+
+**What it is:** Two sandboxed execution environments (process-level and container-level) that provide isolation guarantees for tool execution, plus HMAC-signed attestation of execution results.
+
+**Why it exists:** Untrusted tool code must run with minimal privileges. A compromised tool should not be able to read secrets, modify the host filesystem, or exfiltrate data. The sandbox enforces resource limits, filesystem restrictions, and network isolation.
+
+**How it works:**
+
+**ProcessSandboxExecutor** (`SandboxIsolationLevel.Process`):
+- Spawns a subprocess with Windows Job Objects for CPU/memory limits via `IProcessResourceLimiter`
+- Closed-by-default `AllowedPrograms` list -- only explicitly permitted executables can run
+- Uses `ArgumentList` (not string concatenation) for injection-safe argument passing
+- `WindowsProcessResourceLimiter` uses P/Invoke to create Job Objects with `JOBOBJECT_BASIC_LIMIT_INFORMATION`; `NoOpProcessResourceLimiter` is the cross-platform fallback
+
+**DockerSandboxExecutor** (`SandboxIsolationLevel.Container`):
+- Creates ephemeral containers with read-only root filesystem (`ReadonlyRootfs`)
+- Capability-based mount permissions (explicitly `ro` or `rw` per bind mount)
+- Network isolation (no network access by default)
+- PID limits to prevent fork bombs
+- Uses `Docker.DotNet` client for container lifecycle management
+
+**HmacAttestationService** (in `Attestation/`):
+- HMAC-SHA256 signed attestations of tool inputs and outputs
+- Versioned key rotation via `AttestationKeyOptions` (keys sourced from User Secrets / Key Vault, never appsettings)
+- `EfCoreAttestationStore` persists attestations linked to plan steps for audit trail
+- `SignAsync` for success, `SignFailureAsync` for failures, `VerifyAsync` for validation
+
 ## Data Flow
 
 ```
@@ -218,6 +288,39 @@ Infrastructure.AI/
 │   ├── CompositeStateManager.cs
 │   ├── MarkdownCheckpointDecorator.cs
 │   └── Checkpoints/            JsonCheckpointStateManager
+├── Attestation/                HmacAttestationService, EfCoreAttestationStore, key options
+├── Persistence/
+│   ├── PlannerDbContext.cs             EF Core context for plan entities
+│   ├── SqliteVersionInterceptor.cs     Auto-increment version for optimistic concurrency
+│   ├── Configurations/                 EF entity type configurations (5 files)
+│   └── Entities/                       PlanGraphEntity, PlanStepEntity, PlanEdgeEntity,
+│                                        StepExecutionStateEntity, PlanExecutionLogEntity
+├── Planner/
+│   ├── PlanExecutor.cs                 Entry points, orchestration loop
+│   ├── PlanExecutor.Scheduling.cs      DAG scheduling, ready-queue, bounded concurrency
+│   ├── PlanExecutor.Recovery.cs        Failure handling (retry/escalate/skip)
+│   ├── PlanExecutor.Summary.cs         Execution summary builder
+│   ├── PlanValidator.cs                DAG cycle/reachability/edge validation
+│   ├── LlmPlanGeneratorService.cs      LLM-based plan generation
+│   ├── LlmPlanOutput.cs               Raw LLM output model
+│   ├── LlmPlanOutputMapper.cs         Maps raw output → domain PlanGraph
+│   ├── JsonElementExtensions.cs        JsonElement helpers for plan parsing
+│   ├── PlannerOptions.cs               Configurable planner settings
+│   ├── EfCorePlanStateStore.cs         Writes (SavePlan, UpdateStepState, Checkpoint)
+│   ├── EfCorePlanStateStore.Reads.cs   Reads (LoadPlan, LoadStepStates, ListPlans, Resume)
+│   ├── EfCorePlanStateStore.Mappers.cs Entity-to-domain mapping helpers
+│   └── StepExecutors/
+│       ├── LlmCallStepExecutor.cs      LLM prompt execution
+│       ├── ToolUseStepExecutor.cs       Tool resolution + sandbox enforcement
+│       ├── HumanGateStepExecutor.cs     Human approval gate
+│       ├── ConditionalBranchStepExecutor.cs  Conditional branching
+│       └── SubPlanStepExecutor.cs       Recursive child plan execution
+├── Sandbox/
+│   ├── ProcessSandboxExecutor.cs       Process-level isolation with Job Objects
+│   ├── DockerSandboxExecutor.cs        Container-level isolation
+│   ├── WindowsProcessResourceLimiter.cs  Windows Job Object P/Invoke
+│   ├── WindowsJobObjectManager.cs       Job Object handle management
+│   └── NoOpProcessResourceLimiter.cs    Cross-platform fallback
 ├── Tools/
 │   ├── BatchedToolExecutionStrategy.cs
 │   ├── FileSystemService.cs / FileSystemTool.cs
@@ -228,7 +331,11 @@ Infrastructure.AI/
 │   ├── ToolConcurrencyClassifier.cs
 │   └── ToolErrorClassifier.cs
 ├── Traces/                     FileSystemExecutionTraceStore
-└── DependencyInjection.cs      Central registration (230+ lines)
+├── DependencyInjection.cs      Main entry point
+├── DependencyInjection.Tools.cs      Tool and AI client registration
+├── DependencyInjection.Governance.cs Escalation, resilience, governance
+├── DependencyInjection.Planner.cs    Planner DB, services, sandbox
+└── DependencyInjection.Quality.cs    Drift detection, learnings
 ```
 
 ## Key Types Reference
@@ -250,6 +357,20 @@ Infrastructure.AI/
 | `InMemoryAgentMailbox` | Inter-agent messaging | `IAgentMailbox` | Singleton |
 | `AutoCompactStateMachine` | Compaction circuit breaker | `IAutoCompactStateMachine` | Singleton |
 | `PatternSecretRedactor` | Regex-based secret masking | `ISecretRedactor` | Singleton |
+| `PlanExecutor` | DAG-based plan scheduling and execution | `IPlanExecutor` | Scoped |
+| `PlanValidator` | Plan graph structural/semantic validation | `IPlanValidator` | Scoped |
+| `LlmPlanGeneratorService` | LLM-based plan generation from natural language | `IPlanGenerator` | Scoped |
+| `EfCorePlanStateStore` | SQLite-backed plan persistence with optimistic concurrency | `IPlanStateStore` | Scoped |
+| `LlmCallStepExecutor` | LLM prompt step execution | `IPlanStepExecutor` (keyed: `LlmCall`) | Scoped |
+| `ToolUseStepExecutor` | Tool invocation with sandbox | `IPlanStepExecutor` (keyed: `ToolUse`) | Scoped |
+| `HumanGateStepExecutor` | Human approval gate | `IPlanStepExecutor` (keyed: `HumanGate`) | Scoped |
+| `ConditionalBranchStepExecutor` | Conditional path selection | `IPlanStepExecutor` (keyed: `ConditionalBranch`) | Scoped |
+| `SubPlanStepExecutor` | Recursive child plan execution | `IPlanStepExecutor` (keyed: `SubPlanInvocation`) | Scoped |
+| `ProcessSandboxExecutor` | Process-level isolation with Job Objects | `ISandboxExecutor` (keyed: `Process`) | Scoped |
+| `DockerSandboxExecutor` | Container-level isolation | `ISandboxExecutor` (keyed: `Container`) | Scoped |
+| `HmacAttestationService` | HMAC-SHA256 signed execution attestations | `IAttestationService` | Scoped |
+| `EfCoreAttestationStore` | Attestation persistence for audit trail | `IAttestationStore` | Scoped |
+| `WindowsProcessResourceLimiter` | Windows Job Object resource limits | `IProcessResourceLimiter` | Singleton |
 
 ## Configuration
 
@@ -335,6 +456,8 @@ Check structured logs for entries with `Permission resolved for agent {AgentId},
 - `Microsoft.Extensions.Http` -- IHttpClientFactory for hooks
 - `Microsoft.Extensions.Logging.Abstractions` -- Logging
 - `Microsoft.Extensions.Options` -- IOptionsMonitor pattern
+- `Microsoft.EntityFrameworkCore.Sqlite` -- SQLite provider for PlannerDbContext
+- `Docker.DotNet` -- Docker Engine API client for container sandbox
 
 ## Testing
 

@@ -25,6 +25,8 @@ The harness includes a full RAG pipeline (`Infrastructure.AI.RAG`) and a planned
 - C# .NET 10, Clean Architecture, CQRS/MediatR, FluentValidation, AutoMapper
 - Microsoft.Agents.AI, Microsoft.Extensions.AI, Azure.AI.OpenAI
 - MCP (Model Context Protocol) server/client — HTTP transport with JWT auth
+- EF Core with SQLite (plan state persistence), IDbContextFactory for short-lived contexts
+- Docker.DotNet (container sandbox)
 - OpenTelemetry (Jaeger + Azure Monitor), Prometheus
 - xUnit, Moq, coverlet
 
@@ -39,6 +41,10 @@ Key architectural concepts from the reference:
 - **MCP Server**: ASP.NET Core WebAPI exposing tools/prompts/resources via MCP protocol
 - **Factory Pattern**: AgentFactory, ChatClientFactory, AgentExecutionContextFactory for consistent agent construction
 - **MediatR Pipeline**: Validation → Caching → Performance → Exception handling behaviors
+- **DAG Plan Execution**: PlanExecutor orchestrates PlanGraph with bounded concurrency, checkpoint/resume via EfCorePlanStateStore, error recovery (retry/escalate/skip)
+- **Sandbox Isolation**: ProcessSandboxExecutor (Job Objects) and DockerSandboxExecutor with HMAC attestation. Closed-by-default capability model
+- **Step Executors**: Keyed DI by StepType enum — LlmCall, ToolUse, HumanGate, ConditionalBranch, SubPlanInvocation
+- **Partial Class Pattern**: Large files split into partials by responsibility (PlanExecutor.Scheduling.cs, PlanExecutor.Recovery.cs, etc.)
 
 ## Commands
 - `dotnet build src/AgenticHarness.slnx` — Build
@@ -69,6 +75,11 @@ After changes: `dotnet build src/AgenticHarness.slnx && dotnet test src/AgenticH
 - Forgetting MediatR pipeline behaviors when adding new commands: register in `DependencyInjection.cs`
 - Hardcoding AI model config: use `AppConfig.AI.AgentFramework` section, never inline
 - Skipping content safety middleware in agent factory: always wire through `AgentFactory`
+- Creating step executors without registering them as keyed services by StepType
+- Using SandboxOptions (Domain config) when you need SandboxExecutionOptions (Application container config) — they're different classes
+- Manually incrementing entity Version — SqliteVersionInterceptor handles this on save
+- Forgetting to check Result.IsSuccess on state store operations
+- Adding NotifyStepStarted in step executors — PlanExecutor owns notification centrally
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

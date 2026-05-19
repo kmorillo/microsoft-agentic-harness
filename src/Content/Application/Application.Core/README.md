@@ -167,6 +167,71 @@ var result = await mediator.Send(new SearchDocumentsQuery
 
 `RunHarnessOptimizationCommand` runs the automated harness optimization loop -- it evaluates agent performance against a regression suite and proposes configuration improvements.
 
+### Planner Commands (Phase 4)
+
+Seven CQRS operations for the DAG-based plan execution subsystem, organized in `CQRS/Planner/`:
+
+**GeneratePlanCommand** -- Generates a structured plan from a natural-language task description via LLM inference, validates it, and persists it:
+
+```csharp
+var planId = await mediator.Send(new GeneratePlanCommand
+{
+    TaskDescription = "Analyze competitor pricing and produce a summary report",
+    Constraints = new PlanGenerationConstraints { MaxSteps = 10 }
+});
+```
+
+**CreatePlanCommand** -- Validates and persists a pre-built `PlanGraph` (for programmatically constructed plans, bypassing LLM generation):
+
+```csharp
+var planId = await mediator.Send(new CreatePlanCommand { Plan = myPlanGraph });
+```
+
+**ExecutePlanCommand** -- Starts or resumes execution of a plan. If a checkpoint exists, resumes from the last saved state:
+
+```csharp
+var summary = await mediator.Send(new ExecutePlanCommand { PlanId = planId });
+// summary.StepResults, summary.TotalDuration, summary.OverallStatus
+```
+
+**CancelPlanCommand** -- Cancels a running plan. Steps already in progress complete but no new steps start:
+
+```csharp
+await mediator.Send(new CancelPlanCommand { PlanId = planId });
+```
+
+**RetryPlanStepCommand** -- Retries a specific failed step within a plan:
+
+```csharp
+await mediator.Send(new RetryPlanStepCommand { PlanId = planId, StepId = failedStepId });
+```
+
+**GetPlanQuery** -- Retrieves a plan graph along with its current per-step execution state as a `PlanSnapshot`:
+
+```csharp
+var snapshot = await mediator.Send(new GetPlanQuery { PlanId = planId });
+// snapshot.Graph (plan structure), snapshot.StepStates (per-step status)
+```
+
+**ListPlansQuery** -- Lists plans with optional filtering by status and date range:
+
+```csharp
+var plans = await mediator.Send(new ListPlansQuery
+{
+    StatusFilter = StepExecutionStatus.Completed,
+    From = DateTimeOffset.UtcNow.AddDays(-7)
+});
+```
+
+**GetPlanHistoryQuery** -- Retrieves the execution audit trail for a plan:
+
+```csharp
+var history = await mediator.Send(new GetPlanHistoryQuery { PlanId = planId });
+// List<PlanExecutionLogEntry> — state transitions, timestamps, error messages
+```
+
+Each command has a FluentValidation validator (e.g., `GeneratePlanCommandValidator`, `ExecutePlanCommandValidator`). `PlanSnapshot` is a read model combining the plan graph with per-step execution states, returned by `GetPlanQuery`.
+
 ### Validation
 
 Every command has a FluentValidation validator discovered via assembly scanning:
@@ -220,6 +285,32 @@ Application.Core/
 │   │   ├── RunHarnessOptimizationCommand.cs        # Optimization loop trigger
 │   │   ├── RunHarnessOptimizationCommandHandler.cs # Evaluate → propose → validate
 │   │   └── RunHarnessOptimizationCommandValidator.cs
+│   ├── Planner/
+│   │   ├── GeneratePlanCommand.cs                  # LLM-based plan generation
+│   │   ├── GeneratePlanCommandHandler.cs           # Generate → validate → persist
+│   │   ├── GeneratePlanCommandValidator.cs
+│   │   ├── CreatePlanCommand.cs                    # Persist pre-built plan graph
+│   │   ├── CreatePlanCommandHandler.cs             # Validate → persist
+│   │   ├── CreatePlanCommandValidator.cs
+│   │   ├── ExecutePlanCommand.cs                   # Start/resume plan execution
+│   │   ├── ExecutePlanCommandHandler.cs            # Delegates to IPlanExecutor
+│   │   ├── ExecutePlanCommandValidator.cs
+│   │   ├── CancelPlanCommand.cs                    # Cancel running plan
+│   │   ├── CancelPlanCommandHandler.cs
+│   │   ├── CancelPlanCommandValidator.cs
+│   │   ├── RetryPlanStepCommand.cs                 # Retry failed step
+│   │   ├── RetryPlanStepCommandHandler.cs
+│   │   ├── RetryPlanStepCommandValidator.cs
+│   │   ├── GetPlanQuery.cs                         # Retrieve plan + step states
+│   │   ├── GetPlanQueryHandler.cs
+│   │   ├── GetPlanQueryValidator.cs
+│   │   ├── ListPlansQuery.cs                       # List plans with filters
+│   │   ├── ListPlansQueryHandler.cs
+│   │   ├── ListPlansQueryValidator.cs
+│   │   ├── GetPlanHistoryQuery.cs                  # Execution audit trail
+│   │   ├── GetPlanHistoryQueryHandler.cs
+│   │   ├── GetPlanHistoryQueryValidator.cs
+│   │   └── PlanSnapshot.cs                         # Read model: graph + step states
 │   └── RAG/
 │       ├── IngestDocument/
 │       │   ├── IngestDocumentCommand.cs            # Document ingestion command
@@ -246,6 +337,16 @@ Application.Core/
 | `AgentTurnResult` | Turn output (response, history, tokens, cost) | RunConversationHandler |
 | `ConversationResult` | Full conversation output (turns, final response) | Presentation hosts |
 | `TurnProgress` | Real-time progress callback payload | SignalR hub, ConsoleUI |
+| **Planner Commands** | | |
+| `GeneratePlanCommand` | LLM-based plan generation and persistence | Presentation hosts, agent tools |
+| `CreatePlanCommand` | Persist a pre-built plan graph | Programmatic plan construction |
+| `ExecutePlanCommand` | Start/resume DAG plan execution | Presentation hosts |
+| `CancelPlanCommand` | Cancel a running plan | Presentation hosts |
+| `RetryPlanStepCommand` | Retry a specific failed step | Presentation hosts |
+| `GetPlanQuery` | Retrieve plan graph + step states | Presentation hosts, dashboards |
+| `ListPlansQuery` | List plans with status/date filters | Presentation hosts, dashboards |
+| `GetPlanHistoryQuery` | Execution audit trail | Presentation hosts, dashboards |
+| `PlanSnapshot` | Read model combining graph + step states | GetPlanQueryHandler |
 | **RAG Commands** | | |
 | `IngestDocumentCommand` | Trigger document ingestion | Admin APIs, CLI |
 | `SearchDocumentsQuery` | Semantic document search | Agent tools, search APIs |

@@ -162,6 +162,113 @@ Covers: Agent, Budget, Compaction, Context, Governance, Hook, MCP, Orchestration
 
 `GovernanceDecision` is the outcome of policy evaluation -- whether an action is allowed or denied, which rule matched, and timing metrics. `GovernancePolicyAction` and `GovernancePolicyScope` define the policy taxonomy.
 
+### Planner: DAG-Based Plan Execution
+
+The planner subsystem models executable plans as directed acyclic graphs. A `PlanGraph` is the root aggregate containing steps (nodes) and edges (directed connections), with plan-level configuration controlling timeouts, parallelism, and recursion depth.
+
+**PlanGraph** is the root entity. It owns an ordered list of `PlanStep` nodes and `PlanEdge` connections, along with a `PlanConfiguration` for plan-level limits. Top-level plans have a null `ParentPlanId`; sub-plans reference their parent.
+
+**PlanStep** is a single executable unit of work in the graph. Its `StepType` determines which keyed executor handles it at runtime, and its `StepConfiguration` provides the type-specific parameters. Each step carries its own `RetryPolicy`, `Timeout`, and an optional `RequiredAutonomyLevel` that gates execution behind governance checks.
+
+**PlanEdge** is a directed connection between two steps. Four `EdgeType` values classify the relationship: `DataFlow` (output feeds input), `ControlFlow` (sequencing), `ConditionalTrue`, and `ConditionalFalse` (branching). An optional `Condition` expression is evaluated at runtime for conditional edges.
+
+```csharp
+// Building a simple two-step plan:
+var step1 = new PlanStep
+{
+    Id = PlanStepId.New(),
+    Name = "Analyze input",
+    Type = StepType.LlmCall,
+    Configuration = new LlmCallConfig
+    {
+        SystemPrompt = "Analyze the user request.",
+        ModelDeploymentKey = "gpt-4o"
+    },
+    RetryPolicy = new RetryPolicy { MaxRetries = 2 }
+};
+var step2 = new PlanStep
+{
+    Id = PlanStepId.New(),
+    Name = "Execute tool",
+    Type = StepType.ToolUse,
+    Configuration = new ToolUseConfig { ToolName = "file_system" },
+    RetryPolicy = new RetryPolicy { OnExhausted = ErrorRecovery.Escalate }
+};
+var plan = new PlanGraph
+{
+    Id = PlanId.New(),
+    Name = "Analyze and act",
+    Steps = [step1, step2],
+    Edges = [new PlanEdge(step1.Id, step2.Id, EdgeType.ControlFlow)],
+    Configuration = new PlanConfiguration { MaxParallelSteps = 5 }
+};
+```
+
+**StepType** determines which keyed `IPlanStepExecutor` handles the step: `LlmCall` (LLM inference), `ToolUse` (sandbox-routed tool), `HumanGate` (approval gate), `ConditionalBranch` (expression evaluation), and `SubPlanInvocation` (nested plan with depth limiting).
+
+**StepConfiguration** is a polymorphic base record with five concrete subtypes, serialized via `[JsonPolymorphic]` with a `type` discriminator:
+
+| Config Type | Key Properties |
+|---|---|
+| `LlmCallConfig` | SystemPrompt, ModelDeploymentKey, Temperature, MaxTokens |
+| `ToolUseConfig` | ToolName, InputParameters, IsolationLevelOverride |
+| `HumanGateConfig` | EscalationMessage, ApprovalStrategy (AnyOf/AllOf/Quorum), Approvers, RiskLevel, Timeout |
+| `ConditionalBranchConfig` | ConditionExpression, TrueEdgeTargetId, FalseEdgeTargetId |
+| `SubPlanConfig` | ChildPlanId (reference) or InlinePlanDefinition (inline graph), IsolateContext |
+
+**RetryPolicy** configures retry behavior: `MaxRetries`, `InitialDelay`, `BackoffStrategy` (Fixed/Linear/Exponential), and `OnExhausted` which is an `ErrorRecovery` enum determining what happens after all retries fail: `FailStep`, `SkipStep`, `FailPlan`, or `Escalate`.
+
+**StepExecutionStatus** is the state machine for step lifecycle: Pending -> Ready -> Running -> Completed | Failed | Skipped. `Blocked` is entered from Ready when awaiting external input (human gate). `Cancelled` is entered on explicit cancellation.
+
+**StepExecutionState** tracks runtime state per step: `StepId`, `Status`, `AttemptCount`, `StartedAt`/`CompletedAt` timestamps, `Output`, `ErrorMessage`, and an optional HMAC-signed `ToolExecutionAttestation`.
+
+**StepExecutionResult** is what step executors return: `Status`, `Output`, `ErrorMessage`, `Duration`, optional `Attestation`, and `ActiveEdgeTarget` for conditional branch steps.
+
+**PlanExecutionSummary** is the final result of a plan run: `PlanId`, `FinalStatus`, `TotalDuration`, per-step `StepStates`, and aggregate counts (`CompletedStepCount`, `FailedStepCount`, `SkippedStepCount`).
+
+**PlanExecutionLogEntry** provides audit trail entries: `PlanId`, `StepId`, `Timestamp`, `Status`, `Message`, and `AttemptNumber`.
+
+Supporting types: `PlanId` and `PlanStepId` are strongly-typed GUID wrappers preventing primitive obsession. `PlanConfiguration` controls plan-level `PlanTimeout`, `MaxParallelSteps`, and `MaxSubPlanDepth`. `PlanExecutionContext` tracks runtime recursion depth for sub-plan limiting. `PlanGenerationConstraints` bounds LLM-driven plan generation (max steps, allowed types, max depth, max timeout). `PlanValidationResult` reports validation outcome with errors, warnings, and estimated critical path duration.
+
+### Sandbox: Isolated Tool Execution
+
+The sandbox subsystem defines the security and resource boundary for tool execution. Every tool runs through a sandbox that enforces capability checks, resource limits, and isolation levels.
+
+**SandboxExecutionRequest** encapsulates all inputs for sandboxed execution: `ToolName`, `Input` (serialized), `Limits` (resource constraints), `PermissionProfile` (capability and access rules), and `Timeout`. For process-level execution, `Command` names the executable and `ArgumentList` provides arguments as individual entries (preferred over the deprecated `Arguments` string to prevent shell injection).
+
+**SandboxExecutionResult** is the outcome: `Success` flag, `Output`, `ErrorMessage`, `ExitCode`, `ResourceUsage` (actual consumption metrics), and an HMAC-signed `ToolExecutionAttestation`.
+
+```csharp
+// Building a sandbox request:
+var request = new SandboxExecutionRequest
+{
+    ToolName = "code_analysis",
+    Input = "{\"file\": \"Program.cs\"}",
+    Limits = new ResourceLimits { MemoryLimitBytes = 128 * 1024 * 1024 },
+    PermissionProfile = new ToolPermissionProfile
+    {
+        RequiredCapabilities = ToolCapability.FileRead | ToolCapability.Subprocess,
+        AllowedPaths = ["/workspace/src"],
+        DeniedPaths = ["/workspace/.env"],
+        MinimumIsolation = SandboxIsolationLevel.Process
+    },
+    ArgumentList = ["--analyze", "Program.cs"],
+    Timeout = TimeSpan.FromSeconds(15)
+};
+```
+
+**SandboxIsolationLevel** defines three levels with intentional numeric ordering (`None < Process < Container`) used by the capability enforcer for never-downgrade checks: `None` (direct execution for safe read-only tools), `Process` (subprocess with Job Object limits -- the default), `Container` (Docker with full filesystem, network, memory, and CPU isolation).
+
+**ToolCapability** is a flags enum declaring what a tool needs to execute. The capability enforcer verifies these requirements before allowing execution. Values: `None`, `FileRead`, `FileWrite`, `NetworkAccess`, `Subprocess`, `EnvRead`, `DatabaseRead`, `DatabaseWrite`, `LlmInvocation`.
+
+**ToolPermissionProfile** declares a tool's full access scope with deny-overrides-allow semantics: `RequiredCapabilities`, `AllowedPaths`/`DeniedPaths`, `AllowedHosts`/`DeniedHosts`, `AllowedPrograms`, and `MinimumIsolation`.
+
+**ToolCapabilityAttribute** (`[ToolCapability(ToolCapability.FileRead)]`) is a class-level attribute for declaring capabilities at compile time. Can be overridden at runtime via appsettings configuration.
+
+**ResourceLimits** defines hard caps enforced via Job Objects (Windows) or cgroups (Linux): `MemoryLimitBytes` (default 256 MB), `CpuTimeSeconds` (default 30s), `MaxSubprocesses` (default 5), `DiskQuotaBytes` (default 100 MB).
+
+**ResourceUsage** captures actual consumption during execution: `MemoryBytes`, `CpuTimeSeconds`, `WallClockDuration`, `SubprocessCount`, `DiskUsageBytes`.
+
 ## Project Structure
 
 ```
@@ -185,10 +292,12 @@ Domain.AI/
 ├── Models/                      # AgentRunManifest, ContentSafetyResult, ToolResult, FileSearchResult
 ├── Observability/Models/        # AuditEntry, SessionRecord, ToolExecutionRecord, SafetyEventRecord
 ├── Permissions/                 # ToolPermissionRule, PermissionDecision, SafetyGate, DenialRecord
+├── Planner/                     # PlanGraph, PlanStep, PlanEdge, StepConfiguration hierarchy, execution state
 ├── Prompts/                     # SystemPromptSection, PromptHashSnapshot, PromptCacheBreakReport
 ├── RAG/
 │   ├── Enums/                   # ChunkingStrategy, RetrievalStrategy, QueryType, VectorStoreProvider
 │   └── Models/                  # DocumentChunk, CragEvaluation, RagAssembledContext, CitationSpan
+├── Sandbox/                     # SandboxExecutionRequest/Result, ToolCapability, ToolPermissionProfile, ResourceLimits
 ├── Skills/
 │   ├── SkillDefinition.cs       # 3-tier progressive disclosure model
 │   ├── ContextContract.cs       # Input/output requirements
@@ -221,6 +330,22 @@ Domain.AI/
 | `ToolPermissionRule` | Allow/deny/ask rule | IPermissionRuleProvider |
 | `PermissionDecision` | Resolved permission outcome | ToolPermissionBehavior |
 | `SafetyGate` | Always-dangerous paths | ISafetyGateRegistry |
+| **Planner** | | |
+| `PlanGraph` | Root aggregate: DAG of steps and edges | IPlanExecutor, IPlanGenerator |
+| `PlanStep` | Executable node with type-specific config | IPlanStepExecutor (keyed by StepType) |
+| `PlanEdge` | Directed edge (DataFlow/ControlFlow/Conditional) | Plan graph traversal, scheduler |
+| `StepConfiguration` | Polymorphic base for step configs | JSON serialization, step executors |
+| `StepExecutionState` | Runtime state per step | PlanExecutionSummary, audit trail |
+| `RetryPolicy` | Retry + backoff + error recovery | PlanStep, step executors |
+| `PlanExecutionSummary` | Final plan result with step counts | IPlanExecutor consumers |
+| `PlanValidationResult` | Pre-execution validation outcome | IPlanValidator |
+| **Sandbox** | | |
+| `SandboxExecutionRequest` | Inputs for sandboxed tool execution | ISandboxExecutor |
+| `SandboxExecutionResult` | Outcome with attestation and resource usage | ISandboxExecutor consumers |
+| `ToolCapability` | Flags enum of required capabilities | ToolPermissionProfile, capability enforcer |
+| `ToolPermissionProfile` | Access scope with deny-overrides-allow | ISandboxExecutor, ToolUseConfig |
+| `ResourceLimits` | Hard caps on memory, CPU, processes, disk | SandboxExecutionRequest |
+| `ToolCapabilityAttribute` | Compile-time capability declaration | Tool class annotations |
 | **RAG** | | |
 | `DocumentChunk` | Text unit with embedding | Vector stores, retrieval pipeline |
 | `RagAssembledContext` | Final assembled RAG output | IRagOrchestrator consumers |
