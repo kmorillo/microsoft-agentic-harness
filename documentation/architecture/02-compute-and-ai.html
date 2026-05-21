@@ -249,17 +249,17 @@
 
                     <h3 id="agent-model">Agent model</h3>
                     <p>
-                        <strong>GPT-4o</strong> (or GPT-4.1) powers the agent runtime. It handles conversation, tool
-                        selection, and reasoning. This is the model that decides when to call tools, how to interpret
-                        results, and what to say to the user. Configure via
+                        A <strong>chat completion model</strong> powers the agent runtime. It handles conversation,
+                        tool selection, and reasoning. This is the model that decides when to call tools, how to
+                        interpret results, and what to say to the user. Configure via
                         <code>AppConfig.AI.AgentFramework.AzureOpenAI</code>.
                     </p>
 
                     <h3 id="embedding-model">Embedding model</h3>
                     <p>
-                        <strong>text-embedding-3-large</strong> (1536 or 3072 dimensions) generates vector
-                        representations for document chunks and queries in the RAG pipeline. Used during both ingestion
-                        (indexing documents) and retrieval (embedding the user's query for similarity search). Configure
+                        An <strong>embedding model</strong> generates vector representations for document chunks
+                        and queries in the RAG pipeline. Used during both ingestion (indexing documents) and retrieval
+                        (embedding the user's query for similarity search). Configure the deployment name and dimensions
                         via <code>AppConfig.AI.Rag.Embeddings</code>.
                     </p>
 
@@ -285,7 +285,7 @@
                             </tr>
                             <tr>
                                 <td><code>AI:AgentFramework:AzureOpenAI:DeploymentName</code></td>
-                                <td>GPT-4o deployment</td>
+                                <td>Chat completion deployment</td>
                                 <td>Model selection</td>
                             </tr>
                             <tr>
@@ -300,7 +300,7 @@
                             </tr>
                             <tr>
                                 <td><code>AI:Rag:Embeddings:DeploymentName</code></td>
-                                <td>text-embedding-3-large deployment</td>
+                                <td>Embedding deployment</td>
                                 <td>Embedding model</td>
                             </tr>
                             <tr>
@@ -316,7 +316,7 @@
                         <div class="callout-body">
                             <div class="callout-title">Token limits matter</div>
                             <p>
-                                GPT-4o has 128K context but the harness uses a context budget system (see the
+                                Most chat models have large context windows, but the harness uses a context budget system (see the
                                 <a href="../index.html">Developer Guide</a>) to stay well under. Plan your Azure OpenAI
                                 quota (TPM &mdash; Tokens Per Minute) based on expected concurrent users. A single agent
                                 turn can consume 4K&ndash;20K tokens depending on tool use and RAG context.

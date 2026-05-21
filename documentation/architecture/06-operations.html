@@ -135,9 +135,9 @@
                             <div class="callout-title">The single biggest cost driver</div>
                             <p>
                                 Azure OpenAI dominates the bill. A typical agent conversation uses 5K&ndash;20K tokens.
-                                At GPT-4o pricing ($2.50/1M input, $10/1M output), 10,000 conversations/month costs
-                                roughly $250&ndash;1000 in OpenAI alone. Provisioned Throughput Units (PTU) reduce
-                                per-token cost at high volume.
+                                At current Azure OpenAI pricing, 10,000 conversations/month can cost $250&ndash;1000+
+                                in OpenAI alone depending on the model you deploy. Provisioned Throughput Units (PTU)
+                                reduce per-token cost at high volume.
                             </p>
                         </div>
                     </div>
@@ -172,7 +172,7 @@
                                 <td>$30&ndash;50</td>
                                 <td>$100&ndash;200</td>
                                 <td>$300&ndash;1000+</td>
-                                <td>Token volume, model choice (GPT-4o vs 4.1-mini)</td>
+                                <td>Token volume, model choice (larger vs smaller models)</td>
                             </tr>
                             <tr>
                                 <td><strong>Search</strong></td>
@@ -263,7 +263,7 @@
                     </p>
                     <ul>
                         <li><strong>Start with pay-as-you-go</strong>, move to PTU when you have predictable load and want guaranteed latency.</li>
-                        <li><strong>Isolate quotas:</strong> use different deployments for agent (GPT-4o) vs. embeddings (text-embedding-3-large) so one workload doesn&rsquo;t starve the other.</li>
+                        <li><strong>Isolate quotas:</strong> use different deployments for agent chat vs. embeddings so one workload doesn&rsquo;t starve the other.</li>
                         <li><strong>Multi-region fallback:</strong> configure a secondary Azure OpenAI resource in a different region. The harness Polly circuit breaker chain handles failover automatically.</li>
                         <li><strong>Monitor 429s:</strong> track <code>openai.requests.throttled</code> metric. Sustained 429s mean you need more quota or a PTU commitment.</li>
                     </ul>

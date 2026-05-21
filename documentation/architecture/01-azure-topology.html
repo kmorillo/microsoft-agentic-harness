@@ -90,9 +90,9 @@
                     <div class="rg-group">
                         <span class="rg-label">rg-harness-ai</span>
                         <p>
-                            <strong>AI services.</strong> Azure OpenAI (GPT-4o for reasoning, text-embedding-3-large
-                            for vector embeddings) and Azure AI Search (hybrid vector + BM25 retrieval). These are
-                            the most expensive resources and the most common scaling bottleneck.
+                            <strong>AI services.</strong> Azure OpenAI (a chat completion model for reasoning, an
+                            embedding model for vector embeddings) and Azure AI Search (hybrid vector + BM25 retrieval).
+                            These are the most expensive resources and the most common scaling bottleneck.
                         </p>
                     </div>
 
@@ -166,7 +166,7 @@
                             <div class="az-box az-ai">
                                 <span class="az-box-icon">&#9733;</span>
                                 <div class="az-box-name">Azure OpenAI</div>
-                                <span class="az-box-detail">GPT-4o + text-embedding-3-large</span>
+                                <span class="az-box-detail">Chat completion + embedding models</span>
                                 <span class="az-box-sku">Standard S0</span>
                             </div>
                             <div class="az-box az-ai">
@@ -240,12 +240,12 @@
                         <li>
                             <strong>API &rarr; Azure OpenAI (LLM call).</strong>
                             The harness builds the prompt (system instructions + conversation history + skill context
-                            + retrieved documents) and sends it to GPT-4o. The model returns a response, possibly
-                            including tool-use requests.
+                            + retrieved documents) and sends it to the chat completion deployment. The model returns
+                            a response, possibly including tool-use requests.
                         </li>
                         <li>
                             <strong>API &rarr; AI Search (RAG retrieval) &rarr; Azure OpenAI (embeddings).</strong>
-                            If RAG is triggered, the query is embedded via text-embedding-3-large, then sent to AI
+                            If RAG is triggered, the query is embedded via the embedding deployment, then sent to AI
                             Search for hybrid vector + BM25 retrieval. Results are reranked and assembled into the
                             context window.
                         </li>
@@ -339,8 +339,7 @@
                         <div class="callout-body">
                             <div class="callout-title">Region matters</div>
                             <p style="margin: 0">
-                                Azure OpenAI model availability varies by region. Not every region has GPT-4o or
-                                text-embedding-3-large. Check the
+                                Azure OpenAI model availability varies by region. Not every region has every model. Check the
                                 <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models"
                                     >model availability table</a
                                 >

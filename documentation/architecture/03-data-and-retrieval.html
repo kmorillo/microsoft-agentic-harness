@@ -119,10 +119,10 @@
 
                     <h3 id="embedding">Embedding</h3>
                     <p>
-                        Each chunk is sent to Azure OpenAI's <code>text-embedding-3-large</code> deployment.
+                        Each chunk is sent to your Azure OpenAI embedding deployment.
                         Embeddings are generated in batches (configurable batch size via
-                        <code>AppConfig.AI.Rag.Embeddings.BatchSize</code>). Output: 1536 or 3072-dimension
-                        vectors.
+                        <code>AppConfig.AI.Rag.Embeddings.BatchSize</code>). Output dimensions depend on the
+                        model you deploy (configurable via <code>AppConfig.AI.Rag.Embeddings.Dimensions</code>).
                     </p>
 
                     <h3 id="indexing">Indexing</h3>
