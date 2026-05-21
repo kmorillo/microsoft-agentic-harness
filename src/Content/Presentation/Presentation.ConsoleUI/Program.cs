@@ -42,6 +42,17 @@ public class Program
 		services.AddTransient<SetupSecretsExample>();
 		services.AddTransient<OptimizeExample>();
 		services.AddTransient<RagPipelineExample>();
+		services.AddTransient<KnowledgeGraphMemoryExample>();
+		services.AddTransient<KnowledgeGraphComplianceExample>();
+		services.AddTransient<GovernanceSanitizationExample>();
+		services.AddTransient<EscalationApprovalsExample>();
+		services.AddTransient<SkillsDiscoveryExample>();
+		services.AddTransient<DriftDetectionExample>();
+		services.AddTransient<LearningsLogExample>();
+		services.AddTransient<ObservabilityBudgetExample>();
+		services.AddTransient<MultiSourceRetrievalExample>();
+		services.AddTransient<SandboxCapabilitiesExample>();
+		services.AddTransient<PipelineBehaviorsExample>();
 		services.AddTransient<App>();
 
 		var serviceProvider = services.BuildServiceProvider();
