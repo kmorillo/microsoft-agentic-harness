@@ -84,6 +84,31 @@ public static partial class ConsoleHelper
 	}
 
 	/// <summary>
+	/// Displays a numbered step indicator with description.
+	/// </summary>
+	public static void DisplayStep(int current, int total, string description)
+	{
+		AnsiConsole.MarkupLine($"\n[bold cornflowerblue][[Step {current}/{total}]][/] {description}");
+	}
+
+	/// <summary>
+	/// Displays a mode badge indicating live or offline operation.
+	/// </summary>
+	public static void DisplayModeInfo(bool isLive, string? detail = null)
+	{
+		if (isLive)
+		{
+			var msg = detail is not null ? $"[bold green][[LIVE]][/] {detail}" : "[bold green][[LIVE]][/] Connected to configured backends";
+			AnsiConsole.MarkupLine(msg);
+		}
+		else
+		{
+			var msg = detail is not null ? $"[bold yellow][[OFFLINE]][/] {detail}" : "[bold yellow][[OFFLINE]][/] Using in-memory backends";
+			AnsiConsole.MarkupLine(msg);
+		}
+	}
+
+	/// <summary>
 	/// Strips Spectre.Console markup tags from text for logging.
 	/// </summary>
 	public static string StripMarkup(string text) => MarkupTagsRegex.Replace(text, "");
