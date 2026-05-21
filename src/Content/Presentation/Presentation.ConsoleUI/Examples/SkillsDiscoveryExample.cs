@@ -256,7 +256,7 @@ It echoes back inputs with metadata.",
 
 		foreach (var skill in skillsToPreview)
 		{
-			var panel = new Panel(new Markup(TruncateText(skill.Content, 300)))
+			var panel = new Panel(new Markup(Markup.Escape(TruncateText(skill.Content, 300))))
 			{
 				Header = new PanelHeader($"[cornflowerblue]{Markup.Escape(skill.Name)} (Tier 2)[/]"),
 				Border = BoxBorder.Rounded

@@ -177,7 +177,7 @@ public class KnowledgeGraphComplianceExample
         }
         catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"  [yellow]⚠ Erasure demo note:[/] {ex.Message}");
+            AnsiConsole.MarkupLine($"  [yellow]⚠ Erasure demo note:[/] {Markup.Escape(ex.Message)}");
             AnsiConsole.MarkupLine("  [grey](In production, this would delete all data owned by the specified user)[/]");
         }
     }
@@ -221,7 +221,7 @@ public class KnowledgeGraphComplianceExample
         }
         catch (Exception ex)
         {
-            AnsiConsole.MarkupLine($"  [yellow]⚠[/] Audit sink error: {ex.Message}");
+            AnsiConsole.MarkupLine($"  [yellow]⚠[/] Audit sink error: {Markup.Escape(ex.Message)}");
             AnsiConsole.MarkupLine("  [grey](Check that IMemoryAuditSink is registered in DI)[/]");
         }
     }

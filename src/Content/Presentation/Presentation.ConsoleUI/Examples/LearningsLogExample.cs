@@ -127,9 +127,9 @@ public class LearningsLogExample
 
             table.AddRow(
                 entry.LearningId.ToString("N")[..8],
-                entry.Category.ToString(),
-                entry.DecayClass.ToString(),
-                preview,
+                Markup.Escape(entry.Category.ToString()),
+                Markup.Escape(entry.DecayClass.ToString()),
+                Markup.Escape(preview),
                 entry.FeedbackWeight.ToString("F2")
             );
         }
@@ -168,9 +168,9 @@ public class LearningsLogExample
                 foreach (var learning in learnings)
                 {
                     table.AddRow(
-                        learning.Category.ToString(),
-                        learning.Content,
-                        learning.Source.SourceType.ToString(),
+                        Markup.Escape(learning.Category.ToString()),
+                        Markup.Escape(learning.Content),
+                        Markup.Escape(learning.Source.SourceType.ToString()),
                         learning.Provenance.Confidence.ToString("F2")
                     );
                 }
