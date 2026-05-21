@@ -64,7 +64,7 @@ public class DriftDetectionExample
         ConsoleHelper.DisplayStep(1, 4, "Establish Baseline (Quality Score ~0.85)");
 
         // First, record baseline-quality scores to build history
-        AnsiConsole.WriteLine("Recording baseline history (quality ~0.85)...");
+        AnsiConsole.MarkupLine("Recording baseline history (quality ~0.85)...");
         var baselineScores = new[] { 0.84, 0.86, 0.85, 0.83, 0.87 };
 
         foreach (var score in baselineScores)
@@ -99,15 +99,15 @@ public class DriftDetectionExample
         if (baselineResult.IsSuccess)
         {
             var baseline = baselineResult.Value;
-            AnsiConsole.WriteLine($"[green]✓[/] Baseline computed: [bold]{baseline.BaselineId}[/]");
-            AnsiConsole.WriteLine($"  Scope: {baseline.Scope} / {baseline.ScopeIdentifier}");
-            AnsiConsole.WriteLine($"  Samples: {baseline.SampleCount}");
-            AnsiConsole.WriteLine($"  Window: {baseline.WindowStart:u} → {baseline.WindowEnd:u}");
+            AnsiConsole.MarkupLine($"[green]✓[/] Baseline computed: [bold]{baseline.BaselineId}[/]");
+            AnsiConsole.MarkupLine($"  Scope: {baseline.Scope} / {baseline.ScopeIdentifier}");
+            AnsiConsole.MarkupLine($"  Samples: {baseline.SampleCount}");
+            AnsiConsole.MarkupLine($"  Window: {baseline.WindowStart:u} → {baseline.WindowEnd:u}");
             AnsiConsole.WriteLine();
         }
         else
         {
-            AnsiConsole.WriteLine($"[red]✗[/] Baseline creation failed: {string.Join(", ", baselineResult.Errors)}");
+            AnsiConsole.MarkupLine($"[red]✗[/] Baseline creation failed: {Markup.Escape(string.Join(", ", baselineResult.Errors))}");
         }
     }
 
@@ -140,11 +140,11 @@ public class DriftDetectionExample
             if (result.IsSuccess)
             {
                 scores.Add(result.Value);
-                AnsiConsole.WriteLine($"  Score: {score:F2} → Severity: [bold]{result.Value.Severity}[/] (Drift: {result.Value.OverallDrift:F2}σ)");
+                AnsiConsole.MarkupLine($"  Score: {score:F2} → Severity: [bold]{result.Value.Severity}[/] (Drift: {result.Value.OverallDrift:F2}σ)");
             }
         }
 
-        AnsiConsole.WriteLine($"[green]✓[/] Recorded {scores.Count} normal evaluations. EWMA stable within bounds.");
+        AnsiConsole.MarkupLine($"[green]✓[/] Recorded {scores.Count} normal evaluations. EWMA stable within bounds.");
         AnsiConsole.WriteLine();
     }
 
@@ -186,12 +186,12 @@ public class DriftDetectionExample
                     _ => "white"
                 };
 
-                AnsiConsole.WriteLine($"  Score: {score:F2} → Severity: [{color}]{result.Value.Severity}[/] (Drift: {result.Value.OverallDrift:F2}σ)");
+                AnsiConsole.MarkupLine($"  Score: {score:F2} → Severity: [{color}]{result.Value.Severity}[/] (Drift: {result.Value.OverallDrift:F2}σ)");
             }
         }
 
         AnsiConsole.WriteLine();
-        AnsiConsole.WriteLine("[bold]Severity Progression:[/]");
+        AnsiConsole.MarkupLine("[bold]Severity Progression:[/]");
         var table = new Table();
         table.AddColumn("Score");
         table.AddColumn("Severity");
@@ -238,7 +238,7 @@ public class DriftDetectionExample
         if (historyResult.IsSuccess)
         {
             var history = historyResult.Value;
-            AnsiConsole.WriteLine($"[green]✓[/] Retrieved {history.Count} historical scores.");
+            AnsiConsole.MarkupLine($"[green]✓[/] Retrieved {history.Count} historical scores.");
 
             if (history.Count > 0)
             {
@@ -253,12 +253,12 @@ public class DriftDetectionExample
                 if (auditResult.IsSuccess)
                 {
                     var records = auditResult.Value;
-                    AnsiConsole.WriteLine($"[green]✓[/] Retrieved {records.Count} audit entries.");
+                    AnsiConsole.MarkupLine($"[green]✓[/] Retrieved {records.Count} audit entries.");
 
                     if (records.Count > 0)
                     {
                         AnsiConsole.WriteLine();
-                        AnsiConsole.WriteLine("[bold]Audit Trail:[/]");
+                        AnsiConsole.MarkupLine("[bold]Audit Trail:[/]");
                         var table = new Table();
                         table.AddColumn("Type");
                         table.AddColumn("Event ID");
@@ -282,7 +282,7 @@ public class DriftDetectionExample
         }
         else
         {
-            AnsiConsole.WriteLine("[red]✗[/] Failed to retrieve drift history");
+            AnsiConsole.MarkupLine("[red]✗[/] Failed to retrieve drift history");
         }
     }
 }

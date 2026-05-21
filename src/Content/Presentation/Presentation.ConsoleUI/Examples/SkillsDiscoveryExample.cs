@@ -240,8 +240,7 @@ It echoes back inputs with metadata.",
 
 		AnsiConsole.Write(tier1Table);
 		AnsiConsole.WriteLine();
-		AnsiConsole.MarkupLine("[grey]Agent now knows: \"I have these skills available.\" Context cost: ~{0} tokens.[/]",
-			skills.Count * 100);
+		AnsiConsole.MarkupLine($"[grey]Agent now knows: \"I have these skills available.\" Context cost: ~{skills.Count * 100} tokens.[/]");
 		AnsiConsole.WriteLine();
 	}
 
@@ -285,7 +284,7 @@ It echoes back inputs with metadata.",
 		_budgetTracker.Reset(agentName);
 
 		// Record allocations across components
-		AnsiConsole.MarkupLine("[grey]Recording allocations for [bold]{0}[/]:[/]", agentName);
+		AnsiConsole.MarkupLine($"[grey]Recording allocations for [bold]{Markup.Escape(agentName)}[/]:[/]");
 
 		_budgetTracker.RecordAllocation(agentName, "system_prompt", 2500);
 		_logger.LogInformation("Recorded system_prompt: 2500 tokens");

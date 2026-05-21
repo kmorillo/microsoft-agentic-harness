@@ -88,7 +88,7 @@ public static partial class ConsoleHelper
 	/// </summary>
 	public static void DisplayStep(int current, int total, string description)
 	{
-		AnsiConsole.MarkupLine($"\n[bold cornflowerblue][[Step {current}/{total}]][/] {description}");
+		AnsiConsole.MarkupLine($"\n[bold cornflowerblue][[Step {current}/{total}]][/] {Markup.Escape(description)}");
 	}
 
 	/// <summary>
@@ -98,12 +98,12 @@ public static partial class ConsoleHelper
 	{
 		if (isLive)
 		{
-			var msg = detail is not null ? $"[bold green][[LIVE]][/] {detail}" : "[bold green][[LIVE]][/] Connected to configured backends";
+			var msg = detail is not null ? $"[bold green][[LIVE]][/] {Markup.Escape(detail)}" : "[bold green][[LIVE]][/] Connected to configured backends";
 			AnsiConsole.MarkupLine(msg);
 		}
 		else
 		{
-			var msg = detail is not null ? $"[bold yellow][[OFFLINE]][/] {detail}" : "[bold yellow][[OFFLINE]][/] Using in-memory backends";
+			var msg = detail is not null ? $"[bold yellow][[OFFLINE]][/] {Markup.Escape(detail)}" : "[bold yellow][[OFFLINE]][/] Using in-memory backends";
 			AnsiConsole.MarkupLine(msg);
 		}
 	}

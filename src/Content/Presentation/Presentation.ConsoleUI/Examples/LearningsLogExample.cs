@@ -36,16 +36,19 @@ public class LearningsLogExample
     /// </summary>
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
+        var store = _serviceProvider.GetKeyedService<ILearningsStore>("in_memory")
+            ?? throw new InvalidOperationException("ILearningsStore (in_memory) not registered");
+
         try
         {
             ConsoleHelper.DisplayHeader("Learnings Log: Knowledge Persistence & Feedback Learning", Color.Cyan);
             ConsoleHelper.DisplayModeInfo(isLive: false, "In-memory learnings store");
             AnsiConsole.WriteLine();
 
-            await Step1_SaveEntriesAsync(cancellationToken);
-            await Step2_SearchByCategoryAsync(cancellationToken);
-            await Step3_UpdateFeedbackAsync(cancellationToken);
-            await Step4_SoftDeleteAsync(cancellationToken);
+            await Step1_SaveEntriesAsync(store, cancellationToken);
+            await Step2_SearchByCategoryAsync(store, cancellationToken);
+            await Step3_UpdateFeedbackAsync(store, cancellationToken);
+            await Step4_SoftDeleteAsync(store, cancellationToken);
             Step5_DisplayDecayTiers(cancellationToken);
 
             ConsoleHelper.DisplaySuccess("All learnings log demonstrations completed.");
@@ -57,12 +60,9 @@ public class LearningsLogExample
         }
     }
 
-    private async Task Step1_SaveEntriesAsync(CancellationToken ct)
+    private async Task Step1_SaveEntriesAsync(ILearningsStore store, CancellationToken ct)
     {
         ConsoleHelper.DisplayStep(1, 5, "Save Learning Entries (Factual, Style, Tool Usage, Domain Knowledge)");
-
-        var store = _serviceProvider.GetKeyedService<ILearningsStore>("in_memory")
-            ?? throw new InvalidOperationException("ILearningsStore (in_memory) not registered");
 
         var entries = new List<LearningEntry>();
 
@@ -102,16 +102,16 @@ public class LearningsLogExample
             if (result.IsSuccess)
             {
                 savedIds.Add(entry.LearningId);
-                AnsiConsole.WriteLine($"[green]✓[/] Saved: {entry.Category} — [yellow]{entry.DecayClass}[/] decay");
+                AnsiConsole.MarkupLine($"[green]✓[/] Saved: {entry.Category} — [yellow]{entry.DecayClass}[/] decay");
             }
             else
             {
-                AnsiConsole.WriteLine($"[red]✗[/] Failed to save {entry.Category}: {string.Join(", ", result.Errors)}");
+                AnsiConsole.MarkupLine($"[red]✗[/] Failed to save {entry.Category}: {Markup.Escape(string.Join(", ", result.Errors))}");
             }
         }
 
         AnsiConsole.WriteLine();
-        AnsiConsole.WriteLine("[bold]Saved Learning Entries:[/]");
+        AnsiConsole.MarkupLine("[bold]Saved Learning Entries:[/]");
         var table = new Table().Border(TableBorder.Rounded);
         table.AddColumn("[bold]ID[/]");
         table.AddColumn("[bold]Category[/]");
@@ -138,30 +138,27 @@ public class LearningsLogExample
         AnsiConsole.WriteLine();
     }
 
-    private async Task Step2_SearchByCategoryAsync(CancellationToken ct)
+    private async Task Step2_SearchByCategoryAsync(ILearningsStore store, CancellationToken ct)
     {
         ConsoleHelper.DisplayStep(2, 5, "Search Learning Entries by Category");
-
-        var store = _serviceProvider.GetKeyedService<ILearningsStore>("in_memory")
-            ?? throw new InvalidOperationException("ILearningsStore (in_memory) not registered");
 
         var criteria = new LearningSearchCriteria
         {
             Category = LearningCategory.FactualCorrection
         };
 
-        AnsiConsole.WriteLine($"Searching for learnings with category [yellow]{LearningCategory.FactualCorrection}[/]...");
+        AnsiConsole.MarkupLine($"Searching for learnings with category [yellow]{LearningCategory.FactualCorrection}[/]...");
         var result = await store.SearchAsync(criteria, ct);
 
         if (result.IsSuccess)
         {
             var learnings = result.Value;
-            AnsiConsole.WriteLine($"[green]✓[/] Found {learnings.Count} learnings");
+            AnsiConsole.MarkupLine($"[green]✓[/] Found {learnings.Count} learnings");
             AnsiConsole.WriteLine();
 
             if (learnings.Count > 0)
             {
-                AnsiConsole.WriteLine("[bold]Search Results:[/]");
+                AnsiConsole.MarkupLine("[bold]Search Results:[/]");
                 var table = new Table().Border(TableBorder.Rounded);
                 table.AddColumn("[bold]Category[/]");
                 table.AddColumn("[bold]Content[/]");
@@ -183,18 +180,15 @@ public class LearningsLogExample
         }
         else
         {
-            AnsiConsole.WriteLine($"[red]✗[/] Search failed: {string.Join(", ", result.Errors)}");
+            AnsiConsole.MarkupLine($"[red]✗[/] Search failed: {Markup.Escape(string.Join(", ", result.Errors))}");
         }
 
         AnsiConsole.WriteLine();
     }
 
-    private async Task Step3_UpdateFeedbackAsync(CancellationToken ct)
+    private async Task Step3_UpdateFeedbackAsync(ILearningsStore store, CancellationToken ct)
     {
         ConsoleHelper.DisplayStep(3, 5, "Update Feedback Weight and Access Time");
-
-        var store = _serviceProvider.GetKeyedService<ILearningsStore>("in_memory")
-            ?? throw new InvalidOperationException("ILearningsStore (in_memory) not registered");
 
         // Retrieve a learning to update
         var criteria = new LearningSearchCriteria
@@ -207,8 +201,8 @@ public class LearningsLogExample
         if (searchResult.IsSuccess && searchResult.Value.Count > 0)
         {
             var learning = searchResult.Value[0];
-            AnsiConsole.WriteLine($"Retrieved learning: [cyan]{learning.LearningId:N}[/]");
-            AnsiConsole.WriteLine($"  Current feedback weight: {learning.FeedbackWeight:F2}");
+            AnsiConsole.MarkupLine($"Retrieved learning: [cyan]{learning.LearningId:N}[/]");
+            AnsiConsole.MarkupLine($"  Current feedback weight: {learning.FeedbackWeight:F2}");
 
             // Update the learning: increase feedback weight and update last accessed
             var updatedLearning = learning with
@@ -223,30 +217,27 @@ public class LearningsLogExample
 
             if (updateResult.IsSuccess)
             {
-                AnsiConsole.WriteLine($"[green]✓[/] Updated learning successfully");
-                AnsiConsole.WriteLine($"  New feedback weight: {updatedLearning.FeedbackWeight:F2}");
-                AnsiConsole.WriteLine($"  Last reinforced: {updatedLearning.LastReinforcedAt:u}");
-                AnsiConsole.WriteLine($"  Update count: {updatedLearning.UpdateCount}");
+                AnsiConsole.MarkupLine($"[green]✓[/] Updated learning successfully");
+                AnsiConsole.MarkupLine($"  New feedback weight: {updatedLearning.FeedbackWeight:F2}");
+                AnsiConsole.MarkupLine($"  Last reinforced: {updatedLearning.LastReinforcedAt:u}");
+                AnsiConsole.MarkupLine($"  Update count: {updatedLearning.UpdateCount}");
             }
             else
             {
-                AnsiConsole.WriteLine($"[red]✗[/] Update failed: {string.Join(", ", updateResult.Errors)}");
+                AnsiConsole.MarkupLine($"[red]✗[/] Update failed: {Markup.Escape(string.Join(", ", updateResult.Errors))}");
             }
         }
         else
         {
-            AnsiConsole.WriteLine("[yellow]⚠[/] No learnings found to update");
+            AnsiConsole.MarkupLine("[yellow]⚠[/] No learnings found to update");
         }
 
         AnsiConsole.WriteLine();
     }
 
-    private async Task Step4_SoftDeleteAsync(CancellationToken ct)
+    private async Task Step4_SoftDeleteAsync(ILearningsStore store, CancellationToken ct)
     {
         ConsoleHelper.DisplayStep(4, 5, "Soft-Delete a Learning Entry");
-
-        var store = _serviceProvider.GetKeyedService<ILearningsStore>("in_memory")
-            ?? throw new InvalidOperationException("ILearningsStore (in_memory) not registered");
 
         // Retrieve a learning to delete
         var criteria = new LearningSearchCriteria
@@ -259,32 +250,32 @@ public class LearningsLogExample
         if (searchResult.IsSuccess && searchResult.Value.Count > 0)
         {
             var learning = searchResult.Value[0];
-            AnsiConsole.WriteLine($"Retrieved learning for soft-delete: [cyan]{learning.LearningId:N}[/]");
-            AnsiConsole.WriteLine($"  Content: {learning.Content}");
+            AnsiConsole.MarkupLine($"Retrieved learning for soft-delete: [cyan]{learning.LearningId:N}[/]");
+            AnsiConsole.MarkupLine($"  Content: {Markup.Escape(learning.Content)}");
 
             var deleteResult = await store.SoftDeleteAsync(learning.LearningId, "User preference no longer applicable; style changed", ct);
 
             if (deleteResult.IsSuccess)
             {
-                AnsiConsole.WriteLine($"[green]✓[/] Soft-deleted successfully");
+                AnsiConsole.MarkupLine($"[green]✓[/] Soft-deleted successfully");
 
                 // Verify by retrieving
                 var verifyResult = await store.GetAsync(learning.LearningId, ct);
                 if (verifyResult.IsSuccess && verifyResult.Value != null)
                 {
                     var deleted = verifyResult.Value;
-                    AnsiConsole.WriteLine($"  IsDeleted flag: {deleted.IsDeleted}");
-                    AnsiConsole.WriteLine($"  Delete reason: {deleted.DeleteReason}");
+                    AnsiConsole.MarkupLine($"  IsDeleted flag: {deleted.IsDeleted}");
+                    AnsiConsole.MarkupLine($"  Delete reason: {Markup.Escape(deleted.DeleteReason ?? string.Empty)}");
                 }
             }
             else
             {
-                AnsiConsole.WriteLine($"[red]✗[/] Soft-delete failed: {string.Join(", ", deleteResult.Errors)}");
+                AnsiConsole.MarkupLine($"[red]✗[/] Soft-delete failed: {Markup.Escape(string.Join(", ", deleteResult.Errors))}");
             }
         }
         else
         {
-            AnsiConsole.WriteLine("[yellow]⚠[/] No learnings found to delete");
+            AnsiConsole.MarkupLine("[yellow]⚠[/] No learnings found to delete");
         }
 
         AnsiConsole.WriteLine();
@@ -294,7 +285,7 @@ public class LearningsLogExample
     {
         ConsoleHelper.DisplayStep(5, 5, "Explain the 3 Decay Tiers");
 
-        AnsiConsole.WriteLine("[bold]Decay Tiers — Temporal Decay Behavior:[/]");
+        AnsiConsole.MarkupLine("[bold]Decay Tiers — Temporal Decay Behavior:[/]");
         AnsiConsole.WriteLine();
 
         var table = new Table().Border(TableBorder.Rounded);
@@ -327,11 +318,11 @@ public class LearningsLogExample
         AnsiConsole.Write(table);
         AnsiConsole.WriteLine();
 
-        AnsiConsole.WriteLine("[bold]Decay Formula (during recall):[/]");
+        AnsiConsole.MarkupLine("[bold]Decay Formula (during recall):[/]");
         AnsiConsole.MarkupLine("[grey]finalScore = (1 - α) × relevance + α × min(feedbackWeight × freshness, ceiling)[/]");
         AnsiConsole.WriteLine();
 
-        AnsiConsole.WriteLine("[bold]Key Points:[/]");
+        AnsiConsole.MarkupLine("[bold]Key Points:[/]");
         AnsiConsole.MarkupLine("• Freshness = 1.0 for Permanent; declines linearly for Volatile/Stable");
         AnsiConsole.MarkupLine("• FeedbackWeight (EMA): higher weight = more validated by positive feedback");
         AnsiConsole.MarkupLine("• LastReinforcedAt: updated by positive feedback, resets decay clock for Volatile/Stable");

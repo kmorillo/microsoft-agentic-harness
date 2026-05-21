@@ -27,7 +27,7 @@ public sealed class PipelineBehaviorsExample
     /// <summary>
     /// Runs all 4 demonstration steps.
     /// </summary>
-    public async Task RunAsync()
+    public async Task RunAsync(CancellationToken cancellationToken = default)
     {
         try
         {

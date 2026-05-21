@@ -81,7 +81,7 @@ public class EscalationApprovalsExample
         if (outcome != null)
         {
             DisplayOutcome("AnyOf Result", outcome);
-            AnsiConsole.WriteLine($"[bold]Escalation Resolved After:[/] {outcome.Decisions.Count} approver decision(s)");
+            AnsiConsole.MarkupLine($"[bold]Escalation Resolved After:[/] {outcome.Decisions.Count} approver decision(s)");
         }
 
         AnsiConsole.WriteLine();
@@ -111,7 +111,7 @@ public class EscalationApprovalsExample
         };
 
         var outcome1 = await _escalationService.SubmitDecisionAsync(escalationId, aliceDecision, cancellationToken);
-        AnsiConsole.WriteLine($"[yellow]After Alice approved: {(outcome1 == null ? "Still pending (Bob must approve)" : "Resolved")}[/]");
+        AnsiConsole.MarkupLine($"[yellow]After Alice approved: {(outcome1 == null ? "Still pending (Bob must approve)" : "Resolved")}[/]");
 
         // Bob approves
         var bobDecision = new ApproverDecision
@@ -126,7 +126,7 @@ public class EscalationApprovalsExample
         if (outcome2 != null)
         {
             DisplayOutcome("AllOf Result", outcome2);
-            AnsiConsole.WriteLine($"[bold]Escalation Resolved After:[/] All {outcome2.Decisions.Count} approvers decided");
+            AnsiConsole.MarkupLine($"[bold]Escalation Resolved After:[/] All {outcome2.Decisions.Count} approvers decided");
         }
 
         AnsiConsole.WriteLine();
@@ -145,7 +145,7 @@ public class EscalationApprovalsExample
 
         var escalationId = await _escalationService.QueueEscalationAsync(request, cancellationToken);
         ConsoleHelper.DisplayInfo("Escalation Queued", $"ID: {escalationId}");
-        AnsiConsole.WriteLine($"[bold]Quorum Threshold:[/] 2 of 3 approvers");
+        AnsiConsole.MarkupLine($"[bold]Quorum Threshold:[/] 2 of 3 approvers");
 
         // Alice approves
         var aliceDecision = new ApproverDecision
@@ -157,7 +157,7 @@ public class EscalationApprovalsExample
         };
 
         var outcome1 = await _escalationService.SubmitDecisionAsync(escalationId, aliceDecision, cancellationToken);
-        AnsiConsole.WriteLine($"[yellow]After Alice: {(outcome1 == null ? "1/2 approvals received, pending" : "Quorum met")}[/]");
+        AnsiConsole.MarkupLine($"[yellow]After Alice: {(outcome1 == null ? "1/2 approvals received, pending" : "Quorum met")}[/]");
 
         // Bob approves (quorum met)
         var bobDecision = new ApproverDecision
@@ -172,7 +172,7 @@ public class EscalationApprovalsExample
         if (outcome2 != null)
         {
             DisplayOutcome("Quorum Result", outcome2);
-            AnsiConsole.WriteLine($"[bold]Escalation Resolved After:[/] {outcome2.Decisions.Count} approvers (quorum met)");
+            AnsiConsole.MarkupLine($"[bold]Escalation Resolved After:[/] {outcome2.Decisions.Count} approvers (quorum met)");
         }
 
         AnsiConsole.WriteLine();
@@ -193,14 +193,14 @@ public class EscalationApprovalsExample
         ConsoleHelper.DisplayInfo("Escalation Queued", $"ID: {escalationId}");
 
         // Cancel the escalation
-        AnsiConsole.WriteLine("[yellow]Cancelling escalation...[/]");
+        AnsiConsole.MarkupLine("[yellow]Cancelling escalation...[/]");
         var cancelOutcome = await _escalationService.CancelEscalationAsync(
             escalationId,
             "Feature release postponed, cancelling approval request",
             cancellationToken);
 
         DisplayOutcome("Cancellation Outcome", cancelOutcome);
-        AnsiConsole.WriteLine($"[bold]Resolution Type:[/] {cancelOutcome.ResolutionType}");
+        AnsiConsole.MarkupLine($"[bold]Resolution Type:[/] {cancelOutcome.ResolutionType}");
 
         AnsiConsole.WriteLine();
         await Task.CompletedTask;
@@ -297,9 +297,9 @@ public class EscalationApprovalsExample
         var statusColor = outcome.IsApproved ? "green" : "red";
         var statusText = outcome.IsApproved ? "APPROVED" : "DENIED";
 
-        AnsiConsole.WriteLine($"[bold {statusColor}]{label}:[/] {statusText}");
-        AnsiConsole.WriteLine($"[bold]Resolution Type:[/] {outcome.ResolutionType}");
-        AnsiConsole.WriteLine($"[bold]Resolved At:[/] {outcome.ResolvedAt:O}");
+        AnsiConsole.MarkupLine($"[bold {statusColor}]{Markup.Escape(label)}:[/] {statusText}");
+        AnsiConsole.MarkupLine($"[bold]Resolution Type:[/] {outcome.ResolutionType}");
+        AnsiConsole.MarkupLine($"[bold]Resolved At:[/] {outcome.ResolvedAt:O}");
 
         if (outcome.Decisions.Count > 0)
         {
