@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>03 &middot; Data &amp; Retrieval &mdash; Agentic Harness Architecture Guide</title>
+        <meta
+            name="description"
+            content="The harness has three distinct data systems: the RAG pipeline for document retrieval, the knowledge graph for entity relationships, and the plan store for agent execution state."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="../assets/css/styles.css" />
+        <link rel="stylesheet" href="assets/css/architecture.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <!-- ============ SIDEBAR ============ -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Architecture Guide</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Overview</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-azure-topology.html"><span class="sidebar-link-num">01</span> Azure Topology</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Infrastructure</div>
+                        <a class="sidebar-link" href="02-compute-and-ai.html"><span class="sidebar-link-num">02</span> Compute &amp; AI Services</a>
+                        <a class="sidebar-link" href="03-data-and-retrieval.html"><span class="sidebar-link-num">03</span> Data &amp; Retrieval</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Platform</div>
+                        <a class="sidebar-link" href="04-networking-and-security.html"><span class="sidebar-link-num">04</span> Networking &amp; Security</a>
+                        <a class="sidebar-link" href="05-observability.html"><span class="sidebar-link-num">05</span> Observability</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Operations</div>
+                        <a class="sidebar-link" href="06-operations.html"><span class="sidebar-link-num">06</span> Operations &amp; Cost</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Other Guides</div>
+                        <a class="sidebar-link" href="../index.html">&#8592; Developer Guide</a>
+                        <a class="sidebar-link" href="../agentic-harness-course/index.html">&#8592; Interactive Course</a>
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- ============ MAIN ============ -->
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 03 &middot; Infrastructure</span>
+                    <h1 class="page-title">Data &amp; Retrieval</h1>
+                    <p class="page-lead">
+                        The harness has three distinct data systems: the RAG pipeline for document retrieval, the
+                        knowledge graph for entity relationships, and the plan store for agent execution state. Each maps
+                        to different Azure services.
+                    </p>
+
+                    <!-- ==================== RAG pipeline on Azure ==================== -->
+                    <h2 id="rag-pipeline-on-azure">RAG pipeline on Azure</h2>
+                    <p>
+                        Documents flow through seven stages from raw files to assembled context. Each stage maps to a
+                        specific Azure service (or runs in-process on the Container App).
+                    </p>
+
+                    <div class="pipeline">
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Ingest</div>
+                            <div class="pipeline-stage-service">Blob Storage</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Chunk</div>
+                            <div class="pipeline-stage-service">Container App</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Embed</div>
+                            <div class="pipeline-stage-service">Azure OpenAI</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Index</div>
+                            <div class="pipeline-stage-service">AI Search</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Retrieve</div>
+                            <div class="pipeline-stage-service">AI Search</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Rerank</div>
+                            <div class="pipeline-stage-service">AI Search Semantic</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Assemble</div>
+                            <div class="pipeline-stage-service">Container App</div>
+                        </div>
+                    </div>
+
+                    <h3 id="ingestion">Ingestion</h3>
+                    <p>
+                        Documents land in Azure Blob Storage (container: <code>rag-documents</code>). The harness
+                        supports three chunking strategies: <strong>structure-aware</strong> (respects document
+                        headings and sections), <strong>fixed-size</strong> (configurable overlap), and
+                        <strong>semantic</strong> (embedding-based boundary detection). Chunking runs in-process on
+                        the Container App.
+                    </p>
+
+                    <h3 id="embedding">Embedding</h3>
+                    <p>
+                        Each chunk is sent to Azure OpenAI's <code>text-embedding-3-large</code> deployment.
+                        Embeddings are generated in batches (configurable batch size via
+                        <code>AppConfig.AI.Rag.Embeddings.BatchSize</code>). Output: 1536 or 3072-dimension
+                        vectors.
+                    </p>
+
+                    <h3 id="indexing">Indexing</h3>
+                    <p>
+                        Vectors plus metadata are pushed to Azure AI Search. The index stores both dense vectors
+                        (for semantic search) and the raw text (for BM25 keyword search). This enables hybrid
+                        retrieval via Reciprocal Rank Fusion (RRF).
+                    </p>
+
+                    <h3 id="retrieval">Retrieval</h3>
+                    <p>
+                        At query time, the harness runs both vector similarity and BM25 keyword search in parallel,
+                        merges results via RRF, then optionally reranks using Azure AI Search's semantic ranker
+                        (cross-encoder model). Query transformation (RAG Fusion, HyDE) happens before the search
+                        call.
+                    </p>
+
+                    <h3 id="ai-search-configuration">AI Search configuration</h3>
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">bicep</span>
+                        </div>
+<pre><code>resource searchIndex 'Microsoft.Search/searchServices@2024-06-01-preview' = {
+  name: searchServiceName
+  location: location
+  sku: { name: searchSku }  // 'basic' for dev, 'standard' for prod
+  properties: {
+    replicaCount: searchReplicas  // 1 for dev, 3+ for prod HA
+    partitionCount: 1
+    semanticSearch: 'standard'  // enables semantic reranking
+  }
+}</code></pre>
+                    </div>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">&#10003;</span>
+                        <div class="callout-body">
+                            <div class="callout-title">FAISS for dev, AI Search for prod</div>
+                            <p>
+                                The harness supports FAISS as an in-memory vector store for local development. No Azure
+                                resources needed. Set <code>AppConfig.AI.Rag.VectorStore.Provider: 'Faiss'</code> for
+                                local and <code>'AzureAISearch'</code> for deployed environments.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==================== Knowledge graph backends ==================== -->
+                    <h2 id="knowledge-graph-backends">Knowledge graph backends</h2>
+                    <p>
+                        The knowledge graph stores entity relationships extracted from documents and conversations.
+                        Three backends are supported behind the <code>IGraphDatabaseBackend</code> interface. Choose
+                        based on your operational maturity and query complexity.
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Backend</th>
+                                <th>Azure Service</th>
+                                <th>Best For</th>
+                                <th>Considerations</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>PostgreSQL</strong></td>
+                                <td>Cosmos DB for PostgreSQL</td>
+                                <td>Production, familiar SQL + graph queries</td>
+                                <td>Apache AGE extension for Cypher, scales horizontally</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Neo4j</strong></td>
+                                <td>Neo4j Aura (managed) or Neo4j on AKS</td>
+                                <td>Complex graph traversals, existing Neo4j expertise</td>
+                                <td>Additional managed service cost, Aura is fully managed</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Kuzu</strong></td>
+                                <td>Embedded (in-process)</td>
+                                <td>Development, testing, single-node deployments</td>
+                                <td>No external service needed, fast for small graphs</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h3 id="what-the-graph-stores">What the graph stores</h3>
+                    <ul>
+                        <li>
+                            <strong>Entities</strong> &mdash; extracted from documents and conversations (people,
+                            concepts, systems)
+                        </li>
+                        <li>
+                            <strong>Relationships</strong> &mdash; typed edges between entities with provenance stamps
+                        </li>
+                        <li>
+                            <strong>Communities</strong> &mdash; detected via Leiden algorithm, used for summarization
+                        </li>
+                        <li>
+                            <strong>Feedback weights</strong> &mdash; historical retrieval quality scores per node/edge
+                        </li>
+                    </ul>
+
+                    <h3 id="knowledge-graph-data-flow">Knowledge graph data flow</h3>
+                    <div class="topology">
+                        <div class="topology-title">Knowledge Graph Pipeline</div>
+                        <div class="topology-row">
+                            <div class="az-box az-storage">
+                                <span class="az-box-icon">&#128196;</span>
+                                <div class="az-box-name">Document</div>
+                                <div class="az-box-detail">
+                                    Raw source document from Blob Storage or conversation history.
+                                </div>
+                            </div>
+                            <div class="az-box az-compute">
+                                <span class="az-box-icon">&#9881;</span>
+                                <div class="az-box-name">Entity Extraction</div>
+                                <div class="az-box-detail">
+                                    LLM-powered extraction running on the Container App.
+                                </div>
+                                <span class="az-box-sku">Container App</span>
+                            </div>
+                            <div class="az-box az-data">
+                                <span class="az-box-icon">&#128279;</span>
+                                <div class="az-box-name">Knowledge Graph</div>
+                                <div class="az-box-detail">
+                                    Entities and relationships persisted to the graph backend.
+                                </div>
+                                <span class="az-box-sku">Cosmos DB / Neo4j / Kuzu</span>
+                            </div>
+                        </div>
+                        <div class="topology-connector">&#8595;</div>
+                        <div class="topology-row">
+                            <div class="az-box az-compute">
+                                <span class="az-box-icon">&#9881;</span>
+                                <div class="az-box-name">Community Detection</div>
+                                <div class="az-box-detail">
+                                    Leiden algorithm groups related entities into communities for summarization.
+                                </div>
+                                <span class="az-box-sku">Container App</span>
+                            </div>
+                            <div class="az-box az-ai">
+                                <span class="az-box-icon">&#128270;</span>
+                                <div class="az-box-name">Graph-Augmented Retrieval</div>
+                                <div class="az-box-detail">
+                                    Combines graph traversal with vector search for richer context assembly.
+                                </div>
+                                <span class="az-box-sku">Blended with RAG pipeline</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ==================== Plan state persistence ==================== -->
+                    <h2 id="plan-state-persistence">Plan state persistence</h2>
+                    <p>
+                        The harness uses EF Core with SQLite for plan execution state &mdash; DAG plans, step status,
+                        checkpoints. For production, swap to Azure SQL (or keep SQLite on a persistent volume if
+                        single-instance).
+                    </p>
+
+                    <h3 id="plan-store-configuration">Plan store configuration</h3>
+                    <ul>
+                        <li>
+                            <code>ConnectionStrings:PlanState</code> &mdash; SQLite connection string (dev) or Azure SQL
+                            connection string (prod)
+                        </li>
+                        <li>
+                            <code>SqliteVersionInterceptor</code> handles optimistic concurrency automatically
+                        </li>
+                        <li>
+                            <code>IDbContextFactory&lt;T&gt;</code> pattern ensures short-lived contexts, safe for
+                            concurrent agent operations
+                        </li>
+                    </ul>
+
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">SQLite in production</div>
+                            <p>
+                                SQLite works only for single-instance deployments. If you scale horizontally (multiple
+                                Container App replicas), you need Azure SQL or Cosmos DB for plan state. Concurrent
+                                writes to SQLite from multiple processes will fail.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==================== Blob Storage layout ==================== -->
+                    <h2 id="blob-storage-layout">Blob Storage layout</h2>
+                    <p>
+                        A single Storage Account hosts all blob containers. Organize by purpose so you can apply
+                        lifecycle policies and access controls independently.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">text</span>
+                        </div>
+<pre><code>harness-storage (Storage Account)
+&#9500;&#9472;&#9472; rag-documents/        Raw documents for ingestion
+&#9500;&#9472;&#9472; rag-indices/          FAISS index snapshots (if using FAISS)
+&#9500;&#9472;&#9472; audit-logs/           JSONL governance audit trail
+&#9500;&#9472;&#9472; agent-artifacts/      Sandbox execution outputs
+&#9492;&#9472;&#9472; knowledge-exports/    Graph export snapshots</code></pre>
+                    </div>
+
+                    <!-- Footer nav -->
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="02-compute-and-ai.html">
+                            <div class="page-nav-label">&larr; Previous</div>
+                            <div class="page-nav-title">02 &middot; Compute &amp; AI Services</div>
+                        </a>
+                        <a class="page-nav-link page-nav-next" href="04-networking-and-security.html">
+                            <div class="page-nav-label">Next &rarr;</div>
+                            <div class="page-nav-title">04 &middot; Networking &amp; Security</div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- TOC -->
+                <aside class="toc" aria-label="On this page">
+                    <div class="toc-title">On this page</div>
+                    <ul class="toc-list"></ul>
+                </aside>
+            </main>
+        </div>
+        <script src="../assets/js/main.js"></script>
+    </body>
+</html>

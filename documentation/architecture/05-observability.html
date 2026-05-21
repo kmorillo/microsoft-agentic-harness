@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>05 · Observability — Agentic Harness Architecture Guide</title>
+        <meta
+            name="description"
+            content="Two observability stacks, one OpenTelemetry pipeline. Whether you choose Azure Monitor or the Grafana OSS stack, the harness exports the same traces, metrics, and logs."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="../assets/css/styles.css" />
+        <link rel="stylesheet" href="assets/css/architecture.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <!-- ============ SIDEBAR ============ -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Architecture Guide</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Overview</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-azure-topology.html"><span class="sidebar-link-num">01</span> Azure Topology</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Infrastructure</div>
+                        <a class="sidebar-link" href="02-compute-and-ai.html"><span class="sidebar-link-num">02</span> Compute &amp; AI Services</a>
+                        <a class="sidebar-link" href="03-data-and-retrieval.html"><span class="sidebar-link-num">03</span> Data &amp; Retrieval</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Platform</div>
+                        <a class="sidebar-link" href="04-networking-and-security.html"><span class="sidebar-link-num">04</span> Networking &amp; Security</a>
+                        <a class="sidebar-link" href="05-observability.html"><span class="sidebar-link-num">05</span> Observability</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Operations</div>
+                        <a class="sidebar-link" href="06-operations.html"><span class="sidebar-link-num">06</span> Operations &amp; Cost</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Other Guides</div>
+                        <a class="sidebar-link" href="../index.html">&#8592; Developer Guide</a>
+                        <a class="sidebar-link" href="../agentic-harness-course/index.html">&#8592; Interactive Course</a>
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- ============ MAIN ============ -->
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 05 &middot; Platform</span>
+                    <h1 class="page-title">Observability</h1>
+                    <p class="page-lead">
+                        Two observability stacks, one OpenTelemetry pipeline. Whether you choose Azure Monitor
+                        or the Grafana OSS stack, the harness exports the same traces, metrics, and logs.
+                    </p>
+
+                    <!-- ==============================
+                         Two Paths, Same Data
+                         ============================== -->
+                    <h2 id="two-paths-same-data">Two paths, same data</h2>
+                    <p>
+                        The harness uses <strong>OpenTelemetry (OTel)</strong> as its instrumentation standard.
+                        This means you choose where the telemetry goes &mdash; Azure-native or open-source
+                        &mdash; without changing any application code. The same spans, metrics, and log records
+                        flow regardless of the exporter.
+                    </p>
+
+                    <h3 id="path-1-azure-native">Path 1 &mdash; Azure Native</h3>
+                    <div class="pipeline">
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">App</div>
+                            <div class="pipeline-stage-service">OTel SDK</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Application Insights</div>
+                            <div class="pipeline-stage-service">OTLP exporter</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Azure Monitor</div>
+                            <div class="pipeline-stage-service">Log Analytics</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Dashboards</div>
+                            <div class="pipeline-stage-service">Azure Workbooks</div>
+                        </div>
+                    </div>
+
+                    <h3 id="path-2-oss-stack">Path 2 &mdash; OSS Stack</h3>
+                    <div class="pipeline">
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">App</div>
+                            <div class="pipeline-stage-service">OTel SDK</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">OTel Collector</div>
+                            <div class="pipeline-stage-service">gRPC receiver</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Backends</div>
+                            <div class="pipeline-stage-service">Tempo + Prometheus + Loki</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Dashboards</div>
+                            <div class="pipeline-stage-service">Grafana</div>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Run both simultaneously</div>
+                            <p>
+                                You can run both paths at the same time. The OTel SDK supports multiple exporters.
+                                Many teams send traces to Grafana/Tempo for developer debugging and metrics to
+                                Azure Monitor for operations/alerting.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==============================
+                         What the Harness Instruments
+                         ============================== -->
+                    <h2 id="what-the-harness-instruments">What the harness instruments</h2>
+                    <p>
+                        The harness emits structured spans for every major subsystem. These spans carry
+                        semantic attributes that let you slice traces by model, tool, quality score, or
+                        token count.
+                    </p>
+
+                    <h3 id="distributed-traces">Distributed traces (spans)</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Span</th>
+                                <th>Source</th>
+                                <th>What It Tracks</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>agent.turn</code></td>
+                                <td>Agent runtime</td>
+                                <td>Full agent turn: prompt to response (includes tool calls)</td>
+                            </tr>
+                            <tr>
+                                <td><code>agent.tool_call</code></td>
+                                <td>Tool executor</td>
+                                <td>Individual tool execution with args and result</td>
+                            </tr>
+                            <tr>
+                                <td><code>rag.retrieve</code></td>
+                                <td>RAG pipeline</td>
+                                <td>Full retrieval: query transform, search, rerank, assemble</td>
+                            </tr>
+                            <tr>
+                                <td><code>rag.embed</code></td>
+                                <td>Embedding service</td>
+                                <td>Embedding generation time and token count</td>
+                            </tr>
+                            <tr>
+                                <td><code>mcp.request</code></td>
+                                <td>MCP server</td>
+                                <td>Incoming MCP tool/prompt/resource request</td>
+                            </tr>
+                            <tr>
+                                <td><code>knowledge.query</code></td>
+                                <td>Knowledge graph</td>
+                                <td>Graph traversal query with node/edge counts</td>
+                            </tr>
+                            <tr>
+                                <td><code>governance.drift</code></td>
+                                <td>Drift detector</td>
+                                <td>EWMA quality score, severity level</td>
+                            </tr>
+                            <tr>
+                                <td><code>pipeline.behavior</code></td>
+                                <td>MediatR pipeline</td>
+                                <td>Each pipeline behavior execution time</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h3 id="custom-metrics">Custom metrics (counters &amp; histograms)</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Type</th>
+                                <th>What It Measures</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>harness.agent.turns</code></td>
+                                <td>Counter</td>
+                                <td>Total agent turns processed</td>
+                            </tr>
+                            <tr>
+                                <td><code>harness.agent.tokens</code></td>
+                                <td>Histogram</td>
+                                <td>Token usage per turn (prompt + completion)</td>
+                            </tr>
+                            <tr>
+                                <td><code>harness.rag.latency</code></td>
+                                <td>Histogram</td>
+                                <td>RAG retrieval latency in ms</td>
+                            </tr>
+                            <tr>
+                                <td><code>harness.tools.invocations</code></td>
+                                <td>Counter</td>
+                                <td>Tool invocations by tool name</td>
+                            </tr>
+                            <tr>
+                                <td><code>harness.governance.circuit_breaks</code></td>
+                                <td>Counter</td>
+                                <td>Circuit breaker trips by provider</td>
+                            </tr>
+                            <tr>
+                                <td><code>harness.knowledge.graph_queries</code></td>
+                                <td>Histogram</td>
+                                <td>Graph query latency</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- ==============================
+                         Azure Monitor Setup
+                         ============================== -->
+                    <h2 id="azure-monitor-setup">Azure Monitor setup</h2>
+                    <p>
+                        For the Azure-native path, configure the OTel exporter to send data to Application
+                        Insights via its connection string.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">json</span>
+                        </div>
+<pre><code>{
+  "OpenTelemetry": {
+    "Exporter": "AzureMonitor",
+    "AzureMonitor": {
+      "ConnectionString": "InstrumentationKey=xxx;IngestionEndpoint=https://eastus-8.in.applicationinsights.azure.com/"
+    }
+  }
+}</code></pre>
+                    </div>
+
+                    <p>
+                        Application Insights provides built-in dashboards for request rates, failure rates,
+                        and response times. For agent-specific views, create custom
+                        <strong>Azure Workbooks</strong> that query the <code>customEvents</code> and
+                        <code>dependencies</code> tables in Log Analytics.
+                    </p>
+
+                    <h3 id="kql-example">KQL query example</h3>
+                    <p>
+                        Agent turn analysis &mdash; average and p95 duration by span name, bucketed by hour:
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">kql</span>
+                        </div>
+<pre><code>dependencies
+| where name startswith "agent."
+| summarize avg(duration), percentile(duration, 95), count()
+  by name, bin(timestamp, 1h)
+| render timechart</code></pre>
+                    </div>
+
+                    <!-- ==============================
+                         Grafana + Tempo + Prometheus Setup
+                         ============================== -->
+                    <h2 id="grafana-tempo-prometheus-setup">Grafana + Tempo + Prometheus setup</h2>
+                    <p>
+                        For the OSS path, point the OTel exporter at your OTel Collector endpoint.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">json</span>
+                        </div>
+<pre><code>{
+  "OpenTelemetry": {
+    "Exporter": "Otlp",
+    "Otlp": {
+      "Endpoint": "http://otel-collector:4317",
+      "Protocol": "grpc"
+    }
+  }
+}</code></pre>
+                    </div>
+
+                    <p>
+                        The OTel Collector receives spans, metrics, and logs, then routes them to
+                        <strong>Tempo</strong> (traces), <strong>Prometheus</strong> (metrics), and
+                        <strong>Loki</strong> (logs). <strong>Grafana</strong> provides the unified dashboard
+                        layer across all three backends. This stack runs as sidecar containers in the Container
+                        Apps environment or as a separate deployment.
+                    </p>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">&#10003;</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Pre-built Grafana dashboards</div>
+                            <p>
+                                The harness ships with dashboard JSON files in <code>tools/grafana/</code> that
+                                you can import directly. They cover agent performance, RAG pipeline health, and
+                                governance metrics.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==============================
+                         Tracing an Agent Conversation
+                         ============================== -->
+                    <h2 id="tracing-an-agent-conversation">Tracing an agent conversation</h2>
+                    <p>
+                        When you open a trace in your viewer (Jaeger, Tempo, or Application Insights Transaction
+                        search), here is what you see for a typical agent turn that involves RAG retrieval and
+                        tool use:
+                    </p>
+
+                    <div class="annotated">
+                        <div class="annotated-row">
+                            <div class="annotated-code">agent.turn                     [1,240ms]</div>
+                            <div class="annotated-note">
+                                <strong>Root span.</strong> Total duration of the conversation turn. Carries
+                                <code>agent.model</code>, <code>agent.tokens.prompt</code>, and
+                                <code>agent.tokens.completion</code> attributes.
+                            </div>
+                        </div>
+                        <div class="annotated-row">
+                            <div class="annotated-code">  rag.retrieve                   [380ms]</div>
+                            <div class="annotated-note">
+                                <strong>Child span.</strong> The RAG pipeline kicked in &mdash; query transform,
+                                search, rerank, assemble. Includes <code>rag.chunks.count</code> and
+                                <code>rag.quality.score</code>.
+                            </div>
+                        </div>
+                        <div class="annotated-row">
+                            <div class="annotated-code">  agent.tool_call [file_system]   [95ms]</div>
+                            <div class="annotated-note">
+                                <strong>Child span.</strong> The agent called the <code>file_system</code> tool.
+                                Attributes include <code>tool.name</code>, <code>tool.args</code>, and
+                                <code>tool.result.status</code>.
+                            </div>
+                        </div>
+                        <div class="annotated-row">
+                            <div class="annotated-code">  knowledge.query                [120ms]</div>
+                            <div class="annotated-note">
+                                <strong>Child span.</strong> Knowledge graph was consulted. Carries
+                                <code>graph.nodes.count</code> and <code>graph.edges.count</code> for the
+                                traversal.
+                            </div>
+                        </div>
+                        <div class="annotated-row">
+                            <div class="annotated-code">  mcp.request [ext-tool]          [210ms]</div>
+                            <div class="annotated-note">
+                                <strong>Child span.</strong> An external MCP tool was invoked. Includes the
+                                MCP server name, tool name, and round-trip latency.
+                            </div>
+                        </div>
+                    </div>
+
+                    <p>
+                        Each span carries attributes like <code>agent.model</code>,
+                        <code>agent.tokens.prompt</code>, <code>agent.tokens.completion</code>,
+                        <code>rag.chunks.count</code>, and <code>rag.quality.score</code> that let you
+                        diagnose exactly where time and tokens went.
+                    </p>
+
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Token tracking matters for cost</div>
+                            <p>
+                                The <code>harness.agent.tokens</code> histogram, combined with Azure OpenAI
+                                pricing, gives you a direct cost-per-conversation metric. Set alerting thresholds
+                                based on your budget to catch runaway agent loops before they burn through your
+                                token allocation.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==============================
+                         Alerting
+                         ============================== -->
+                    <h2 id="alerting">Alerting</h2>
+                    <p>
+                        Recommended alert rules for production deployments. These apply to both Azure Monitor
+                        (metric alerts) and Grafana (Prometheus alert rules).
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Alert</th>
+                                <th>Condition</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Agent error rate &gt; 5%</td>
+                                <td><code>agent.turn</code> spans with error status</td>
+                                <td>Page on-call</td>
+                            </tr>
+                            <tr>
+                                <td>RAG latency &gt; 3s p95</td>
+                                <td><code>rag.retrieve</code> duration</td>
+                                <td>Scale AI Search replicas</td>
+                            </tr>
+                            <tr>
+                                <td>Circuit breaker open</td>
+                                <td><code>governance.circuit_breaks</code> counter spike</td>
+                                <td>Check provider health</td>
+                            </tr>
+                            <tr>
+                                <td>Token spend &gt; daily budget</td>
+                                <td><code>harness.agent.tokens</code> sum</td>
+                                <td>Throttle non-critical requests</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- Footer nav -->
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="04-networking-and-security.html">
+                            <div class="page-nav-label">&larr; Previous</div>
+                            <div class="page-nav-title">04 &middot; Networking &amp; Security</div>
+                        </a>
+                        <a class="page-nav-link page-nav-next" href="06-operations.html">
+                            <div class="page-nav-label">Next &rarr;</div>
+                            <div class="page-nav-title">06 &middot; Operations &amp; Cost</div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- TOC -->
+                <aside class="toc" aria-label="On this page">
+                    <div class="toc-title">On this page</div>
+                    <ul class="toc-list"></ul>
+                </aside>
+            </main>
+        </div>
+        <script src="../assets/js/main.js"></script>
+    </body>
+</html>

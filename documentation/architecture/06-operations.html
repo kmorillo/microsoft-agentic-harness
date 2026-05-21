@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>06 &middot; Operations &amp; Cost &mdash; Agentic Harness Architecture Guide</title>
+        <meta
+            name="description"
+            content="Cost tiers from dev to production, scaling patterns, CI/CD deployment, governance runtime, and operational runbooks for the Agentic Harness on Azure."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="../assets/css/styles.css" />
+        <link rel="stylesheet" href="assets/css/architecture.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <!-- ============ SIDEBAR ============ -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Architecture Guide</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Overview</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-azure-topology.html"><span class="sidebar-link-num">01</span> Azure Topology</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Infrastructure</div>
+                        <a class="sidebar-link" href="02-compute-and-ai.html"><span class="sidebar-link-num">02</span> Compute &amp; AI Services</a>
+                        <a class="sidebar-link" href="03-data-and-retrieval.html"><span class="sidebar-link-num">03</span> Data &amp; Retrieval</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Platform</div>
+                        <a class="sidebar-link" href="04-networking-and-security.html"><span class="sidebar-link-num">04</span> Networking &amp; Security</a>
+                        <a class="sidebar-link" href="05-observability.html"><span class="sidebar-link-num">05</span> Observability</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Operations</div>
+                        <a class="sidebar-link active" href="06-operations.html"><span class="sidebar-link-num">06</span> Operations &amp; Cost</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Other Guides</div>
+                        <a class="sidebar-link" href="../index.html">&#8592; Developer Guide</a>
+                        <a class="sidebar-link" href="../agentic-harness-course/index.html">&#8592; Interactive Course</a>
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- ============ MAIN ============ -->
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 06 &middot; Operations</span>
+                    <h1 class="page-title">Operations &amp; Cost</h1>
+                    <p class="page-lead">
+                        From a $50/month proof-of-concept to an $800+/month production deployment. Cost tiers,
+                        scaling knobs, CI/CD pipelines, governance runtime, and the operational playbook for keeping
+                        the harness healthy.
+                    </p>
+
+                    <!-- ==================== Cost tiers ==================== -->
+                    <h2 id="cost-tiers">Cost tiers</h2>
+                    <p>
+                        The harness runs on a flexible Azure footprint that ranges from nearly-free development to
+                        a high-availability production deployment. The tiers below represent natural breakpoints
+                        where cost, reliability, and performance trade off.
+                    </p>
+
+                    <div class="tier-grid">
+                        <!-- Development -->
+                        <div class="tier-card">
+                            <div class="tier-header tier-header-dev">Development ($50&ndash;80/mo)</div>
+                            <div class="tier-body">
+                                <ul>
+                                    <li><strong>Container Apps:</strong> Consumption plan (scale to 0), 1 container</li>
+                                    <li><strong>Azure OpenAI:</strong> Pay-as-you-go, S0 tier, ~1K TPM</li>
+                                    <li><strong>Data:</strong> SQLite on local disk, FAISS in-memory, Kuzu embedded</li>
+                                    <li><strong>AI Search:</strong> Free tier (50MB, 3 indexes)</li>
+                                    <li><strong>Monitoring:</strong> Application Insights (first 5GB free)</li>
+                                </ul>
+                            </div>
+                            <span class="tier-price">~$50&ndash;80/mo (mostly OpenAI usage)</span>
+                        </div>
+
+                        <!-- Staging -->
+                        <div class="tier-card">
+                            <div class="tier-header tier-header-staging">Staging ($200&ndash;400/mo)</div>
+                            <div class="tier-body">
+                                <ul>
+                                    <li><strong>Container Apps:</strong> Consumption plan, 2 containers (API + Hub)</li>
+                                    <li><strong>Azure OpenAI:</strong> S0 with 10K TPM allocation</li>
+                                    <li><strong>Data:</strong> Azure SQL Basic ($5/mo), Cosmos DB for PostgreSQL (1 vCore burstable, $30/mo)</li>
+                                    <li><strong>AI Search:</strong> Basic tier ($75/mo, 15GB, semantic ranker)</li>
+                                    <li><strong>Blob Storage:</strong> LRS, hot tier</li>
+                                    <li><strong>Monitoring:</strong> Application Insights + Log Analytics</li>
+                                </ul>
+                            </div>
+                            <span class="tier-price">~$200&ndash;400/mo</span>
+                        </div>
+
+                        <!-- Production -->
+                        <div class="tier-card">
+                            <div class="tier-header tier-header-prod">Production ($800+/mo)</div>
+                            <div class="tier-body">
+                                <ul>
+                                    <li><strong>Container Apps:</strong> Dedicated plan with workload profiles (2 vCPU/4GB minimum)</li>
+                                    <li><strong>Azure OpenAI:</strong> Provisioned throughput (PTU) for predictable latency</li>
+                                    <li><strong>Data:</strong> Azure SQL S1+ or Cosmos DB for PostgreSQL (4 vCore, HA), Blob Storage GRS</li>
+                                    <li><strong>AI Search:</strong> Standard tier (3 replicas for HA, semantic ranker)</li>
+                                    <li><strong>Front Door:</strong> Standard tier with WAF</li>
+                                    <li><strong>Key Vault:</strong> Standard tier</li>
+                                    <li><strong>VNet + Private Endpoints</strong></li>
+                                    <li><strong>Monitoring:</strong> Full OTel stack (Grafana/Tempo/Prometheus or Azure Monitor)</li>
+                                </ul>
+                            </div>
+                            <span class="tier-price">~$800&ndash;2000/mo (scales with usage)</span>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">&#10003;</span>
+                        <div class="callout-body">
+                            <div class="callout-title">The single biggest cost driver</div>
+                            <p>
+                                Azure OpenAI dominates the bill. A typical agent conversation uses 5K&ndash;20K tokens.
+                                At GPT-4o pricing ($2.50/1M input, $10/1M output), 10,000 conversations/month costs
+                                roughly $250&ndash;1000 in OpenAI alone. Provisioned Throughput Units (PTU) reduce
+                                per-token cost at high volume.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==================== Cost breakdown ==================== -->
+                    <h2 id="cost-breakdown">Cost breakdown by category</h2>
+                    <p>
+                        Where the money goes at each tier. Use this to identify your largest cost levers and
+                        optimize accordingly.
+                    </p>
+
+                    <table class="config-map">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Dev</th>
+                                <th>Staging</th>
+                                <th>Production</th>
+                                <th>Key Driver</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Compute</strong></td>
+                                <td>$0&ndash;5</td>
+                                <td>$20&ndash;40</td>
+                                <td>$100&ndash;300</td>
+                                <td>Container Apps replicas, vCPU/memory</td>
+                            </tr>
+                            <tr>
+                                <td><strong>AI (OpenAI)</strong></td>
+                                <td>$30&ndash;50</td>
+                                <td>$100&ndash;200</td>
+                                <td>$300&ndash;1000+</td>
+                                <td>Token volume, model choice (GPT-4o vs 4.1-mini)</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Search</strong></td>
+                                <td>$0</td>
+                                <td>$75</td>
+                                <td>$225&ndash;750</td>
+                                <td>AI Search tier, replica count</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Database</strong></td>
+                                <td>$0</td>
+                                <td>$35&ndash;65</td>
+                                <td>$100&ndash;300</td>
+                                <td>Cosmos DB vCores, Azure SQL tier</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Storage</strong></td>
+                                <td>$0&ndash;1</td>
+                                <td>$5&ndash;10</td>
+                                <td>$20&ndash;50</td>
+                                <td>Document volume, retention</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Networking</strong></td>
+                                <td>$0</td>
+                                <td>$0</td>
+                                <td>$50&ndash;100</td>
+                                <td>Front Door, private endpoints, egress</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Monitoring</strong></td>
+                                <td>$0</td>
+                                <td>$10&ndash;20</td>
+                                <td>$50&ndash;200</td>
+                                <td>Log volume, retention period</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- ==================== Scaling patterns ==================== -->
+                    <h2 id="scaling-patterns">Scaling patterns</h2>
+                    <p>
+                        The harness has three independent scaling dimensions: compute (Container Apps), AI
+                        throughput (Azure OpenAI), and search capacity (AI Search). Each has its own throttles
+                        and tuning knobs.
+                    </p>
+
+                    <h3 id="container-apps-autoscaling">Container Apps autoscaling</h3>
+                    <p>
+                        Container Apps supports HTTP-based, CPU-based, and custom (queue-depth) scaling rules.
+                        Combine them for responsive scaling under mixed workloads.
+                    </p>
+                    <ul>
+                        <li><strong>HTTP concurrent requests:</strong> scale when &gt;50 concurrent requests per replica</li>
+                        <li><strong>CPU threshold:</strong> scale when &gt;70% CPU utilization</li>
+                        <li><strong>Custom:</strong> scale on Azure Service Bus queue depth (for async agent jobs)</li>
+                        <li><strong>Cold start:</strong> always keep <code>minReplicas=1</code> for the API to avoid cold start on first request</li>
+                    </ul>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">bicep</span>
+                        </div>
+<pre><code>scale: {
+  minReplicas: 1
+  maxReplicas: 20
+  rules: [
+    {
+      name: 'http-requests'
+      http: { metadata: { concurrentRequests: '50' } }
+    }
+    {
+      name: 'cpu-utilization'
+      custom: {
+        type: 'cpu'
+        metadata: { type: 'Utilization', value: '70' }
+      }
+    }
+  ]
+}</code></pre>
+                    </div>
+
+                    <h3 id="azure-openai-scaling">Azure OpenAI scaling</h3>
+                    <p>
+                        TPM (Tokens Per Minute) is the primary throttle for Azure OpenAI. When you hit the
+                        limit, requests return HTTP 429 with a <code>Retry-After</code> header. Strategies
+                        for managing throughput:
+                    </p>
+                    <ul>
+                        <li><strong>Start with pay-as-you-go</strong>, move to PTU when you have predictable load and want guaranteed latency.</li>
+                        <li><strong>Isolate quotas:</strong> use different deployments for agent (GPT-4o) vs. embeddings (text-embedding-3-large) so one workload doesn&rsquo;t starve the other.</li>
+                        <li><strong>Multi-region fallback:</strong> configure a secondary Azure OpenAI resource in a different region. The harness Polly circuit breaker chain handles failover automatically.</li>
+                        <li><strong>Monitor 429s:</strong> track <code>openai.requests.throttled</code> metric. Sustained 429s mean you need more quota or a PTU commitment.</li>
+                    </ul>
+
+                    <h3 id="ai-search-scaling">AI Search scaling</h3>
+                    <ul>
+                        <li><strong>Replicas:</strong> 1 (dev), 3 (prod HA with SLA). Each replica can handle ~15 QPS.</li>
+                        <li><strong>Partitions:</strong> add when index size exceeds tier limits.</li>
+                        <li><strong>Semantic ranker:</strong> adds ~200ms per query. Enable only when quality improvement justifies the latency.</li>
+                    </ul>
+
+                    <!-- ==================== Governance runtime ==================== -->
+                    <h2 id="governance-runtime">Governance runtime</h2>
+                    <p>
+                        The harness includes in-app governance systems that directly affect operational behavior.
+                        These run inside the agent process and require monitoring and configuration.
+                    </p>
+
+                    <h3 id="drift-detection">Drift Detection (EWMA)</h3>
+                    <p>
+                        Monitors RAG quality scores against a rolling baseline using Exponentially Weighted
+                        Moving Average. Three severity levels control the response:
+                    </p>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Severity</th>
+                                <th>Behavior</th>
+                                <th>Threshold</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>INFO</strong></td>
+                                <td>Log only &mdash; quality dipped but within normal variance</td>
+                                <td>1&sigma; below baseline</td>
+                            </tr>
+                            <tr>
+                                <td><strong>WARNING</strong></td>
+                                <td>Alert via DriftEscalationBridge &mdash; operator attention needed</td>
+                                <td>2&sigma; below baseline</td>
+                            </tr>
+                            <tr>
+                                <td><strong>CRITICAL</strong></td>
+                                <td>Circuit-break &mdash; halt affected pipeline until manual reset</td>
+                                <td>3&sigma; below baseline</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p>
+                        Baseline requires a calibration period (~100 queries). Configure thresholds via
+                        <code>AppConfig.AI.Governance.Drift</code>.
+                    </p>
+
+                    <h3 id="circuit-breakers">Circuit Breakers (Polly)</h3>
+                    <p>
+                        Every external service call (OpenAI, AI Search, graph DB) is wrapped in a Polly circuit
+                        breaker. When a provider fails 5 consecutive times, the circuit opens for 30 seconds.
+                        During open state, requests fail fast (no timeout wait). The fallback chain:
+                    </p>
+                    <div class="pipeline">
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Primary</div>
+                            <div class="pipeline-stage-service">Main provider</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Secondary</div>
+                            <div class="pipeline-stage-service">Fallback provider</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Cache</div>
+                            <div class="pipeline-stage-service">Cached response</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Degrade</div>
+                            <div class="pipeline-stage-service">Graceful degradation</div>
+                        </div>
+                    </div>
+
+                    <h3 id="escalation-workflows">Escalation Workflows</h3>
+                    <p>
+                        Multi-approval system for high-risk agent actions. Three approval modes are supported:
+                    </p>
+                    <ul>
+                        <li><strong>AllOf:</strong> all approvers must approve before the action proceeds.</li>
+                        <li><strong>AnyOf:</strong> first approval wins &mdash; fastest path for low-risk escalations.</li>
+                        <li><strong>Quorum:</strong> majority of approvers must agree.</li>
+                    </ul>
+                    <p>
+                        Audit trail is stored in JSONL format in Blob Storage for compliance and post-incident review.
+                    </p>
+
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Circuit breaker state is ephemeral</div>
+                            <p>
+                                Circuit breaker state is in-memory by default. If a Container App replica restarts,
+                                the circuit resets. For production, configure the
+                                <code>ICircuitBreakerStateStore</code> to use Redis or Cosmos DB for shared state
+                                across replicas.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==================== CI/CD pipeline ==================== -->
+                    <h2 id="cicd-pipeline">CI/CD pipeline</h2>
+                    <p>
+                        The deployment pipeline runs on GitHub Actions and progresses through five stages. Each
+                        stage gates the next &mdash; failures halt the pipeline and notify the team.
+                    </p>
+
+                    <div class="pipeline">
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Build</div>
+                            <div class="pipeline-stage-service">GitHub Actions</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Test</div>
+                            <div class="pipeline-stage-service">dotnet test</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Scan</div>
+                            <div class="pipeline-stage-service">Trivy + SAST</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Push</div>
+                            <div class="pipeline-stage-service">ACR</div>
+                        </div>
+                        <div class="pipeline-stage">
+                            <div class="pipeline-stage-name">Deploy</div>
+                            <div class="pipeline-stage-service">Bicep + Container Apps</div>
+                        </div>
+                    </div>
+
+                    <div class="steps">
+                        <div class="step">
+                            <div class="step-title">Build</div>
+                            <p>
+                                <code>dotnet build src/AgenticHarness.slnx</code> &mdash; compiles all projects.
+                                Runs in a .NET 10 SDK container image for reproducibility.
+                            </p>
+                        </div>
+                        <div class="step">
+                            <div class="step-title">Test</div>
+                            <p>
+                                <code>dotnet test</code> with coverage collection. 80% minimum threshold enforced
+                                via coverlet. Fails the pipeline if coverage drops below the gate.
+                            </p>
+                        </div>
+                        <div class="step">
+                            <div class="step-title">Scan</div>
+                            <p>
+                                Container image scan (Trivy), SAST (dotnet security analyzers), and dependency
+                                audit (<code>dotnet list package --vulnerable</code>). Any HIGH or CRITICAL
+                                vulnerability blocks the pipeline.
+                            </p>
+                        </div>
+                        <div class="step">
+                            <div class="step-title">Push</div>
+                            <p>
+                                Build and push container images to Azure Container Registry (ACR). Images are
+                                tagged with both the commit SHA and <code>latest</code> for the branch.
+                            </p>
+                        </div>
+                        <div class="step">
+                            <div class="step-title">Deploy</div>
+                            <p>
+                                Bicep template applies infrastructure changes. Container Apps revisions are deployed
+                                with traffic splitting &mdash; 10% canary receives traffic first. After health checks
+                                pass, traffic is promoted to 100%.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">&#10003;</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Infrastructure as Code with Bicep</div>
+                            <p>
+                                Each resource group has its own Bicep module under <code>infra/</code>. Run
+                                <code>az deployment group create</code> to apply changes incrementally. The modules
+                                are idempotent &mdash; safe to run multiple times.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==================== Operational runbook ==================== -->
+                    <h2 id="operational-runbook">Operational runbook</h2>
+                    <p>
+                        Quick-reference for the most common operational scenarios. Diagnosis steps use the
+                        OTel trace and metric names from the
+                        <a href="05-observability.html">Observability</a> chapter.
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Scenario</th>
+                                <th>Diagnosis</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Agent returning empty responses</strong></td>
+                                <td>Check <code>agent.turn</code> spans for errors. Check OpenAI quota (429s).</td>
+                                <td>Increase TPM quota or switch to fallback deployment</td>
+                            </tr>
+                            <tr>
+                                <td><strong>RAG returning irrelevant results</strong></td>
+                                <td>Check <code>rag.quality.score</code> in traces. Run CRAG evaluation.</td>
+                                <td>Retune chunking strategy, check embedding model, rebuild index</td>
+                            </tr>
+                            <tr>
+                                <td><strong>High latency (&gt;10s per turn)</strong></td>
+                                <td>Check span waterfall &mdash; which child span is slowest?</td>
+                                <td>Scale AI Search replicas, enable caching, check network latency to OpenAI</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Knowledge graph queries timing out</strong></td>
+                                <td>Check <code>knowledge.query</code> spans. Check Cosmos DB RU consumption.</td>
+                                <td>Scale Cosmos DB vCores, optimize Cypher queries, add graph indexes</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Circuit breaker stuck open</strong></td>
+                                <td>Check <code>governance.circuit_breaks</code> counter. Provider health dashboard.</td>
+                                <td>Verify provider is back up, manually reset circuit, check fallback chain</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Cost spike</strong></td>
+                                <td>Check <code>harness.agent.tokens</code> metric. Compare to baseline.</td>
+                                <td>Identify high-token conversations, enable context budget enforcement, switch to smaller model for simple queries</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <!-- ==================== Disaster recovery ==================== -->
+                    <h2 id="disaster-recovery">Disaster recovery</h2>
+                    <p>
+                        The harness itself is stateless &mdash; all persistent state lives in external stores.
+                        Recovery planning focuses on data durability and geographic availability.
+                    </p>
+
+                    <h3 id="backup-strategy">Backup</h3>
+                    <ul>
+                        <li><strong>Cosmos DB:</strong> Continuous backup (Point-in-Time Restore, 7-day default retention).</li>
+                        <li><strong>Azure SQL:</strong> Automated backups with geo-redundant storage.</li>
+                        <li><strong>Blob Storage:</strong> Soft-delete enabled. GRS for production (cross-region replication).</li>
+                    </ul>
+
+                    <h3 id="geo-redundancy">Geo-redundancy</h3>
+                    <ul>
+                        <li>Deploy to paired Azure regions for failover.</li>
+                        <li>Use Azure Front Door for geographic routing and automatic failover.</li>
+                        <li>AI Search geo-replication for read replicas in the secondary region.</li>
+                    </ul>
+
+                    <h3 id="rto-rpo-targets">RTO/RPO targets</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Target</th>
+                                <th>How</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>RTO</strong> (Recovery Time Objective)</td>
+                                <td>&lt;4 hours</td>
+                                <td>Container Apps redeploy (~5 min) + data store failover</td>
+                            </tr>
+                            <tr>
+                                <td><strong>RPO</strong> (Recovery Point Objective)</td>
+                                <td>&lt;1 hour</td>
+                                <td>Cosmos DB PITR + Blob GRS + SQL geo-replication</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Stateless compute, fast recovery</div>
+                            <p>
+                                The harness itself is stateless (all state is in external stores). This means
+                                compute recovery is just redeploying containers &mdash; typically under 5 minutes
+                                with Container Apps. Data recovery is the longer pole.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Footer nav -->
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="05-observability.html">
+                            <div class="page-nav-label">&larr; Previous</div>
+                            <div class="page-nav-title">05 &middot; Observability</div>
+                        </a>
+                        <div></div>
+                    </div>
+                </div>
+
+                <!-- TOC -->
+                <aside class="toc" aria-label="On this page">
+                    <div class="toc-title">On this page</div>
+                    <ul class="toc-list"></ul>
+                </aside>
+            </main>
+        </div>
+        <script src="../assets/js/main.js"></script>
+    </body>
+</html>

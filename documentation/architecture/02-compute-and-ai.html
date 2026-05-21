@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>02 &middot; Compute &amp; AI Services &mdash; Agentic Harness Architecture Guide</title>
+        <meta
+            name="description"
+            content="Where the harness runs and how Azure OpenAI powers the agent. Covers hosting options, model deployment, and the configuration that connects code to cloud."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="../assets/css/styles.css" />
+        <link rel="stylesheet" href="assets/css/architecture.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <!-- ============ SIDEBAR ============ -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Architecture Guide</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Overview</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-azure-topology.html"><span class="sidebar-link-num">01</span> Azure Topology</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Infrastructure</div>
+                        <a class="sidebar-link" href="02-compute-and-ai.html"><span class="sidebar-link-num">02</span> Compute &amp; AI Services</a>
+                        <a class="sidebar-link" href="03-data-and-retrieval.html"><span class="sidebar-link-num">03</span> Data &amp; Retrieval</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Platform</div>
+                        <a class="sidebar-link" href="04-networking-and-security.html"><span class="sidebar-link-num">04</span> Networking &amp; Security</a>
+                        <a class="sidebar-link" href="05-observability.html"><span class="sidebar-link-num">05</span> Observability</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Operations</div>
+                        <a class="sidebar-link" href="06-operations.html"><span class="sidebar-link-num">06</span> Operations &amp; Cost</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Other Guides</div>
+                        <a class="sidebar-link" href="../index.html">&#8592; Developer Guide</a>
+                        <a class="sidebar-link" href="../agentic-harness-course/index.html">&#8592; Interactive Course</a>
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- ============ MAIN ============ -->
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 02 &middot; Infrastructure</span>
+                    <h1 class="page-title">Compute &amp; AI Services</h1>
+                    <p class="page-lead">
+                        Where the harness actually runs, and how Azure OpenAI powers the agent. This page covers hosting
+                        options, model deployment, and the configuration that connects code to cloud.
+                    </p>
+
+                    <!-- ==================== Hosting options ==================== -->
+                    <h2 id="hosting-options">Hosting options</h2>
+                    <p>
+                        The harness is a standard ASP.NET Core application, so it can run on any Azure compute service
+                        that supports .NET 10 containers. The choice comes down to how much operational overhead you want
+                        to take on, what scaling model fits your workload, and whether you need Docker-in-Docker for the
+                        sandbox executor.
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Factor</th>
+                                <th>Container Apps</th>
+                                <th>App Service</th>
+                                <th>AKS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Best for</strong></td>
+                                <td>Most deployments</td>
+                                <td>Simple / single-app</td>
+                                <td>Enterprise at scale</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Scaling</strong></td>
+                                <td>Event-driven, 0 &rarr; N</td>
+                                <td>Fixed / auto rules</td>
+                                <td>Full Kubernetes</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Cost model</strong></td>
+                                <td>Consumption or dedicated</td>
+                                <td>Always-on tiers</td>
+                                <td>Node pools</td>
+                            </tr>
+                            <tr>
+                                <td><strong>SignalR</strong></td>
+                                <td>Built-in WebSocket</td>
+                                <td>Needs ARR affinity</td>
+                                <td>Ingress controller</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Sandbox (Docker.DotNet)</strong></td>
+                                <td>Needs dedicated plan</td>
+                                <td>Not supported</td>
+                                <td>Native Docker socket</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Complexity</strong></td>
+                                <td>Low&ndash;Medium</td>
+                                <td>Low</td>
+                                <td>High</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">&#10003;</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Our recommendation</div>
+                            <p>
+                                Container Apps for most teams. It handles the SignalR WebSocket requirement natively,
+                                scales to zero in dev, and supports the dedicated compute plan needed for Docker.DotNet
+                                sandbox isolation.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==================== Container Apps layout ==================== -->
+                    <h2 id="container-apps-layout">Container Apps layout</h2>
+                    <p>
+                        The harness deploys as three Container Apps, each with a distinct responsibility. Splitting them
+                        lets you scale the API and SignalR hub independently and isolate the MCP server for external
+                        consumers.
+                    </p>
+
+                    <div class="topology">
+                        <div class="topology-title">Container Apps Environment</div>
+                        <div class="topology-row">
+                            <div class="az-box az-compute">
+                                <span class="az-box-icon">&#9881;</span>
+                                <div class="az-box-name">harness-api</div>
+                                <div class="az-box-detail">
+                                    Main ASP.NET Core API. Hosts the agent runtime, MediatR pipeline, CQRS handlers.
+                                </div>
+                                <span class="az-box-sku">Ingress: external, port 8080</span>
+                            </div>
+                            <div class="az-box az-compute">
+                                <span class="az-box-icon">&#9881;</span>
+                                <div class="az-box-name">harness-hub</div>
+                                <div class="az-box-detail">
+                                    AgentHub SignalR server. Real-time agent-to-UI streaming. Needs sticky sessions.
+                                </div>
+                                <span class="az-box-sku">Ingress: external, port 8081</span>
+                            </div>
+                            <div class="az-box az-compute">
+                                <span class="az-box-icon">&#9881;</span>
+                                <div class="az-box-name">harness-mcp</div>
+                                <div class="az-box-detail">
+                                    MCP Server. Exposes tools/prompts/resources via Model Context Protocol over HTTP.
+                                    JWT-authenticated.
+                                </div>
+                                <span class="az-box-sku">Ingress: internal or external</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <h3 id="bicep-example">Bicep example</h3>
+                    <p>
+                        A representative Container App resource definition for the main API. Note how secrets reference
+                        Key Vault via managed identity rather than embedding values.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">bicep</span>
+                        </div>
+<pre><code>resource harnessApi 'Microsoft.App/containerApps@2024-03-01' = {
+  name: 'harness-api'
+  location: location
+  properties: {
+    environmentId: containerAppEnv.id
+    configuration: {
+      ingress: {
+        external: true
+        targetPort: 8080
+        transport: 'auto'
+      }
+      secrets: [
+        {
+          name: 'openai-key'
+          keyVaultUrl: '${keyVault.properties.vaultUri}secrets/AzureOpenAI-ApiKey'
+          identity: managedIdentity.id
+        }
+      ]
+    }
+    template: {
+      containers: [
+        {
+          name: 'harness-api'
+          image: '${containerRegistry}/harness-api:${imageTag}'
+          resources: { cpu: json('1.0'), memory: '2Gi' }
+          env: [
+            {
+              name: 'AI__AgentFramework__AzureOpenAI__Endpoint'
+              value: openAiEndpoint
+            }
+            {
+              name: 'AI__AgentFramework__AzureOpenAI__ApiKey'
+              secretRef: 'openai-key'
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 1
+        maxReplicas: 10
+        rules: [
+          {
+            name: 'http-rule'
+            http: { metadata: { concurrentRequests: '50' } }
+          }
+        ]
+      }
+    }
+  }
+}</code></pre>
+                    </div>
+
+                    <!-- ==================== Azure OpenAI ==================== -->
+                    <h2 id="azure-openai">Azure OpenAI</h2>
+                    <p>
+                        The harness requires two model deployments in Azure OpenAI. They can live on the same resource
+                        or on separate resources if you need to isolate quota.
+                    </p>
+
+                    <h3 id="agent-model">Agent model</h3>
+                    <p>
+                        <strong>GPT-4o</strong> (or GPT-4.1) powers the agent runtime. It handles conversation, tool
+                        selection, and reasoning. This is the model that decides when to call tools, how to interpret
+                        results, and what to say to the user. Configure via
+                        <code>AppConfig.AI.AgentFramework.AzureOpenAI</code>.
+                    </p>
+
+                    <h3 id="embedding-model">Embedding model</h3>
+                    <p>
+                        <strong>text-embedding-3-large</strong> (1536 or 3072 dimensions) generates vector
+                        representations for document chunks and queries in the RAG pipeline. Used during both ingestion
+                        (indexing documents) and retrieval (embedding the user's query for similarity search). Configure
+                        via <code>AppConfig.AI.Rag.Embeddings</code>.
+                    </p>
+
+                    <h3 id="configuration-mapping">Configuration mapping</h3>
+                    <p>
+                        Each code-level config path maps to a specific Azure resource or setting. Use this table to trace
+                        from <code>appsettings.json</code> to the Azure portal.
+                    </p>
+
+                    <table class="config-map">
+                        <thead>
+                            <tr>
+                                <th>Code Config Path</th>
+                                <th>Azure Resource</th>
+                                <th>What It Controls</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>AI:AgentFramework:AzureOpenAI:Endpoint</code></td>
+                                <td>Azure OpenAI resource endpoint</td>
+                                <td>Agent LLM calls</td>
+                            </tr>
+                            <tr>
+                                <td><code>AI:AgentFramework:AzureOpenAI:DeploymentName</code></td>
+                                <td>GPT-4o deployment</td>
+                                <td>Model selection</td>
+                            </tr>
+                            <tr>
+                                <td><code>AI:AgentFramework:AzureOpenAI:ApiKey</code></td>
+                                <td>Azure OpenAI API key (or use managed identity)</td>
+                                <td>Authentication</td>
+                            </tr>
+                            <tr>
+                                <td><code>AI:Rag:Embeddings:Endpoint</code></td>
+                                <td>Same or separate OpenAI resource</td>
+                                <td>Embedding generation</td>
+                            </tr>
+                            <tr>
+                                <td><code>AI:Rag:Embeddings:DeploymentName</code></td>
+                                <td>text-embedding-3-large deployment</td>
+                                <td>Embedding model</td>
+                            </tr>
+                            <tr>
+                                <td><code>AI:Rag:Embeddings:Dimensions</code></td>
+                                <td>N/A (client-side config)</td>
+                                <td>Vector dimensions (1536/3072)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Token limits matter</div>
+                            <p>
+                                GPT-4o has 128K context but the harness uses a context budget system (see the
+                                <a href="../index.html">Developer Guide</a>) to stay well under. Plan your Azure OpenAI
+                                quota (TPM &mdash; Tokens Per Minute) based on expected concurrent users. A single agent
+                                turn can consume 4K&ndash;20K tokens depending on tool use and RAG context.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==================== AI Foundry integration ==================== -->
+                    <h2 id="ai-foundry-integration">AI Foundry integration</h2>
+                    <p>
+                        Azure AI Foundry (formerly Azure AI Studio) provides a management layer for model deployments,
+                        evaluations, and prompt flows. The harness connects to it via the standard Azure OpenAI
+                        endpoint &mdash; AI Foundry adds governance (content filters, usage tracking) on top. If you are
+                        using Anthropic models via AI Foundry, the endpoint shape changes slightly (see the
+                        <code>AppConfig.AI.AgentFramework.Anthropic</code> configuration section).
+                    </p>
+
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Prefer managed identity</div>
+                            <p>
+                                Managed Identity is preferred over API keys for production. Set
+                                <code>AI:AgentFramework:AzureOpenAI:UseManagedIdentity: true</code> and assign the
+                                <strong>Cognitive Services OpenAI User</strong> role to your Container App's managed
+                                identity.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Footer nav -->
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="01-azure-topology.html">
+                            <div class="page-nav-label">&larr; Previous</div>
+                            <div class="page-nav-title">01 &middot; Azure Topology</div>
+                        </a>
+                        <a class="page-nav-link page-nav-next" href="03-data-and-retrieval.html">
+                            <div class="page-nav-label">Next &rarr;</div>
+                            <div class="page-nav-title">03 &middot; Data &amp; Retrieval</div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- TOC -->
+                <aside class="toc" aria-label="On this page">
+                    <div class="toc-title">On this page</div>
+                    <ul class="toc-list"></ul>
+                </aside>
+            </main>
+        </div>
+        <script src="../assets/js/main.js"></script>
+    </body>
+</html>

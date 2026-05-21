@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>01 &middot; Azure Topology — Agentic Harness Architecture Guide</title>
+        <meta
+            name="description"
+            content="Complete Azure resource map for the Agentic Harness. Every service, resource group, data flow, and environment tier visualized."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="../assets/css/styles.css" />
+        <link rel="stylesheet" href="assets/css/architecture.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <!-- ============ SIDEBAR ============ -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Architecture Guide</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Overview</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-azure-topology.html"><span class="sidebar-link-num">01</span> Azure Topology</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Infrastructure</div>
+                        <a class="sidebar-link" href="02-compute-and-ai.html"><span class="sidebar-link-num">02</span> Compute &amp; AI Services</a>
+                        <a class="sidebar-link" href="03-data-and-retrieval.html"><span class="sidebar-link-num">03</span> Data &amp; Retrieval</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Platform</div>
+                        <a class="sidebar-link" href="04-networking-and-security.html"><span class="sidebar-link-num">04</span> Networking &amp; Security</a>
+                        <a class="sidebar-link" href="05-observability.html"><span class="sidebar-link-num">05</span> Observability</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Operations</div>
+                        <a class="sidebar-link" href="06-operations.html"><span class="sidebar-link-num">06</span> Operations &amp; Cost</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Other Guides</div>
+                        <a class="sidebar-link" href="../index.html">&#8592; Developer Guide</a>
+                        <a class="sidebar-link" href="../agentic-harness-course/index.html">&#8592; Interactive Course</a>
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- ============ MAIN ============ -->
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <!-- Page header -->
+                    <span class="eyebrow">Chapter 01 &middot; Overview</span>
+                    <h1 class="page-title">Azure Topology</h1>
+                    <p class="page-lead">
+                        The bird's-eye view. Every Azure service the harness needs, organized by resource group, with
+                        the data flows that connect them.
+                    </p>
+
+                    <!-- Four resource groups -->
+                    <h2>Four resource groups</h2>
+                    <p>
+                        The recommended deployment organizes Azure resources into four resource groups, each scoped to
+                        a single concern. This keeps IAM policies tight, cost tracking clear, and blast radius
+                        contained when you need to tear down and recreate a layer.
+                    </p>
+
+                    <div class="rg-group">
+                        <span class="rg-label">rg-harness-core</span>
+                        <p>
+                            <strong>Compute.</strong> The Container Apps Environment and the three Container Apps that
+                            make up the runtime: the Harness API (ASP.NET Core backend), AgentHub (SignalR real-time
+                            gateway), and the MCP Server (HTTP + JWT tool exposure). This is where your code runs.
+                        </p>
+                    </div>
+
+                    <div class="rg-group">
+                        <span class="rg-label">rg-harness-ai</span>
+                        <p>
+                            <strong>AI services.</strong> Azure OpenAI (GPT-4o for reasoning, text-embedding-3-large
+                            for vector embeddings) and Azure AI Search (hybrid vector + BM25 retrieval). These are
+                            the most expensive resources and the most common scaling bottleneck.
+                        </p>
+                    </div>
+
+                    <div class="rg-group">
+                        <span class="rg-label">rg-harness-data</span>
+                        <p>
+                            <strong>Data.</strong> Cosmos DB for PostgreSQL (knowledge graph backend), Azure SQL
+                            (plan state persistence via EF Core), and Blob Storage (document ingestion, FAISS index
+                            snapshots, JSONL audit logs).
+                        </p>
+                    </div>
+
+                    <div class="rg-group">
+                        <span class="rg-label">rg-harness-platform</span>
+                        <p>
+                            <strong>Platform.</strong> Key Vault (secrets and certificates), Application Insights +
+                            Log Analytics (telemetry, traces, metrics), Front Door (global ingress, WAF, TLS
+                            termination), and Entra ID (authentication, managed identity).
+                        </p>
+                    </div>
+
+                    <!-- Full topology diagram -->
+                    <h2>Full topology</h2>
+                    <p>
+                        The diagram below shows every Azure service and the connections between them. Each box is
+                        color-coded by category: blue for compute, purple for AI, green for data, teal for
+                        networking, orange for security, yellow for monitoring, and gray for storage.
+                    </p>
+
+                    <div class="topology">
+                        <div class="topology-title">Azure Resource Topology</div>
+
+                        <!-- Row 1: Ingress -->
+                        <div class="topology-row">
+                            <div class="az-box az-network">
+                                <span class="az-box-icon">&#9729;</span>
+                                <div class="az-box-name">Front Door / App Gateway</div>
+                                <span class="az-box-detail">Global ingress, WAF, TLS termination</span>
+                                <span class="az-box-sku">Standard_AzureFrontDoor</span>
+                            </div>
+                        </div>
+
+                        <div class="topology-connector">&#8595;</div>
+
+                        <!-- Row 2: Compute -->
+                        <div class="topology-row">
+                            <div class="az-box az-compute">
+                                <span class="az-box-icon">&#9881;</span>
+                                <div class="az-box-name">Harness API</div>
+                                <span class="az-box-detail">Container App &middot; ASP.NET Core</span>
+                                <span class="az-box-sku">Consumption / Dedicated</span>
+                            </div>
+                            <div class="az-box az-compute">
+                                <span class="az-box-icon">&#8644;</span>
+                                <div class="az-box-name">AgentHub</div>
+                                <span class="az-box-detail">Container App &middot; SignalR</span>
+                                <span class="az-box-sku">Consumption / Dedicated</span>
+                            </div>
+                            <div class="az-box az-compute">
+                                <span class="az-box-icon">&#9881;</span>
+                                <div class="az-box-name">MCP Server</div>
+                                <span class="az-box-detail">Container App &middot; HTTP + JWT</span>
+                                <span class="az-box-sku">Consumption / Dedicated</span>
+                            </div>
+                        </div>
+
+                        <div class="topology-connector">&#8595; &nbsp; &#8595; &nbsp; &#8595;</div>
+
+                        <!-- Row 3: AI -->
+                        <div class="topology-row">
+                            <div class="az-box az-ai">
+                                <span class="az-box-icon">&#9733;</span>
+                                <div class="az-box-name">Azure OpenAI</div>
+                                <span class="az-box-detail">GPT-4o + text-embedding-3-large</span>
+                                <span class="az-box-sku">Standard S0</span>
+                            </div>
+                            <div class="az-box az-ai">
+                                <span class="az-box-icon">&#128269;</span>
+                                <div class="az-box-name">Azure AI Search</div>
+                                <span class="az-box-detail">Hybrid vector + BM25 retrieval</span>
+                                <span class="az-box-sku">Basic / Standard S1</span>
+                            </div>
+                        </div>
+
+                        <div class="topology-connector">&#8595; &nbsp; &#8595;</div>
+
+                        <!-- Row 4: Data -->
+                        <div class="topology-row">
+                            <div class="az-box az-data">
+                                <span class="az-box-icon">&#128450;</span>
+                                <div class="az-box-name">Cosmos DB for PostgreSQL</div>
+                                <span class="az-box-detail">Knowledge graph backend</span>
+                                <span class="az-box-sku">1 node / Multi-node</span>
+                            </div>
+                            <div class="az-box az-data">
+                                <span class="az-box-icon">&#128451;</span>
+                                <div class="az-box-name">Azure SQL</div>
+                                <span class="az-box-detail">Plan state &middot; EF Core</span>
+                                <span class="az-box-sku">Serverless / S1</span>
+                            </div>
+                            <div class="az-box az-storage">
+                                <span class="az-box-icon">&#128193;</span>
+                                <div class="az-box-name">Blob Storage</div>
+                                <span class="az-box-detail">Documents, FAISS, audit logs</span>
+                                <span class="az-box-sku">Standard LRS</span>
+                            </div>
+                        </div>
+
+                        <!-- Row 5: Platform -->
+                        <div class="topology-row">
+                            <div class="az-box az-security">
+                                <span class="az-box-icon">&#128274;</span>
+                                <div class="az-box-name">Key Vault</div>
+                                <span class="az-box-detail">Secrets, certificates, keys</span>
+                                <span class="az-box-sku">Standard</span>
+                            </div>
+                            <div class="az-box az-monitor">
+                                <span class="az-box-icon">&#128200;</span>
+                                <div class="az-box-name">Application Insights</div>
+                                <span class="az-box-detail">Traces, metrics, logs</span>
+                                <span class="az-box-sku">Workspace-based</span>
+                            </div>
+                            <div class="az-box az-security">
+                                <span class="az-box-icon">&#128100;</span>
+                                <div class="az-box-name">Entra ID</div>
+                                <span class="az-box-detail">Auth, managed identity, RBAC</span>
+                                <span class="az-box-sku">P1 / P2</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Data flow -->
+                    <h2>Data flow: a user message</h2>
+                    <p>
+                        To make the topology concrete, here's what happens when a user sends a message through the
+                        harness. Every hop crosses a service boundary shown in the diagram above.
+                    </p>
+
+                    <ol>
+                        <li>
+                            <strong>User &rarr; Front Door &rarr; Harness API Container App.</strong>
+                            The user's message arrives via HTTPS. Front Door handles TLS termination, WAF inspection,
+                            and routes to the nearest Container App revision.
+                        </li>
+                        <li>
+                            <strong>API &rarr; Azure OpenAI (LLM call).</strong>
+                            The harness builds the prompt (system instructions + conversation history + skill context
+                            + retrieved documents) and sends it to GPT-4o. The model returns a response, possibly
+                            including tool-use requests.
+                        </li>
+                        <li>
+                            <strong>API &rarr; AI Search (RAG retrieval) &rarr; Azure OpenAI (embeddings).</strong>
+                            If RAG is triggered, the query is embedded via text-embedding-3-large, then sent to AI
+                            Search for hybrid vector + BM25 retrieval. Results are reranked and assembled into the
+                            context window.
+                        </li>
+                        <li>
+                            <strong>API &rarr; Cosmos DB (knowledge graph query).</strong>
+                            For graph-backed memory queries — entity lookup, community detection, cross-session
+                            recall — the API hits the Cosmos DB for PostgreSQL cluster.
+                        </li>
+                        <li>
+                            <strong>API &rarr; Application Insights (telemetry).</strong>
+                            Every step emits OpenTelemetry spans: the LLM call duration, token counts, retrieval
+                            latency, tool execution time, and governance decisions. All flow to Application Insights
+                            via the OTLP exporter.
+                        </li>
+                    </ol>
+
+                    <!-- Dev shortcut callout -->
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">&#10003;</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Dev shortcut</div>
+                            <p style="margin: 0">
+                                For local development, everything runs on localhost with SQLite (plan state), in-memory
+                                FAISS (vector search), and Kuzu embedded graph (knowledge graph). You don't need
+                                <em>any</em> Azure resources to develop locally — only an Azure OpenAI endpoint for LLM
+                                calls.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Environment variations -->
+                    <h2>Environment variations</h2>
+                    <p>
+                        Not every environment needs every service. The table below shows the recommended configuration
+                        at each tier, from zero-cost local development to a full production deployment.
+                    </p>
+
+                    <div class="tier-grid">
+                        <!-- Dev -->
+                        <div class="tier-card">
+                            <div class="tier-header tier-header-dev">Development</div>
+                            <div class="tier-body">
+                                <ul>
+                                    <li>Local process (no Container Apps)</li>
+                                    <li>SQLite for plan state</li>
+                                    <li>In-memory FAISS for vectors</li>
+                                    <li>Kuzu embedded for knowledge graph</li>
+                                    <li>Azure OpenAI (shared dev key)</li>
+                                    <li>Jaeger / Aspire Dashboard for traces</li>
+                                </ul>
+                            </div>
+                            <span class="tier-price">~$0/mo (Azure OpenAI pay-per-token only)</span>
+                        </div>
+
+                        <!-- Staging -->
+                        <div class="tier-card">
+                            <div class="tier-header tier-header-staging">Staging</div>
+                            <div class="tier-body">
+                                <ul>
+                                    <li>Container Apps (Consumption plan)</li>
+                                    <li>Azure SQL Serverless</li>
+                                    <li>Azure AI Search Basic</li>
+                                    <li>Azure OpenAI (shared, low quota)</li>
+                                    <li>Blob Storage Standard LRS</li>
+                                    <li>Application Insights (workspace-based)</li>
+                                </ul>
+                            </div>
+                            <span class="tier-price">~$200/mo</span>
+                        </div>
+
+                        <!-- Production -->
+                        <div class="tier-card">
+                            <div class="tier-header tier-header-prod">Production</div>
+                            <div class="tier-body">
+                                <ul>
+                                    <li>Container Apps (Dedicated plan)</li>
+                                    <li>Azure SQL S1 or Elastic Pool</li>
+                                    <li>Azure AI Search Standard S1</li>
+                                    <li>Azure OpenAI (provisioned throughput)</li>
+                                    <li>Cosmos DB for PostgreSQL</li>
+                                    <li>Front Door + Key Vault + Entra ID P1</li>
+                                </ul>
+                            </div>
+                            <span class="tier-price">~$800+/mo</span>
+                        </div>
+                    </div>
+
+                    <!-- Region warning -->
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Region matters</div>
+                            <p style="margin: 0">
+                                Azure OpenAI model availability varies by region. Not every region has GPT-4o or
+                                text-embedding-3-large. Check the
+                                <a href="https://learn.microsoft.com/en-us/azure/ai-services/openai/concepts/models"
+                                    >model availability table</a
+                                >
+                                before choosing your deployment region. AI Search and Azure OpenAI should be co-located
+                                in the same region to minimize embedding and retrieval latency.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Footer nav -->
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="index.html">
+                            <div class="page-nav-label">&larr; Previous</div>
+                            <div class="page-nav-title">00 &middot; Welcome</div>
+                        </a>
+                        <a class="page-nav-link page-nav-next" href="02-compute-and-ai.html">
+                            <div class="page-nav-label">Next &rarr;</div>
+                            <div class="page-nav-title">02 &middot; Compute &amp; AI Services</div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- TOC -->
+                <aside class="toc" aria-label="On this page">
+                    <div class="toc-title">On this page</div>
+                    <ul class="toc-list"></ul>
+                </aside>
+            </main>
+        </div>
+        <script src="../assets/js/main.js"></script>
+    </body>
+</html>

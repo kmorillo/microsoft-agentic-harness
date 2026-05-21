@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>04 · Networking &amp; Security — Agentic Harness Architecture Guide</title>
+        <meta
+            name="description"
+            content="Defense in depth: VNet isolation, private endpoints, Entra ID integration, Key Vault for secrets, and the HTTP security headers that protect the agent runtime."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="../assets/css/styles.css" />
+        <link rel="stylesheet" href="assets/css/architecture.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <!-- ============ SIDEBAR ============ -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Architecture Guide</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Overview</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-azure-topology.html"><span class="sidebar-link-num">01</span> Azure Topology</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Infrastructure</div>
+                        <a class="sidebar-link" href="02-compute-and-ai.html"><span class="sidebar-link-num">02</span> Compute &amp; AI Services</a>
+                        <a class="sidebar-link" href="03-data-and-retrieval.html"><span class="sidebar-link-num">03</span> Data &amp; Retrieval</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Platform</div>
+                        <a class="sidebar-link" href="04-networking-and-security.html"><span class="sidebar-link-num">04</span> Networking &amp; Security</a>
+                        <a class="sidebar-link" href="05-observability.html"><span class="sidebar-link-num">05</span> Observability</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Operations</div>
+                        <a class="sidebar-link" href="06-operations.html"><span class="sidebar-link-num">06</span> Operations &amp; Cost</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Other Guides</div>
+                        <a class="sidebar-link" href="../index.html">&#8592; Developer Guide</a>
+                        <a class="sidebar-link" href="../agentic-harness-course/index.html">&#8592; Interactive Course</a>
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- ============ MAIN ============ -->
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Chapter 04 &middot; Platform</span>
+                    <h1 class="page-title">Networking &amp; Security</h1>
+                    <p class="page-lead">
+                        Defense in depth: VNet isolation, private endpoints, Entra ID integration, Key Vault
+                        for secrets, and the HTTP security headers that protect the agent runtime.
+                    </p>
+
+                    <!-- ==============================
+                         VNet Topology
+                         ============================== -->
+                    <h2 id="vnet-topology">VNet topology</h2>
+                    <p>
+                        The recommended production layout uses a single VNet with four purpose-specific subnets.
+                        Each subnet isolates a class of traffic &mdash; compute workloads, data-plane private
+                        endpoints, AI service endpoints, and platform services &mdash; so that Network Security
+                        Groups (NSGs) can enforce least-privilege rules at the subnet boundary.
+                    </p>
+
+                    <div class="rg-group">
+                        <span class="rg-label">VNet: vnet-harness (10.0.0.0/16)</span>
+
+                        <div class="topology">
+                            <div class="topology-title">Subnet Layout</div>
+
+                            <div class="topology-row">
+                                <div class="az-box az-compute">
+                                    <span class="az-box-icon">&#9632;</span>
+                                    <div class="az-box-name">snet-compute</div>
+                                    <div class="az-box-detail">Container Apps Environment</div>
+                                    <span class="az-box-sku">10.0.1.0/24</span>
+                                </div>
+                                <div class="az-box az-data">
+                                    <span class="az-box-icon">&#9632;</span>
+                                    <div class="az-box-name">snet-data</div>
+                                    <div class="az-box-detail">Private endpoints: Cosmos DB, Azure SQL, Blob Storage</div>
+                                    <span class="az-box-sku">10.0.2.0/24</span>
+                                </div>
+                            </div>
+
+                            <div class="topology-connector">|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|</div>
+
+                            <div class="topology-row">
+                                <div class="az-box az-ai">
+                                    <span class="az-box-icon">&#9632;</span>
+                                    <div class="az-box-name">snet-ai</div>
+                                    <div class="az-box-detail">Private endpoints: Azure OpenAI, AI Search</div>
+                                    <span class="az-box-sku">10.0.3.0/24</span>
+                                </div>
+                                <div class="az-box az-network">
+                                    <span class="az-box-icon">&#9632;</span>
+                                    <div class="az-box-name">snet-platform</div>
+                                    <div class="az-box-detail">Key Vault, App Insights private link</div>
+                                    <span class="az-box-sku">10.0.4.0/24</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
+                        <div class="callout-body">
+                            <div class="callout-title">VNet is optional for non-production</div>
+                            <p>
+                                VNet integration is optional for dev/staging. Container Apps supports VNet injection
+                                for production workloads, but running without a VNet is simpler and cheaper for
+                                non-production environments.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==============================
+                         Private Endpoints
+                         ============================== -->
+                    <h2 id="private-endpoints">Private endpoints</h2>
+                    <p>
+                        Private endpoints keep data-plane traffic on the Azure backbone. Each service gets its
+                        own private endpoint in the appropriate subnet, with a corresponding Private DNS Zone
+                        for name resolution.
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Service</th>
+                                <th>Private DNS Zone</th>
+                                <th>Purpose</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Azure OpenAI</td>
+                                <td><code>privatelink.openai.azure.com</code></td>
+                                <td>LLM + embedding calls stay on the backbone</td>
+                            </tr>
+                            <tr>
+                                <td>AI Search</td>
+                                <td><code>privatelink.search.windows.net</code></td>
+                                <td>RAG queries never hit the public internet</td>
+                            </tr>
+                            <tr>
+                                <td>Cosmos DB</td>
+                                <td><code>privatelink.postgres.cosmos.azure.com</code></td>
+                                <td>Knowledge graph reads/writes</td>
+                            </tr>
+                            <tr>
+                                <td>Blob Storage</td>
+                                <td><code>privatelink.blob.core.windows.net</code></td>
+                                <td>Document ingestion, FAISS indices</td>
+                            </tr>
+                            <tr>
+                                <td>Key Vault</td>
+                                <td><code>privatelink.vaultcore.azure.net</code></td>
+                                <td>Secret retrieval at startup</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h3 id="bicep-example">Bicep example</h3>
+                    <p>
+                        A private endpoint for Azure OpenAI. The same pattern applies to every service in the
+                        table above &mdash; change the <code>privateLinkServiceId</code> and
+                        <code>groupIds</code> for the target resource.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">bicep</span>
+                        </div>
+<pre><code>resource openAiPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-01-01' = {
+  name: 'pe-openai'
+  location: location
+  properties: {
+    subnet: { id: aiSubnet.id }
+    privateLinkServiceConnections: [
+      {
+        name: 'openai-connection'
+        properties: {
+          privateLinkServiceId: openAiAccount.id
+          groupIds: ['account']
+        }
+      }
+    ]
+  }
+}</code></pre>
+                    </div>
+
+                    <!-- ==============================
+                         Entra ID Integration
+                         ============================== -->
+                    <h2 id="entra-id-integration">Entra ID integration</h2>
+                    <p>
+                        The harness uses three identity scenarios, each addressing a different trust boundary.
+                    </p>
+
+                    <h3 id="user-authentication">1. User authentication</h3>
+                    <p>
+                        Users sign in via Entra ID using the OpenID Connect (OIDC) protocol. The Angular/React
+                        dashboard uses <strong>MSAL.js with PKCE</strong> to acquire tokens client-side. The API
+                        validates JWT tokens on every request. An Entra ID App Registration is required with
+                        configured redirect URIs and API scopes.
+                    </p>
+
+                    <h3 id="managed-identity">2. Managed Identity (service-to-service)</h3>
+                    <p>
+                        Container Apps get a <strong>system-assigned managed identity</strong>. This identity
+                        authenticates to Azure OpenAI, Key Vault, Blob Storage, and AI Search without any
+                        stored credentials. The following role assignments are required:
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Role</th>
+                                <th>Target Resource</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>Cognitive Services OpenAI User</code></td>
+                                <td>Azure OpenAI</td>
+                            </tr>
+                            <tr>
+                                <td><code>Key Vault Secrets User</code></td>
+                                <td>Key Vault</td>
+                            </tr>
+                            <tr>
+                                <td><code>Storage Blob Data Reader</code></td>
+                                <td>Blob Storage</td>
+                            </tr>
+                            <tr>
+                                <td><code>Search Index Data Reader</code></td>
+                                <td>AI Search</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <h3 id="mcp-server-jwt-auth">3. MCP Server JWT auth</h3>
+                    <p>
+                        External agents connecting to the MCP server authenticate with JWT bearer tokens. The
+                        MCP server validates issuer, audience, and signing key. Configuration is managed via
+                        <code>AppConfig.MCP.Server.Authentication</code>.
+                    </p>
+
+                    <div class="callout callout-danger">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Never use API keys in production</div>
+                            <p>
+                                Managed Identity eliminates secret rotation burden and removes the risk of key
+                                leakage. API keys are acceptable only for local development. In production, every
+                                service-to-service call should use Managed Identity or workload identity federation.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==============================
+                         MCP Server Exposure
+                         ============================== -->
+                    <h2 id="mcp-server-exposure">MCP server exposure</h2>
+                    <p>
+                        How you expose the MCP server depends on who needs to reach it.
+                    </p>
+
+                    <h3 id="internal-consumers">Internal consumers (same VNet)</h3>
+                    <p>
+                        Use <strong>internal ingress</strong> on Container Apps. MCP clients connect via the
+                        VNet-internal FQDN. No public IP is allocated. This is the default for agents running
+                        within your infrastructure.
+                    </p>
+
+                    <h3 id="external-consumers">External consumers (other organizations/services)</h3>
+                    <p>
+                        Use <strong>external ingress + Azure Front Door with WAF</strong>. JWT auth is mandatory.
+                        Rate limiting is recommended to prevent abuse. Front Door provides DDoS protection, TLS
+                        termination, and geographic routing.
+                    </p>
+
+                    <h3 id="cors-policy">CORS policy</h3>
+                    <p>
+                        Explicit allowlist only. <strong>Never wildcard in production.</strong> The allowed origins
+                        must match the exact scheme and host of your dashboard deployment.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header">
+                            <span class="code-block-lang">json</span>
+                        </div>
+<pre><code>{
+  "MCP": {
+    "Server": {
+      "Transport": "Http",
+      "Port": 8082,
+      "Authentication": {
+        "Authority": "https://login.microsoftonline.com/{tenantId}/v2.0",
+        "Audience": "api://harness-mcp",
+        "ValidIssuers": ["https://sts.windows.net/{tenantId}/"]
+      },
+      "Cors": {
+        "AllowedOrigins": ["https://your-app.azurecontainerapps.io"]
+      }
+    }
+  }
+}</code></pre>
+                    </div>
+
+                    <!-- ==============================
+                         HTTP Security Headers
+                         ============================== -->
+                    <h2 id="http-security-headers">HTTP security headers</h2>
+                    <p>
+                        Every response from the harness includes these headers. They form the browser-side layer
+                        of the defense-in-depth strategy.
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Header</th>
+                                <th>Value</th>
+                                <th>Why</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>X-Frame-Options</code></td>
+                                <td><code>DENY</code></td>
+                                <td>Prevents clickjacking</td>
+                            </tr>
+                            <tr>
+                                <td><code>X-Content-Type-Options</code></td>
+                                <td><code>nosniff</code></td>
+                                <td>Prevents MIME-type sniffing</td>
+                            </tr>
+                            <tr>
+                                <td><code>Strict-Transport-Security</code></td>
+                                <td><code>max-age=31536000; includeSubDomains</code></td>
+                                <td>Forces HTTPS</td>
+                            </tr>
+                            <tr>
+                                <td><code>Content-Security-Policy</code></td>
+                                <td><code>default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' fonts.googleapis.com</code></td>
+                                <td>Prevents XSS</td>
+                            </tr>
+                            <tr>
+                                <td><code>Referrer-Policy</code></td>
+                                <td><code>strict-origin-when-cross-origin</code></td>
+                                <td>Controls referrer leakage</td>
+                            </tr>
+                            <tr>
+                                <td><code>Permissions-Policy</code></td>
+                                <td><code>camera=(), microphone=(), geolocation=()</code></td>
+                                <td>Disables unused browser APIs</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">&#10003;</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Where these are configured</div>
+                            <p>
+                                These headers are configured in the ASP.NET Core middleware pipeline.
+                                See <code>Infrastructure.Common/Middleware/SecurityHeadersMiddleware.cs</code>
+                                in the Developer Guide for the implementation.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ==============================
+                         Key Vault Configuration
+                         ============================== -->
+                    <h2 id="key-vault-configuration">Key Vault configuration</h2>
+                    <p>
+                        All secrets &mdash; API keys, connection strings, certificates &mdash; live in Azure
+                        Key Vault. The harness loads them at startup via the
+                        <strong>Azure Key Vault configuration provider</strong>, which integrates directly with
+                        the .NET configuration system.
+                    </p>
+                    <p>
+                        Secrets map to configuration paths using <code>--</code> as a delimiter. For example,
+                        a Key Vault secret named <code>AI--AgentFramework--AzureOpenAI--ApiKey</code> maps to
+                        the configuration path <code>AI:AgentFramework:AzureOpenAI:ApiKey</code>. This
+                        convention means you can reference any configuration value as a Key Vault secret
+                        without changing application code.
+                    </p>
+
+                    <div class="annotated">
+                        <div class="annotated-row">
+                            <div class="annotated-code">AI--AgentFramework--AzureOpenAI--ApiKey</div>
+                            <div class="annotated-note">
+                                <strong>Key Vault secret name.</strong> Double hyphens replace the
+                                <code>:</code> separator used in .NET configuration paths.
+                            </div>
+                        </div>
+                        <div class="annotated-row">
+                            <div class="annotated-code">AI:AgentFramework:AzureOpenAI:ApiKey</div>
+                            <div class="annotated-note">
+                                <strong>Configuration path.</strong> The Key Vault provider automatically
+                                translates <code>--</code> to <code>:</code> at load time.
+                            </div>
+                        </div>
+                    </div>
+
+                    <p>
+                        The container app authenticates to Key Vault using its system-assigned managed identity
+                        with the <code>Key Vault Secrets User</code> role. No connection string or client secret
+                        is needed &mdash; the identity is assigned at the infrastructure level.
+                    </p>
+
+                    <!-- Footer nav -->
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="03-data-and-retrieval.html">
+                            <div class="page-nav-label">&larr; Previous</div>
+                            <div class="page-nav-title">03 &middot; Data &amp; Retrieval</div>
+                        </a>
+                        <a class="page-nav-link page-nav-next" href="05-observability.html">
+                            <div class="page-nav-label">Next &rarr;</div>
+                            <div class="page-nav-title">05 &middot; Observability</div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- TOC -->
+                <aside class="toc" aria-label="On this page">
+                    <div class="toc-title">On this page</div>
+                    <ul class="toc-list"></ul>
+                </aside>
+            </main>
+        </div>
+        <script src="../assets/js/main.js"></script>
+    </body>
+</html>

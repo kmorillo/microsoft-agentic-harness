@@ -59,6 +59,12 @@ Key architectural concepts from the reference:
 - **Step Executors**: Keyed DI by StepType enum — LlmCall, ToolUse, HumanGate, ConditionalBranch, SubPlanInvocation
 - **Partial Class Pattern**: Large files split into partials by responsibility (PlanExecutor.Scheduling.cs, PlanExecutor.Recovery.cs, etc.)
 
+## Documentation
+- **Developer Onboarding Guide**: `documentation/onboarding/` — 13-page guide for engineers (deployed at `/`)
+- **Architecture Guide**: `documentation/architecture/` — Azure infrastructure playbook (deployed at `/architecture/`)
+- **Interactive Course**: `documentation/agentic-harness-course/` — Visual course for non-technical audiences (deployed at `/agentic-harness-course/`)
+- GitHub Pages workflow: `.github/workflows/pages.yml` — deploys all three on push to main
+
 ## Commands
 - `dotnet build src/AgenticHarness.slnx` — Build
 - `dotnet test src/AgenticHarness.slnx` — Run all tests

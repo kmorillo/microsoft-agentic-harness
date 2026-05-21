@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Welcome — Agentic Harness Architecture Guide</title>
+        <meta
+            name="description"
+            content="Infrastructure playbook for deploying the Microsoft Agentic Harness on Azure. Maps every subsystem to concrete Azure services across dev, staging, and production tiers."
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="../assets/css/styles.css" />
+        <link rel="stylesheet" href="assets/css/architecture.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <!-- ============ SIDEBAR ============ -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Architecture Guide</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Documentation navigation">
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Overview</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Welcome</a>
+                        <a class="sidebar-link" href="01-azure-topology.html"><span class="sidebar-link-num">01</span> Azure Topology</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Infrastructure</div>
+                        <a class="sidebar-link" href="02-compute-and-ai.html"><span class="sidebar-link-num">02</span> Compute &amp; AI Services</a>
+                        <a class="sidebar-link" href="03-data-and-retrieval.html"><span class="sidebar-link-num">03</span> Data &amp; Retrieval</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Platform</div>
+                        <a class="sidebar-link" href="04-networking-and-security.html"><span class="sidebar-link-num">04</span> Networking &amp; Security</a>
+                        <a class="sidebar-link" href="05-observability.html"><span class="sidebar-link-num">05</span> Observability</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Operations</div>
+                        <a class="sidebar-link" href="06-operations.html"><span class="sidebar-link-num">06</span> Operations &amp; Cost</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Other Guides</div>
+                        <a class="sidebar-link" href="../index.html">&#8592; Developer Guide</a>
+                        <a class="sidebar-link" href="../agentic-harness-course/index.html">&#8592; Interactive Course</a>
+                    </div>
+                </nav>
+            </aside>
+
+            <!-- ============ MAIN ============ -->
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <!-- Hero -->
+                    <section class="hero">
+                        <span class="eyebrow">Architecture Guide</span>
+                        <h1 class="hero-title">Deploy the Agentic Harness on Azure.</h1>
+                        <p class="hero-lead">
+                            This guide maps every subsystem in the harness — the agent runtime, RAG pipeline, knowledge
+                            graph, MCP server, governance — to concrete Azure services. Whether you're deploying a
+                            proof-of-concept or running in production, this is your infrastructure playbook.
+                        </p>
+                        <div class="hero-cta">
+                            <a class="btn btn-primary" href="01-azure-topology.html">
+                                Start: Azure Topology <span class="btn-arrow">&rarr;</span>
+                            </a>
+                            <a class="btn btn-secondary" href="06-operations.html">Jump to Cost &amp; Scaling</a>
+                        </div>
+                    </section>
+
+                    <!-- What this guide covers -->
+                    <h2>What this guide covers</h2>
+                    <p>
+                        This is the <strong>infrastructure companion</strong> to the
+                        <a href="../index.html">Developer Guide</a>. The Developer Guide teaches you the code — how
+                        the agent loop works, how skills load, how RAG retrieves context. This guide teaches you
+                        <em>where it runs</em>: which Azure services back each subsystem, how they connect, what they
+                        cost, and what changes between a local dev box and a production deployment.
+                    </p>
+
+                    <!-- Who this guide is for -->
+                    <h2>Who this guide is for</h2>
+                    <p>
+                        Platform engineers, cloud architects, and DevOps leads evaluating the harness for their
+                        organization. You're the person who needs to answer "what do we need to provision?" and "what
+                        will this cost us?" before the team starts building on top of the template.
+                    </p>
+                    <p>
+                        We assume familiarity with Azure fundamentals — resource groups, subscriptions, managed
+                        identity, the basics of Container Apps or App Service. We don't assume you've read the
+                        application code, and we won't ask you to. If you need the code-level walkthrough, start with
+                        the <a href="../index.html">Developer Guide</a> instead.
+                    </p>
+
+                    <!-- Card grid -->
+                    <h2>Pages in this guide</h2>
+                    <div class="card-grid">
+                        <a class="card" href="01-azure-topology.html">
+                            <span class="card-num">01</span>
+                            <div class="card-title">Azure Topology</div>
+                            <p class="card-desc">
+                                The full resource map. Every Azure service, how they connect, and which resource groups
+                                they live in.
+                            </p>
+                        </a>
+                        <a class="card" href="02-compute-and-ai.html">
+                            <span class="card-num">02</span>
+                            <div class="card-title">Compute &amp; AI Services</div>
+                            <p class="card-desc">
+                                Where the harness runs (Container Apps, App Service, AKS) and how Azure OpenAI powers
+                                the agent.
+                            </p>
+                        </a>
+                        <a class="card" href="03-data-and-retrieval.html">
+                            <span class="card-num">03</span>
+                            <div class="card-title">Data &amp; Retrieval</div>
+                            <p class="card-desc">
+                                RAG pipeline infrastructure: AI Search, FAISS, embeddings. Knowledge graph backends:
+                                Cosmos DB, Neo4j.
+                            </p>
+                        </a>
+                        <a class="card" href="04-networking-and-security.html">
+                            <span class="card-num">04</span>
+                            <div class="card-title">Networking &amp; Security</div>
+                            <p class="card-desc">
+                                VNet topology, private endpoints, Entra ID integration, Key Vault, and MCP server
+                                exposure.
+                            </p>
+                        </a>
+                        <a class="card" href="05-observability.html">
+                            <span class="card-num">05</span>
+                            <div class="card-title">Observability</div>
+                            <p class="card-desc">
+                                OpenTelemetry to Azure Monitor or Grafana. Tracing agent conversations, governance
+                                metrics, alerting.
+                            </p>
+                        </a>
+                        <a class="card" href="06-operations.html">
+                            <span class="card-num">06</span>
+                            <div class="card-title">Operations &amp; Cost</div>
+                            <p class="card-desc">
+                                Cost tiers (dev $50/mo to prod $800+/mo), scaling patterns, CI/CD, governance runtime.
+                            </p>
+                        </a>
+                    </div>
+
+                    <!-- How this relates to other guides -->
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
+                        <div class="callout-body">
+                            <div class="callout-title">How this relates to other guides</div>
+                            <p>
+                                <strong><a href="../index.html">Developer Guide</a></strong> — How the code works.
+                                The agent loop, skills, tools, RAG pipeline, MCP, and patterns explained at the source
+                                level. Start here if you're writing code.
+                            </p>
+                            <p>
+                                <strong>Architecture Guide (this)</strong> — How to deploy it on Azure. Resource maps,
+                                SKU recommendations, cost tiers, networking, and observability infrastructure. Start
+                                here if you're provisioning environments.
+                            </p>
+                            <p style="margin: 0">
+                                <strong><a href="../agentic-harness-course/index.html">Interactive Course</a></strong>
+                                — Conceptual overview for non-technical stakeholders, new team members, or anyone who
+                                wants to understand what the harness does before diving into code or infrastructure.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Footer nav -->
+                    <div class="page-nav">
+                        <div></div>
+                        <a class="page-nav-link page-nav-next" href="01-azure-topology.html">
+                            <div class="page-nav-label">Next &rarr;</div>
+                            <div class="page-nav-title">01 &middot; Azure Topology</div>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- TOC -->
+                <aside class="toc" aria-label="On this page">
+                    <div class="toc-title">On this page</div>
+                    <ul class="toc-list"></ul>
+                </aside>
+            </main>
+        </div>
+        <script src="../assets/js/main.js"></script>
+    </body>
+</html>
