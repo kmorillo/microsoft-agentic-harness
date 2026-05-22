@@ -6,6 +6,7 @@ using Domain.AI.Routing.Enums;
 using Domain.AI.Routing.Models;
 using Domain.Common.Config;
 using Domain.Common.Config.AI.RAG;
+using Domain.Common.Config.AI.Routing;
 using Microsoft.Extensions.Options;
 using Moq;
 
@@ -441,6 +442,15 @@ internal static class RagTestData
         appConfig.AI.Rag.MultiSource = new MultiSourceConfig
         {
             Enabled = false,
+        };
+        appConfig.AI.ModelRouting.Enabled = true;
+        appConfig.AI.ModelRouting.RetrievalDefaults = new RetrievalDefaultsConfig
+        {
+            ConfidenceThreshold = 0.7,
+            SimpleTopK = 5,
+            ComplexTopK = 15,
+            SkipRerankForSimple = true,
+            SkipCragForSimple = true,
         };
 
         configure?.Invoke(appConfig);
