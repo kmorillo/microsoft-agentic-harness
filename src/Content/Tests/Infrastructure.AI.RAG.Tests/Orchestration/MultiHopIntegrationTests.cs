@@ -1,6 +1,7 @@
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Models;
 using Domain.Common.Config;
 using FluentAssertions;
 using Infrastructure.AI.RAG.Orchestration;
@@ -22,7 +23,7 @@ public sealed class MultiHopIntegrationTests
     private readonly Mock<ICragEvaluator> _mockCrag = new();
     private readonly Mock<IRagContextAssembler> _mockAssembler = new();
     private readonly Mock<IGraphRagService> _mockGraphRag = new();
-    private readonly Mock<IQueryComplexityClassifier> _mockClassifier = new();
+    private readonly Mock<ITaskComplexityClassifier> _mockClassifier = new();
     private readonly Mock<IIterativeRetriever> _mockIterativeRetriever = new();
     private readonly Mock<IAnswerFaithfulnessEvaluator> _mockFaithfulness = new();
 
@@ -30,7 +31,7 @@ public sealed class MultiHopIntegrationTests
     {
         var config = RagTestData.CreateConfigMonitor(c =>
         {
-            c.AI.Rag.ComplexityRouting.Enabled = true;
+            c.AI.ModelRouting.Enabled = true;
             c.AI.Rag.MultiHop.Enabled = true;
             c.AI.Rag.Faithfulness.Enabled = true;
             configure?.Invoke(c);
@@ -65,7 +66,7 @@ public sealed class MultiHopIntegrationTests
     public async Task ComplexQuery_FullMultiHopPipeline_ReturnsAssembledContext()
     {
         _mockClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateComplexClassification(0.85));
 
         var iterativeResult = RagTestData.CreateIterativeRetrievalResult(
@@ -119,7 +120,7 @@ public sealed class MultiHopIntegrationTests
         result.AssembledText.Should().Contain("multi-hop answer");
         result.TotalTokens.Should().Be(350);
 
-        _mockClassifier.Verify(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+        _mockClassifier.Verify(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()), Times.Once);
         _mockIterativeRetriever.Verify(r => r.RetrieveIterativelyAsync(
             It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
         _mockReranker.Verify(r => r.RerankAsync(
@@ -133,7 +134,7 @@ public sealed class MultiHopIntegrationTests
     public async Task ComplexQuery_MultiHopDisabled_UsesStandardPipeline()
     {
         _mockClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateComplexClassification());
 
         var retrievalResults = RagTestData.CreateRetrievalResults(5);
@@ -177,7 +178,7 @@ public sealed class MultiHopIntegrationTests
     public async Task ComplexQuery_FaithfulnessDisabled_SkipsFaithfulnessCheck()
     {
         _mockClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateComplexClassification());
 
         var iterativeResult = RagTestData.CreateIterativeRetrievalResult();

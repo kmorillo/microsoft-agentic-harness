@@ -1,5 +1,5 @@
-using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
 
 namespace Application.AI.Common.Interfaces.RAG;
 
@@ -17,6 +17,6 @@ public interface IMultiSourceOrchestrator
     Task<IReadOnlyList<RetrievalResult>> RetrieveFromAllSourcesAsync(
         string query,
         int topK,
-        QueryComplexity complexity,
+        TaskComplexity complexity,
         CancellationToken cancellationToken = default);
 }

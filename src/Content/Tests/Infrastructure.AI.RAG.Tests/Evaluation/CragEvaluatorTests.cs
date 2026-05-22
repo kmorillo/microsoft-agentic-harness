@@ -1,5 +1,8 @@
-using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Enums;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
+using Domain.Common.Config.AI;
 using FluentAssertions;
 using Infrastructure.AI.RAG.Evaluation;
 using Infrastructure.AI.RAG.Tests.Helpers;
@@ -12,7 +15,7 @@ namespace Infrastructure.AI.RAG.Tests.Evaluation;
 
 public sealed class CragEvaluatorTests
 {
-    private readonly Mock<IRagModelRouter> _mockRouter = new();
+    private readonly Mock<IModelRouter> _mockRouter = new();
 
     private CragEvaluator CreateEvaluator(
         double acceptThreshold = 0.7,
@@ -25,10 +28,6 @@ public sealed class CragEvaluatorTests
             c.AI.Rag.Crag.RefineThreshold = refineThreshold;
             c.AI.Rag.Crag.AllowWebFallback = allowWebFallback;
         });
-
-        _mockRouter
-            .Setup(r => r.GetTierForOperation(It.IsAny<string>()))
-            .Returns("standard");
 
         return new CragEvaluator(
             _mockRouter.Object,
@@ -47,8 +46,15 @@ public sealed class CragEvaluatorTests
             .ReturnsAsync(new ChatResponse(new ChatMessage(ChatRole.Assistant, jsonResponse)));
 
         _mockRouter
-            .Setup(r => r.GetClientForOperation(It.IsAny<string>()))
-            .Returns(mockChatClient.Object);
+            .Setup(r => r.RouteOperationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModelRoutingDecision
+            {
+                Client = mockChatClient.Object,
+                SelectedTier = new ModelTier { Name = "standard", ClientType = AIAgentFrameworkClientType.AzureOpenAI, DeploymentName = "gpt-4o" },
+                Complexity = TaskComplexity.Moderate,
+                Source = ClassificationSource.Heuristic,
+                Confidence = 1.0,
+            });
     }
 
     [Fact]
@@ -102,8 +108,15 @@ public sealed class CragEvaluatorTests
             .ThrowsAsync(new InvalidOperationException("LLM unavailable"));
 
         _mockRouter
-            .Setup(r => r.GetClientForOperation(It.IsAny<string>()))
-            .Returns(mockChatClient.Object);
+            .Setup(r => r.RouteOperationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModelRoutingDecision
+            {
+                Client = mockChatClient.Object,
+                SelectedTier = new ModelTier { Name = "standard", ClientType = AIAgentFrameworkClientType.AzureOpenAI, DeploymentName = "gpt-4o" },
+                Complexity = TaskComplexity.Moderate,
+                Source = ClassificationSource.Heuristic,
+                Confidence = 1.0,
+            });
 
         var evaluator = CreateEvaluator();
         var results = RagTestData.CreateRetrievalResults(3);

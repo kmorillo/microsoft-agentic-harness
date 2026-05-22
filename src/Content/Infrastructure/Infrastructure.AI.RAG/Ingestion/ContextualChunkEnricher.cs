@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
 using Domain.AI.Telemetry.Conventions;
 using Microsoft.Extensions.AI;
@@ -21,7 +22,7 @@ public sealed class ContextualChunkEnricher : IContextualEnricher
     private const int BatchSize = 10;
     private const int MaxDocumentChars = 12_000;
 
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly ILogger<ContextualChunkEnricher> _logger;
 
     /// <summary>
@@ -30,7 +31,7 @@ public sealed class ContextualChunkEnricher : IContextualEnricher
     /// <param name="modelRouter">Model router for selecting economy-tier chat client.</param>
     /// <param name="logger">Logger for recording enrichment progress and failures.</param>
     public ContextualChunkEnricher(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         ILogger<ContextualChunkEnricher> logger)
     {
         _modelRouter = modelRouter;
@@ -45,11 +46,11 @@ public sealed class ContextualChunkEnricher : IContextualEnricher
     {
         using var activity = ActivitySource.StartActivity("rag.ingest.contextual_enrichment");
 
-        var tier = _modelRouter.GetTierForOperation("contextual_enrichment");
-        activity?.SetTag(RagConventions.ModelTier, tier);
         activity?.SetTag(RagConventions.ModelOperation, "contextual_enrichment");
 
-        var chatClient = _modelRouter.GetClientForOperation("contextual_enrichment");
+        var enrichDecision = await _modelRouter.RouteOperationAsync("contextual_enrichment", cancellationToken);
+        var chatClient = enrichDecision.Client;
+        activity?.SetTag(RagConventions.ModelTier, enrichDecision.SelectedTier.ToString().ToLowerInvariant());
         var truncatedDoc = TruncateDocument(fullDocumentContent);
         var enrichedChunks = new DocumentChunk[chunks.Count];
 

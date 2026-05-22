@@ -1,5 +1,5 @@
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
+using Domain.AI.Routing.Enums;
 using Domain.AI.RAG.Models;
 using Domain.Common.Config;
 using Domain.Common.Config.AI.RAG;
@@ -42,7 +42,7 @@ public sealed class MultiSourceIntegrationTests
         var sut = new MultiSourceOrchestrator(
             sp, Mock.Of<IRetrievalCostTracker>(), config, NullLogger<MultiSourceOrchestrator>.Instance);
 
-        var results = await sut.RetrieveFromAllSourcesAsync("complex query", 10, QueryComplexity.Complex);
+        var results = await sut.RetrieveFromAllSourcesAsync("complex query", 10, TaskComplexity.Complex);
 
         results.Should().HaveCount(3);
         results.Should().BeInDescendingOrder(r => r.FusedScore);
@@ -66,7 +66,7 @@ public sealed class MultiSourceIntegrationTests
         var sut = new MultiSourceOrchestrator(
             sp, Mock.Of<IRetrievalCostTracker>(), config, NullLogger<MultiSourceOrchestrator>.Instance);
 
-        var results = await sut.RetrieveFromAllSourcesAsync("test", 10, QueryComplexity.Moderate);
+        var results = await sut.RetrieveFromAllSourcesAsync("test", 10, TaskComplexity.Moderate);
 
         results.Should().HaveCount(1);
         results[0].FusedScore.Should().Be(0.9, "should keep the higher-scoring duplicate");
@@ -77,7 +77,7 @@ public sealed class MultiSourceIntegrationTests
         var mock = new Mock<IRetrievalSource>();
         mock.Setup(s => s.SourceName).Returns(name);
         mock.Setup(s => s.RetrieveAsync(
-                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SourceRetrievalResult
             {
                 SourceName = name, Results = results, Latency = TimeSpan.FromMilliseconds(50), TokensUsed = 0

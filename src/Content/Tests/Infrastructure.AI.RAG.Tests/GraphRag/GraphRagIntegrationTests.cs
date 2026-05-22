@@ -1,8 +1,11 @@
 using Application.AI.Common.Interfaces.KnowledgeGraph;
-using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.KnowledgeGraph.Models;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
 using Domain.Common.Config;
+using Domain.Common.Config.AI;
 using Domain.Common.Config.AI.RAG;
 using FluentAssertions;
 using Infrastructure.AI.RAG.GraphRag;
@@ -25,7 +28,7 @@ public sealed class GraphRagIntegrationTests : IDisposable
     private readonly string _tempDir;
     private readonly KuzuGraphBackend _graphBackend;
     private readonly Mock<IChatClient> _mockChatClient;
-    private readonly Mock<IRagModelRouter> _mockModelRouter;
+    private readonly Mock<IModelRouter> _mockModelRouter;
     private readonly Mock<IProvenanceStamper> _mockProvenanceStamper;
     private readonly Mock<ICommunityDetector> _mockCommunityDetector;
     private readonly ManagedCodeGraphRagService _sut;
@@ -41,14 +44,21 @@ public sealed class GraphRagIntegrationTests : IDisposable
         _graphBackend = new KuzuGraphBackend(_tempDir, NullLogger<KuzuGraphBackend>.Instance);
 
         _mockChatClient = new Mock<IChatClient>();
-        _mockModelRouter = new Mock<IRagModelRouter>();
+        _mockModelRouter = new Mock<IModelRouter>();
         _mockProvenanceStamper = new Mock<IProvenanceStamper>();
         _mockCommunityDetector = new Mock<ICommunityDetector>();
 
         // Router always returns the mock client regardless of operation name.
         _mockModelRouter
-            .Setup(r => r.GetClientForOperation(It.IsAny<string>()))
-            .Returns(_mockChatClient.Object);
+            .Setup(r => r.RouteOperationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModelRoutingDecision
+            {
+                Client = _mockChatClient.Object,
+                SelectedTier = new ModelTier { Name = "standard", ClientType = AIAgentFrameworkClientType.AzureOpenAI, DeploymentName = "gpt-4o" },
+                Complexity = TaskComplexity.Moderate,
+                Source = ClassificationSource.Heuristic,
+                Confidence = 1.0,
+            });
 
         // Stamper passes entities through unchanged.
         _mockProvenanceStamper
@@ -271,8 +281,15 @@ public sealed class GraphRagIntegrationTests : IDisposable
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new ChatResponse(new ChatMessage(ChatRole.Assistant,
                 "The corpus centers on Azure cloud computing technology.")));
-        _mockModelRouter.Setup(r => r.GetClientForOperation("graph_global_search"))
-            .Returns(synthesisClient.Object);
+        _mockModelRouter.Setup(r => r.RouteOperationAsync("graph_global_search", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModelRoutingDecision
+            {
+                Client = synthesisClient.Object,
+                SelectedTier = new ModelTier { Name = "standard", ClientType = AIAgentFrameworkClientType.AzureOpenAI, DeploymentName = "gpt-4o" },
+                Complexity = TaskComplexity.Moderate,
+                Source = ClassificationSource.Heuristic,
+                Confidence = 1.0,
+            });
 
         // Act
         var result = await sutWithRealDetector.GlobalSearchAsync("What are the main themes?", communityLevel: 0);

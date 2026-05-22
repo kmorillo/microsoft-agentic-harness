@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -14,7 +15,7 @@ namespace Infrastructure.AI.RAG.Evaluation;
 /// </summary>
 public sealed class SufficiencyEvaluator : ISufficiencyEvaluator
 {
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly ILogger<SufficiencyEvaluator> _logger;
 
     private const double DefaultScore = 0.5;
@@ -40,7 +41,7 @@ public sealed class SufficiencyEvaluator : ISufficiencyEvaluator
     /// <param name="modelRouter">Model router for resolving the LLM client.</param>
     /// <param name="logger">Logger for evaluation diagnostics.</param>
     public SufficiencyEvaluator(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         ILogger<SufficiencyEvaluator> logger)
     {
         _modelRouter = modelRouter;
@@ -64,7 +65,7 @@ public sealed class SufficiencyEvaluator : ISufficiencyEvaluator
 
         try
         {
-            var client = _modelRouter.GetClientForOperation("sufficiency_evaluation");
+            var client = (await _modelRouter.RouteOperationAsync("sufficiency_evaluation", cancellationToken)).Client;
 
             var chunksText = string.Join("\n---\n", results.Select((r, i) =>
                 $"[Chunk {i + 1}] (score: {r.FusedScore:F2})\n{r.Chunk.Content}"));

@@ -1,5 +1,7 @@
 using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
 
 namespace Application.AI.Common.Interfaces.RAG;
 
@@ -15,7 +17,7 @@ public interface IRetrievalDecisionGate
     /// <param name="classification">The complexity classification result.</param>
     /// <param name="requestedTopK">Optional topK override from the caller.</param>
     /// <returns>Effective retrieval parameters for this query.</returns>
-    RetrievalDecision Decide(ComplexityClassification classification, int? requestedTopK = null);
+    RetrievalDecision Decide(TaskComplexityAssessment classification, int? requestedTopK = null);
 }
 
 /// <summary>
@@ -36,7 +38,7 @@ public sealed record RetrievalDecision
     public required bool UseCragEvaluation { get; init; }
 
     /// <summary>The complexity tier that produced this decision.</summary>
-    public required QueryComplexity Complexity { get; init; }
+    public required TaskComplexity Complexity { get; init; }
 
     /// <summary>Optional strategy override based on complexity.</summary>
     public RetrievalStrategy? StrategyOverride { get; init; }

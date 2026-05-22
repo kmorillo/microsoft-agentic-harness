@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.Telemetry.Conventions;
 using Domain.Common.Config;
 using Microsoft.Extensions.AI;
@@ -29,7 +30,7 @@ public sealed class RagFusionTransformer : IQueryTransformer
     private const string FusionPromptTemplate =
         "Generate {0} diverse reformulations of this search query. Each reformulation should approach the topic from a different angle or use different terminology. Return one per line, with no numbering or bullet points.\n\nQuery: {1}";
 
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly IOptionsMonitor<AppConfig> _configMonitor;
     private readonly ILogger<RagFusionTransformer> _logger;
 
@@ -40,7 +41,7 @@ public sealed class RagFusionTransformer : IQueryTransformer
     /// <param name="configMonitor">Configuration monitor for reading fusion variant count.</param>
     /// <param name="logger">Logger for recording transformation outcomes.</param>
     public RagFusionTransformer(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         IOptionsMonitor<AppConfig> configMonitor,
         ILogger<RagFusionTransformer> logger)
     {
@@ -57,15 +58,15 @@ public sealed class RagFusionTransformer : IQueryTransformer
         using var activity = ActivitySource.StartActivity("rag.query_transform.rag_fusion");
 
         var variantCount = _configMonitor.CurrentValue.AI.Rag.QueryTransform.FusionVariantCount;
-        var tier = _modelRouter.GetTierForOperation("rag_fusion");
 
-        activity?.SetTag(RagConventions.ModelTier, tier);
         activity?.SetTag(RagConventions.ModelOperation, "rag_fusion");
         activity?.SetTag(RagConventions.FusionVariantCount, variantCount);
 
         try
         {
-            var chatClient = _modelRouter.GetClientForOperation("rag_fusion");
+            var fusionDecision = await _modelRouter.RouteOperationAsync("rag_fusion", cancellationToken);
+            var chatClient = fusionDecision.Client;
+            activity?.SetTag(RagConventions.ModelTier, fusionDecision.SelectedTier.ToString().ToLowerInvariant());
             var prompt = string.Format(FusionPromptTemplate, variantCount, query);
 
             var response = await chatClient.GetResponseAsync(prompt, cancellationToken: cancellationToken);

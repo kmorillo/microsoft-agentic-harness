@@ -1,9 +1,12 @@
 using System.Text.Json;
 using Application.AI.Common.Interfaces.Planner;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.Planner;
 using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
 using FluentAssertions;
 using Infrastructure.AI.Planner.StepExecutors;
 using Infrastructure.AI.RAG.Orchestration;
@@ -22,7 +25,7 @@ public sealed class FullAutonomyIntegrationTests
 {
     private readonly Mock<IRagOrchestrator> _mockRagOrchestrator = new();
     private readonly Mock<IMultiSourceOrchestrator> _mockMultiSource = new();
-    private readonly Mock<IQueryComplexityClassifier> _mockComplexityClassifier = new();
+    private readonly Mock<ITaskComplexityClassifier> _mockComplexityClassifier = new();
     private readonly Mock<IPlanProgressNotifier> _mockNotifier = new();
 
     private RetrievalPlanStepExecutor CreateRetrievalExecutor(IRetrievalCostTracker? costTracker = null)
@@ -112,14 +115,16 @@ public sealed class FullAutonomyIntegrationTests
         _mockMultiSource
             .Setup(m => m.RetrieveFromAllSourcesAsync(
                 It.IsAny<string>(), It.IsAny<int>(),
-                It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()))
+                It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(retrievalResults);
         _mockComplexityClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ComplexityClassification
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskComplexityAssessment
             {
-                Complexity = QueryComplexity.Complex,
-                Confidence = 0.9
+                Complexity = TaskComplexity.Complex,
+                Confidence = 0.9,
+                Source = ClassificationSource.LlmClassifier,
+                Reasoning = string.Empty,
             });
 
         var executor = CreateRetrievalExecutor();

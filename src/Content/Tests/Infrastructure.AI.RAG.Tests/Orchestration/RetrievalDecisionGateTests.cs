@@ -1,6 +1,7 @@
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
 using Domain.Common.Config;
 using FluentAssertions;
 using Infrastructure.AI.RAG.Orchestration;
@@ -30,7 +31,7 @@ public sealed class RetrievalDecisionGateTests
         var decision = gate.Decide(classification);
 
         decision.SkipRetrieval.Should().BeTrue();
-        decision.Complexity.Should().Be(QueryComplexity.Trivial);
+        decision.Complexity.Should().Be(TaskComplexity.Trivial);
     }
 
     [Fact]
@@ -45,7 +46,7 @@ public sealed class RetrievalDecisionGateTests
         decision.TopK.Should().Be(5);
         decision.UseReranking.Should().BeFalse();
         decision.UseCragEvaluation.Should().BeFalse();
-        decision.Complexity.Should().Be(QueryComplexity.Simple);
+        decision.Complexity.Should().Be(TaskComplexity.Simple);
     }
 
     [Fact]
@@ -60,7 +61,7 @@ public sealed class RetrievalDecisionGateTests
         decision.TopK.Should().Be(10); // ModerateTopK is null in test config; falls back to Retrieval.TopK = 10
         decision.UseReranking.Should().BeTrue();
         decision.UseCragEvaluation.Should().BeTrue();
-        decision.Complexity.Should().Be(QueryComplexity.Moderate);
+        decision.Complexity.Should().Be(TaskComplexity.Moderate);
     }
 
     [Fact]
@@ -75,17 +76,18 @@ public sealed class RetrievalDecisionGateTests
         decision.TopK.Should().Be(15);
         decision.UseReranking.Should().BeTrue();
         decision.UseCragEvaluation.Should().BeTrue();
-        decision.Complexity.Should().Be(QueryComplexity.Complex);
+        decision.Complexity.Should().Be(TaskComplexity.Complex);
     }
 
     [Fact]
     public void Decide_LowConfidence_FallsBackToModerate()
     {
         var gate = CreateGate();
-        var classification = new ComplexityClassification
+        var classification = new TaskComplexityAssessment
         {
-            Complexity = QueryComplexity.Trivial,
+            Complexity = TaskComplexity.Trivial,
             Confidence = 0.4,
+            Source = Domain.AI.Routing.Enums.ClassificationSource.LlmClassifier,
             Reasoning = "Low confidence classification",
         };
 
@@ -94,7 +96,7 @@ public sealed class RetrievalDecisionGateTests
         decision.SkipRetrieval.Should().BeFalse();
         decision.UseReranking.Should().BeTrue();
         decision.UseCragEvaluation.Should().BeTrue();
-        decision.Complexity.Should().Be(QueryComplexity.Moderate);
+        decision.Complexity.Should().Be(TaskComplexity.Moderate);
     }
 
     [Fact]
@@ -111,7 +113,7 @@ public sealed class RetrievalDecisionGateTests
     [Fact]
     public void Decide_RoutingDisabled_AlwaysReturnsFullPipeline()
     {
-        var gate = CreateGate(c => c.AI.Rag.ComplexityRouting.Enabled = false);
+        var gate = CreateGate(c => c.AI.ModelRouting.Enabled = false);
         var classification = RagTestData.CreateTrivialClassification();
 
         var decision = gate.Decide(classification);

@@ -1,4 +1,7 @@
-using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
+using Domain.Common.Config.AI;
 using FluentAssertions;
 using Infrastructure.AI.KnowledgeGraph.Feedback;
 using Microsoft.Extensions.AI;
@@ -14,17 +17,24 @@ namespace Infrastructure.AI.KnowledgeGraph.Tests.Feedback;
 /// </summary>
 public sealed class LlmFeedbackDetectorTests
 {
-    private readonly Mock<IRagModelRouter> _modelRouter;
+    private readonly Mock<IModelRouter> _modelRouter;
     private readonly Mock<IChatClient> _chatClient;
     private readonly LlmFeedbackDetector _detector;
 
     public LlmFeedbackDetectorTests()
     {
-        _modelRouter = new Mock<IRagModelRouter>();
+        _modelRouter = new Mock<IModelRouter>();
         _chatClient = new Mock<IChatClient>();
         _modelRouter
-            .Setup(r => r.GetClientForOperation("feedback_detection"))
-            .Returns(_chatClient.Object);
+            .Setup(r => r.RouteOperationAsync("feedback_detection", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModelRoutingDecision
+            {
+                Client = _chatClient.Object,
+                SelectedTier = new ModelTier { Name = "standard", ClientType = AIAgentFrameworkClientType.AzureOpenAI, DeploymentName = "gpt-4o" },
+                Complexity = TaskComplexity.Moderate,
+                Source = ClassificationSource.Heuristic,
+                Confidence = 1.0,
+            });
 
         _detector = new LlmFeedbackDetector(
             _modelRouter.Object,

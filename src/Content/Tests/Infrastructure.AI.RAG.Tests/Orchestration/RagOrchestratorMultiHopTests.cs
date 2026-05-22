@@ -1,6 +1,7 @@
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Models;
 using Domain.Common.Config;
 using FluentAssertions;
 using Infrastructure.AI.RAG.Orchestration;
@@ -24,7 +25,7 @@ public sealed class RagOrchestratorMultiHopTests
     private readonly Mock<ICragEvaluator> _mockCrag = new();
     private readonly Mock<IRagContextAssembler> _mockAssembler = new();
     private readonly Mock<IGraphRagService> _mockGraphRag = new();
-    private readonly Mock<IQueryComplexityClassifier> _mockClassifier = new();
+    private readonly Mock<ITaskComplexityClassifier> _mockClassifier = new();
     private readonly Mock<IIterativeRetriever> _mockIterativeRetriever = new();
     private readonly Mock<IAnswerFaithfulnessEvaluator> _mockFaithfulness = new();
 
@@ -32,7 +33,7 @@ public sealed class RagOrchestratorMultiHopTests
     {
         var config = RagTestData.CreateConfigMonitor(c =>
         {
-            c.AI.Rag.ComplexityRouting.Enabled = true;
+            c.AI.ModelRouting.Enabled = true;
             c.AI.Rag.MultiHop.Enabled = true;
             c.AI.Rag.Faithfulness.Enabled = true;
             configure?.Invoke(c);
@@ -67,7 +68,7 @@ public sealed class RagOrchestratorMultiHopTests
     public async Task SearchAsync_ComplexQuery_UsesIterativeRetriever()
     {
         _mockClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateComplexClassification());
 
         var iterativeResult = RagTestData.CreateIterativeRetrievalResult();
@@ -117,7 +118,7 @@ public sealed class RagOrchestratorMultiHopTests
     public async Task SearchAsync_UnfaithfulAnswer_TriggersRefinement()
     {
         _mockClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateComplexClassification());
 
         var iterativeResult = RagTestData.CreateIterativeRetrievalResult();
@@ -175,7 +176,7 @@ public sealed class RagOrchestratorMultiHopTests
     public async Task SearchAsync_FaithfulAnswer_ReturnsDirectly()
     {
         _mockClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateComplexClassification());
 
         var iterativeResult = RagTestData.CreateIterativeRetrievalResult();
@@ -221,7 +222,7 @@ public sealed class RagOrchestratorMultiHopTests
     public async Task SearchAsync_MultiHopDisabled_FallsBackToStandardRouting()
     {
         _mockClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateComplexClassification());
 
         var retrievalResults = RagTestData.CreateRetrievalResults(3);
@@ -259,7 +260,7 @@ public sealed class RagOrchestratorMultiHopTests
     public async Task SearchAsync_MultiHopReturnsNoResults_ReturnsEmptyContext()
     {
         _mockClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateComplexClassification());
 
         var emptyResult = new IterativeRetrievalResult

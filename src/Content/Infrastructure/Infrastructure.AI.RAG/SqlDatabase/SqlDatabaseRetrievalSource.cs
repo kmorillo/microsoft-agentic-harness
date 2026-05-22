@@ -3,8 +3,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
 using Domain.Common.Config;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -29,7 +29,7 @@ internal sealed class SqlDatabaseRetrievalSource(
 
     /// <inheritdoc />
     public async Task<SourceRetrievalResult> RetrieveAsync(
-        string query, int topK, QueryComplexity complexity, CancellationToken cancellationToken)
+        string query, int topK, TaskComplexity complexity, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
         var config = configMonitor.CurrentValue.AI.Rag.SqlDatabase;

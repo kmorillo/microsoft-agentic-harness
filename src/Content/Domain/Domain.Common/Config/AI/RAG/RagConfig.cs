@@ -2,8 +2,8 @@ namespace Domain.Common.Config.AI.RAG;
 
 /// <summary>
 /// Root configuration for the RAG (Retrieval-Augmented Generation) pipeline
-/// including document ingestion, retrieval, reranking, query transformation,
-/// and model tiering. Bound from <c>AppConfig:AI:Rag</c> in appsettings.json.
+/// including document ingestion, retrieval, reranking, and query transformation.
+/// Bound from <c>AppConfig:AI:Rag</c> in appsettings.json.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -17,8 +17,6 @@ namespace Domain.Common.Config.AI.RAG;
 /// ├── Reranker           — Reranking strategy and model selection
 /// ├── Crag               — Corrective RAG thresholds and web fallback
 /// ├── QueryTransform     — RAG-Fusion, HyDE, query classification toggles
-/// ├── ModelTiering       — Per-operation model tier assignment
-/// ├── ComplexityRouting  — Cost-aware tier selection and pipeline optimization
 /// ├── MultiHop           — Iterative multi-hop retrieval for complex queries
 /// ├── Faithfulness       — Post-assembly answer faithfulness evaluation
 /// ├── GraphDatabase      — Graph database backend configuration
@@ -28,6 +26,10 @@ namespace Domain.Common.Config.AI.RAG;
 /// ├── WebSearch          — Web search retrieval source
 /// └── SqlDatabase        — SQL database retrieval source (disabled by default)
 /// </code>
+/// </para>
+/// <para>
+/// Model routing configuration has moved to <c>AppConfig:AI:ModelRouting</c>
+/// (<see cref="Domain.Common.Config.AI.ModelRoutingConfig"/>).
 /// </para>
 /// </remarks>
 public class RagConfig
@@ -73,18 +75,6 @@ public class RagConfig
     /// HyDE, and automatic query classification.
     /// </summary>
     public QueryTransformConfig QueryTransform { get; set; } = new();
-
-    /// <summary>
-    /// Gets or sets the model tiering configuration for routing RAG operations
-    /// to appropriate model tiers based on complexity.
-    /// </summary>
-    public ModelTieringConfig ModelTiering { get; set; } = new();
-
-    /// <summary>
-    /// Gets or sets the complexity-based query routing configuration controlling
-    /// cost-aware tier selection and pipeline optimization.
-    /// </summary>
-    public ComplexityRoutingConfig ComplexityRouting { get; set; } = new();
 
     /// <summary>Gets or sets the multi-hop iterative retrieval configuration.</summary>
     public MultiHopConfig MultiHop { get; set; } = new();

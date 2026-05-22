@@ -1,6 +1,9 @@
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
 using Domain.Common.Config;
 using FluentAssertions;
 using Infrastructure.AI.RAG.Orchestration;
@@ -19,7 +22,7 @@ public sealed class RagOrchestratorTests
     private readonly Mock<ICragEvaluator> _mockCrag = new();
     private readonly Mock<IRagContextAssembler> _mockAssembler = new();
     private readonly Mock<IGraphRagService> _mockGraphRag = new();
-    private readonly Mock<IQueryComplexityClassifier> _mockComplexityClassifier = new();
+    private readonly Mock<ITaskComplexityClassifier> _mockComplexityClassifier = new();
     private readonly Mock<IRetrievalDecisionGate> _mockDecisionGate = new();
     private readonly Mock<IMultiSourceOrchestrator> _mockMultiSource = new();
     private readonly Mock<IRetrievalCostTracker> _mockCostTracker = new();
@@ -204,11 +207,11 @@ public sealed class RagOrchestratorTests
             TopK = 0,
             UseReranking = false,
             UseCragEvaluation = false,
-            Complexity = QueryComplexity.Trivial,
+            Complexity = TaskComplexity.Trivial,
         };
 
         _mockComplexityClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(trivialClassification);
         _mockDecisionGate
             .Setup(g => g.Decide(trivialClassification, It.IsAny<int?>()))
@@ -235,12 +238,12 @@ public sealed class RagOrchestratorTests
             TopK = 5,
             UseReranking = false,
             UseCragEvaluation = false,
-            Complexity = QueryComplexity.Simple,
+            Complexity = TaskComplexity.Simple,
         };
         var retrievalResults = RagTestData.CreateRetrievalResults(3);
 
         _mockComplexityClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(simpleClassification);
         _mockDecisionGate
             .Setup(g => g.Decide(simpleClassification, It.IsAny<int?>()))
@@ -272,11 +275,11 @@ public sealed class RagOrchestratorTests
 
         // Classifier would return trivial but routing is disabled — should be ignored
         _mockComplexityClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateTrivialClassification());
 
         var orchestrator = CreateOrchestrator(cfg =>
-            cfg.AI.Rag.ComplexityRouting.Enabled = false);
+            cfg.AI.ModelRouting.Enabled = false);
 
         var result = await orchestrator.SearchAsync("trivial query with routing off");
 
@@ -294,11 +297,11 @@ public sealed class RagOrchestratorTests
         var rerankedResults = RagTestData.CreateRerankedResults(3);
 
         _mockComplexityClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateModerateClassification());
         _mockMultiSource
             .Setup(m => m.RetrieveFromAllSourcesAsync(
-                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(retrievalResults);
         _mockReranker
             .Setup(r => r.RerankAsync(It.IsAny<string>(), It.IsAny<IReadOnlyList<RetrievalResult>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -313,14 +316,14 @@ public sealed class RagOrchestratorTests
         var orchestrator = CreateOrchestrator(cfg =>
         {
             cfg.AI.Rag.MultiSource.Enabled = true;
-            cfg.AI.Rag.ComplexityRouting.Enabled = false;
+            cfg.AI.ModelRouting.Enabled = false;
         });
 
         var result = await orchestrator.SearchAsync("multi-source query");
 
         result.AssembledText.Should().Be("assembled text");
         _mockMultiSource.Verify(
-            m => m.RetrieveFromAllSourcesAsync(It.IsAny<string>(), It.IsAny<int>(), QueryComplexity.Moderate, It.IsAny<CancellationToken>()),
+            m => m.RetrieveFromAllSourcesAsync(It.IsAny<string>(), It.IsAny<int>(), TaskComplexity.Moderate, It.IsAny<CancellationToken>()),
             Times.Once);
         _mockRetriever.Verify(
             r => r.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()),
@@ -331,17 +334,17 @@ public sealed class RagOrchestratorTests
     public async Task SearchAsync_MultiSourceReturnsEmpty_ReturnsEmptyContext()
     {
         _mockComplexityClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateSimpleClassification());
         _mockMultiSource
             .Setup(m => m.RetrieveFromAllSourcesAsync(
-                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()))
+                It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<RetrievalResult>());
 
         var orchestrator = CreateOrchestrator(cfg =>
         {
             cfg.AI.Rag.MultiSource.Enabled = true;
-            cfg.AI.Rag.ComplexityRouting.Enabled = false;
+            cfg.AI.ModelRouting.Enabled = false;
         });
 
         var result = await orchestrator.SearchAsync("empty multi-source query");
@@ -361,7 +364,7 @@ public sealed class RagOrchestratorTests
         var orchestrator = CreateOrchestrator(cfg =>
         {
             cfg.AI.Rag.MultiSource.Enabled = false;
-            cfg.AI.Rag.ComplexityRouting.Enabled = false;
+            cfg.AI.ModelRouting.Enabled = false;
         });
 
         await orchestrator.SearchAsync("cost-tracked query");

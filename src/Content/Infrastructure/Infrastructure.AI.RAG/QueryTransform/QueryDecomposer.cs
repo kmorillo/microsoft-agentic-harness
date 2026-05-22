@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -21,7 +22,7 @@ namespace Infrastructure.AI.RAG.QueryTransform;
 /// </remarks>
 public sealed class QueryDecomposer : IQueryDecomposer
 {
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly ILogger<QueryDecomposer> _logger;
 
     private const string SystemPrompt = """
@@ -73,7 +74,7 @@ public sealed class QueryDecomposer : IQueryDecomposer
     /// <param name="modelRouter">Model router for resolving the LLM client.</param>
     /// <param name="logger">Logger for decomposition diagnostics.</param>
     public QueryDecomposer(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         ILogger<QueryDecomposer> logger)
     {
         _modelRouter = modelRouter;
@@ -90,7 +91,7 @@ public sealed class QueryDecomposer : IQueryDecomposer
 
         try
         {
-            var client = _modelRouter.GetClientForOperation("query_decomposition");
+            var client = (await _modelRouter.RouteOperationAsync("query_decomposition", cancellationToken)).Client;
             var messages = new List<ChatMessage>
             {
                 new(ChatRole.System, SystemPrompt),

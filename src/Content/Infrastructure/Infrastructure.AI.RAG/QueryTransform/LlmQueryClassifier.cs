@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
 using Domain.AI.Telemetry.Conventions;
@@ -14,7 +15,7 @@ namespace Infrastructure.AI.RAG.QueryTransform;
 /// optimal retrieval strategy. Sends a structured prompt with examples of each
 /// <see cref="QueryType"/> and parses the JSON response into a
 /// <see cref="QueryClassification"/> record. Uses an economy-tier model via
-/// <see cref="IRagModelRouter"/> since classification is latency-sensitive
+/// <see cref="IModelRouter"/> since classification is latency-sensitive
 /// and does not require a high-capability model.
 /// </summary>
 /// <remarks>
@@ -59,7 +60,7 @@ public sealed class LlmQueryClassifier : IQueryClassifier
             [QueryType.Adversarial] = RetrievalStrategy.HybridVectorBm25
         };
 
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly ILogger<LlmQueryClassifier> _logger;
 
     /// <summary>
@@ -68,7 +69,7 @@ public sealed class LlmQueryClassifier : IQueryClassifier
     /// <param name="modelRouter">Model router for selecting an economy-tier chat client.</param>
     /// <param name="logger">Logger for recording classification outcomes and failures.</param>
     public LlmQueryClassifier(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         ILogger<LlmQueryClassifier> logger)
     {
         _modelRouter = modelRouter;
@@ -82,13 +83,13 @@ public sealed class LlmQueryClassifier : IQueryClassifier
     {
         using var activity = ActivitySource.StartActivity("rag.query_classification");
 
-        var tier = _modelRouter.GetTierForOperation("query_classification");
-        activity?.SetTag(RagConventions.ModelTier, tier);
         activity?.SetTag(RagConventions.ModelOperation, "query_classification");
 
         try
         {
-            var chatClient = _modelRouter.GetClientForOperation("query_classification");
+            var classifyDecision = await _modelRouter.RouteOperationAsync("query_classification", cancellationToken);
+            var chatClient = classifyDecision.Client;
+            activity?.SetTag(RagConventions.ModelTier, classifyDecision.SelectedTier.ToString().ToLowerInvariant());
             var prompt = string.Format(ClassificationPrompt, query);
 
             var response = await chatClient.GetResponseAsync(prompt, cancellationToken: cancellationToken);

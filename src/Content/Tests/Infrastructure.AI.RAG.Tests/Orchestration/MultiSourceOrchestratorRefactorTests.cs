@@ -1,5 +1,5 @@
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
+using Domain.AI.Routing.Enums;
 using Domain.AI.RAG.Models;
 using Domain.Common.Config;
 using FluentAssertions;
@@ -61,7 +61,7 @@ public sealed class MultiSourceOrchestratorRefactorTests
         mock.Setup(s => s.RetrieveAsync(
                 It.IsAny<string>(),
                 It.IsAny<int>(),
-                It.IsAny<QueryComplexity>(),
+                It.IsAny<TaskComplexity>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SourceRetrievalResult
             {
@@ -89,14 +89,14 @@ public sealed class MultiSourceOrchestratorRefactorTests
 
         // Act
         var results = await orchestrator.RetrieveFromAllSourcesAsync(
-            "architecture query", topK: 10, QueryComplexity.Moderate);
+            "architecture query", topK: 10, TaskComplexity.Moderate);
 
         // Assert — both sources were called via keyed DI resolution
         mockVector.Verify(s => s.RetrieveAsync(
-            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Once);
         mockGraph.Verify(s => s.RetrieveAsync(
-            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Once);
         results.Should().HaveCount(4);
     }
@@ -120,14 +120,14 @@ public sealed class MultiSourceOrchestratorRefactorTests
 
         // Act
         var results = await orchestrator.RetrieveFromAllSourcesAsync(
-            "query", topK: 10, QueryComplexity.Moderate);
+            "query", topK: 10, TaskComplexity.Moderate);
 
         // Assert — graph is in SourcesByComplexity["Moderate"] but not in EnabledSources
         mockVector.Verify(s => s.RetrieveAsync(
-            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Once);
         mockGraph.Verify(s => s.RetrieveAsync(
-            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Never);
         results.Should().HaveCount(3);
     }
@@ -147,11 +147,11 @@ public sealed class MultiSourceOrchestratorRefactorTests
 
         // Act — Moderate complexity requests both vector and graph
         var results = await orchestrator.RetrieveFromAllSourcesAsync(
-            "query", topK: 10, QueryComplexity.Moderate);
+            "query", topK: 10, TaskComplexity.Moderate);
 
         // Assert — vector results returned, graph silently skipped (logged warning, no exception)
         mockVector.Verify(s => s.RetrieveAsync(
-            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Once);
         results.Should().HaveCount(3);
     }

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Application.AI.Common.Interfaces.KnowledgeGraph;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.KnowledgeGraph.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -14,7 +15,7 @@ namespace Infrastructure.AI.KnowledgeGraph.Feedback;
 /// the assistant's previous response.
 /// </summary>
 /// <remarks>
-/// Uses <see cref="IRagModelRouter"/> to select a cheap model for feedback
+/// Uses <see cref="IModelRouter"/> to select a cheap model for feedback
 /// detection, keeping per-turn cost minimal. Returns a no-feedback result
 /// if the LLM call fails, ensuring the pipeline continues gracefully.
 /// </remarks>
@@ -25,7 +26,7 @@ public sealed class LlmFeedbackDetector : IFeedbackDetector
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly ILogger<LlmFeedbackDetector> _logger;
 
     /// <summary>
@@ -34,7 +35,7 @@ public sealed class LlmFeedbackDetector : IFeedbackDetector
     /// <param name="modelRouter">Routes LLM calls to the appropriate model tier.</param>
     /// <param name="logger">Logger for recording detection results.</param>
     public LlmFeedbackDetector(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         ILogger<LlmFeedbackDetector> logger)
     {
         ArgumentNullException.ThrowIfNull(modelRouter);
@@ -50,7 +51,7 @@ public sealed class LlmFeedbackDetector : IFeedbackDetector
         string assistantResponse,
         CancellationToken cancellationToken = default)
     {
-        var client = _modelRouter.GetClientForOperation("feedback_detection");
+        var client = (await _modelRouter.RouteOperationAsync("feedback_detection", cancellationToken)).Client;
         var prompt = $$"""
             Analyze whether the user's message contains implicit feedback about the assistant's response.
 

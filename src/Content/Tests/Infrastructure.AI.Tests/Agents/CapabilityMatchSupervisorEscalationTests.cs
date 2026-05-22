@@ -93,7 +93,8 @@ public sealed class CapabilityMatchSupervisorEscalationTests : IDisposable
             _agentFactoryMock.Object,
             _options,
             NullLogger<CapabilityMatchSupervisor>.Instance,
-            _escalationServiceMock.Object);
+            modelRouter: null,
+            escalationService: _escalationServiceMock.Object);
     }
 
     public void Dispose() => _supervisor.Dispose();

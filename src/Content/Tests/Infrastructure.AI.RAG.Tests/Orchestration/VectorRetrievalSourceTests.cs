@@ -1,5 +1,5 @@
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
+using Domain.AI.Routing.Enums;
 using Domain.AI.RAG.Models;
 using FluentAssertions;
 using Infrastructure.AI.RAG.Orchestration;
@@ -23,7 +23,7 @@ public sealed class VectorRetrievalSourceTests
 
         var sut = new VectorRetrievalSource(_retriever.Object);
 
-        var result = await sut.RetrieveAsync("test query", 10, QueryComplexity.Moderate, CancellationToken.None);
+        var result = await sut.RetrieveAsync("test query", 10, TaskComplexity.Moderate, CancellationToken.None);
 
         result.SourceName.Should().Be("vector");
         result.Results.Should().HaveCount(1);

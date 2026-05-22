@@ -1,5 +1,6 @@
 using System.Globalization;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -90,7 +91,7 @@ public sealed class RetrievalQualityEvaluator : IRetrievalQualityEvaluator
         answer perfectly addresses the question, 0.0 means it is completely off-topic.
         """;
 
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly ILogger<RetrievalQualityEvaluator> _logger;
 
     /// <summary>
@@ -99,7 +100,7 @@ public sealed class RetrievalQualityEvaluator : IRetrievalQualityEvaluator
     /// <param name="modelRouter">Model router for resolving the LLM client used as judge.</param>
     /// <param name="logger">Logger for evaluation diagnostics.</param>
     public RetrievalQualityEvaluator(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         ILogger<RetrievalQualityEvaluator> logger)
     {
         ArgumentNullException.ThrowIfNull(modelRouter);
@@ -174,7 +175,7 @@ public sealed class RetrievalQualityEvaluator : IRetrievalQualityEvaluator
 
     private async Task<double> EvaluateMetricAsync(string prompt, CancellationToken cancellationToken)
     {
-        var client = _modelRouter.GetClientForOperation(OperationName);
+        var client = (await _modelRouter.RouteOperationAsync(OperationName, cancellationToken)).Client;
 
         var messages = new List<ChatMessage>
         {

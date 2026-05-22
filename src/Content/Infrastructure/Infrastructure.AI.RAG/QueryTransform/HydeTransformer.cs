@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.Telemetry.Conventions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -32,7 +33,7 @@ public sealed class HydeTransformer : IQueryTransformer
     private const string HydePrompt =
         "Write a short passage (100-200 words) that would be the ideal answer to this question. Do not include any preamble.\n\nQuestion: {0}";
 
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly ILogger<HydeTransformer> _logger;
 
     /// <summary>
@@ -41,7 +42,7 @@ public sealed class HydeTransformer : IQueryTransformer
     /// <param name="modelRouter">Model router for selecting the appropriate chat client.</param>
     /// <param name="logger">Logger for recording HyDE generation outcomes.</param>
     public HydeTransformer(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         ILogger<HydeTransformer> logger)
     {
         _modelRouter = modelRouter;
@@ -55,13 +56,13 @@ public sealed class HydeTransformer : IQueryTransformer
     {
         using var activity = ActivitySource.StartActivity("rag.query_transform.hyde");
 
-        var tier = _modelRouter.GetTierForOperation("hyde_generation");
-        activity?.SetTag(RagConventions.ModelTier, tier);
         activity?.SetTag(RagConventions.ModelOperation, "hyde_generation");
 
         try
         {
-            var chatClient = _modelRouter.GetClientForOperation("hyde_generation");
+            var hydeDecision = await _modelRouter.RouteOperationAsync("hyde_generation", cancellationToken);
+            var chatClient = hydeDecision.Client;
+            activity?.SetTag(RagConventions.ModelTier, hydeDecision.SelectedTier.ToString().ToLowerInvariant());
             var prompt = string.Format(HydePrompt, query);
 
             var response = await chatClient.GetResponseAsync(prompt, cancellationToken: cancellationToken);

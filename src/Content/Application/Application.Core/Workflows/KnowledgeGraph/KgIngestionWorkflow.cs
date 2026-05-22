@@ -1,5 +1,6 @@
 using Application.AI.Common.Interfaces.KnowledgeGraph;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Microsoft.Agents.AI.Workflows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -20,7 +21,7 @@ namespace Application.Core.Workflows.KnowledgeGraph;
 /// workflow events for observability.
 /// </para>
 /// <para>
-/// The workflow uses <see cref="IRagModelRouter"/> (via <see cref="ExtractEntitiesExecutor"/>)
+/// The workflow uses <see cref="IModelRouter"/> (via <see cref="ExtractEntitiesExecutor"/>)
 /// to route entity extraction to the economy-tier LLM model, keeping ingestion costs low
 /// for large document batches.
 /// </para>
@@ -32,7 +33,7 @@ public static class KgIngestionWorkflow
     /// </summary>
     /// <param name="services">
     /// The service provider used to resolve pipeline dependencies:
-    /// <see cref="IRagModelRouter"/>, <see cref="IProvenanceStamper"/>,
+    /// <see cref="IModelRouter"/>, <see cref="IProvenanceStamper"/>,
     /// and <see cref="IKnowledgeGraphStore"/>.
     /// </param>
     /// <returns>A configured <see cref="Workflow"/> ready for execution via <see cref="InProcessExecution"/>.</returns>
@@ -41,7 +42,7 @@ public static class KgIngestionWorkflow
         ArgumentNullException.ThrowIfNull(services);
 
         var extract = new ExtractEntitiesExecutor(
-            services.GetRequiredService<IRagModelRouter>(),
+            services.GetRequiredService<IModelRouter>(),
             services.GetRequiredService<ILogger<ExtractEntitiesExecutor>>());
 
         var stamp = new StampProvenanceExecutor(

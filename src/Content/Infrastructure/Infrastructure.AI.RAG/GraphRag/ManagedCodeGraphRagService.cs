@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Application.AI.Common.Interfaces.KnowledgeGraph;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.KnowledgeGraph.Models;
 using Domain.AI.RAG.Models;
 using Domain.AI.Telemetry.Conventions;
@@ -41,7 +42,7 @@ public sealed class ManagedCodeGraphRagService : IGraphRagService
     private static readonly ActivitySource ActivitySource = new("Infrastructure.AI.RAG.GraphRag");
 
     private readonly IGraphDatabaseBackend _graphBackend;
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly IProvenanceStamper _provenanceStamper;
     private readonly ICommunityDetector _communityDetector;
     private readonly ILogger<ManagedCodeGraphRagService> _logger;
@@ -58,7 +59,7 @@ public sealed class ManagedCodeGraphRagService : IGraphRagService
     /// <param name="configMonitor">Application configuration monitor.</param>
     public ManagedCodeGraphRagService(
         IGraphDatabaseBackend graphBackend,
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         IProvenanceStamper provenanceStamper,
         ICommunityDetector communityDetector,
         ILogger<ManagedCodeGraphRagService> logger,
@@ -88,7 +89,7 @@ public sealed class ManagedCodeGraphRagService : IGraphRagService
         activity?.SetTag(RagConventions.IngestChunksProduced, chunks.Count);
 
         _logger.LogInformation("GraphRAG indexing started: {ChunkCount} chunks", chunks.Count);
-        var client = _modelRouter.GetClientForOperation("graph_entity_extraction");
+        var client = (await _modelRouter.RouteOperationAsync("graph_entity_extraction", cancellationToken)).Client;
 
         foreach (var chunk in chunks)
         {
@@ -159,7 +160,7 @@ public sealed class ManagedCodeGraphRagService : IGraphRagService
             summary = BuildCommunitySummaryFromTriplets(triplets);
         }
 
-        var client = _modelRouter.GetClientForOperation("graph_global_search");
+        var client = (await _modelRouter.RouteOperationAsync("graph_global_search", cancellationToken)).Client;
 
         var prompt = $$"""
             You are a knowledge graph analyst. Based on the following entity and relationship

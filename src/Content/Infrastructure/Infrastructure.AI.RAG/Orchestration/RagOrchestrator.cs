@@ -1,8 +1,11 @@
 using System.Diagnostics;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Application.AI.Common.OpenTelemetry.Metrics;
 using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
 using Domain.AI.Telemetry.Conventions;
 using Domain.Common.Config;
 using Infrastructure.AI.RAG.QueryTransform;
@@ -33,7 +36,7 @@ namespace Infrastructure.AI.RAG.Orchestration;
 /// retrieval and delegates directly to <see cref="IGraphRagService.GlobalSearchAsync"/>.
 /// </para>
 /// <para>
-/// For <see cref="QueryComplexity.Complex"/> queries (Phase B), the pipeline uses
+/// For <see cref="Domain.AI.Routing.Enums.TaskComplexity.Complex"/> queries (Phase B), the pipeline uses
 /// multi-hop iterative retrieval with post-assembly faithfulness evaluation.
 /// </para>
 /// </remarks>
@@ -53,7 +56,7 @@ public sealed partial class RagOrchestrator : IRagOrchestrator
     private readonly IFeedbackWeightedScorer? _feedbackScorer;
     private readonly QueryRouter _queryRouter;
     private readonly IMultiSourceOrchestrator? _multiSourceOrchestrator;
-    private readonly IQueryComplexityClassifier? _complexityClassifier;
+    private readonly ITaskComplexityClassifier? _complexityClassifier;
     private readonly IRetrievalCostTracker? _costTracker;
     private readonly IOptionsMonitor<AppConfig> _configMonitor;
     private readonly ILogger<RagOrchestrator> _logger;
@@ -72,7 +75,7 @@ public sealed partial class RagOrchestrator : IRagOrchestrator
     /// <param name="feedbackScorer">Optional feedback-weighted scorer. Null when feedback is disabled.</param>
     /// <param name="queryRouter">Query classification and transformation router.</param>
     /// <param name="multiSourceOrchestrator">Optional multi-source retrieval orchestrator. Null disables multi-source routing.</param>
-    /// <param name="complexityClassifier">Optional complexity classifier for tiered routing. Null disables complexity routing.</param>
+    /// <param name="complexityClassifier">Optional task complexity classifier for tiered routing. Null disables complexity routing.</param>
     /// <param name="costTracker">Optional retrieval cost tracker. Null disables cost tracking.</param>
     /// <param name="configMonitor">Application configuration monitor.</param>
     /// <param name="logger">Logger for recording pipeline decisions.</param>
@@ -88,7 +91,7 @@ public sealed partial class RagOrchestrator : IRagOrchestrator
         IFeedbackWeightedScorer? feedbackScorer,
         QueryRouter queryRouter,
         IMultiSourceOrchestrator? multiSourceOrchestrator,
-        IQueryComplexityClassifier? complexityClassifier,
+        ITaskComplexityClassifier? complexityClassifier,
         IRetrievalCostTracker? costTracker,
         IOptionsMonitor<AppConfig> configMonitor,
         ILogger<RagOrchestrator> logger,
@@ -137,12 +140,14 @@ public sealed partial class RagOrchestrator : IRagOrchestrator
         if (effectiveTopK <= 0) effectiveTopK = DefaultTopK;
 
         // Complexity-based routing (when enabled and services available)
-        if (ragConfig.ComplexityRouting.Enabled
+        if (_configMonitor.CurrentValue.AI.ModelRouting.Enabled
             && _complexityClassifier is not null
             && _decisionGate is not null
             && strategyOverride is null)
         {
-            var complexity = await _complexityClassifier.ClassifyAsync(query, cancellationToken);
+            var complexity = await _complexityClassifier.ClassifyAsync(
+                new AgentTurnContext { ConversationId = "rag-pipeline", UserMessage = query, TurnNumber = 1 },
+                cancellationToken);
             var decision = complexity is not null ? _decisionGate.Decide(complexity, topK) : null;
 
             if (complexity is null || decision is null)
@@ -344,7 +349,7 @@ public sealed partial class RagOrchestrator : IRagOrchestrator
 
         // Phase B: Complex tier uses multi-hop iterative retrieval
         var ragConfig = _configMonitor.CurrentValue.AI.Rag;
-        if (decision.Complexity == QueryComplexity.Complex
+        if (decision.Complexity == TaskComplexity.Complex
             && ragConfig.MultiHop.Enabled
             && _iterativeRetriever is not null)
         {
@@ -406,7 +411,9 @@ public sealed partial class RagOrchestrator : IRagOrchestrator
         string query, int topK, CancellationToken cancellationToken)
     {
         using var activity = ActivitySource.StartActivity("rag.orchestrator.multi_source_pipeline");
-        var classification = await _complexityClassifier!.ClassifyAsync(query, cancellationToken);
+        var classification = await _complexityClassifier!.ClassifyAsync(
+            new AgentTurnContext { ConversationId = "rag-pipeline", UserMessage = query, TurnNumber = 1 },
+            cancellationToken);
 
         _logger.LogInformation(
             "Multi-source pipeline: Complexity={Complexity}, Confidence={Confidence:F2}",

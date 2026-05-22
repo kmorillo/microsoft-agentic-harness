@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -25,7 +26,7 @@ namespace Infrastructure.AI.RAG.Evaluation;
 /// </remarks>
 public sealed class AnswerFaithfulnessEvaluator : IAnswerFaithfulnessEvaluator
 {
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly ILogger<AnswerFaithfulnessEvaluator> _logger;
 
     private const string SystemPrompt = """
@@ -67,7 +68,7 @@ public sealed class AnswerFaithfulnessEvaluator : IAnswerFaithfulnessEvaluator
     /// <param name="modelRouter">Model router for resolving the LLM client.</param>
     /// <param name="logger">Logger for evaluation diagnostics.</param>
     public AnswerFaithfulnessEvaluator(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         ILogger<AnswerFaithfulnessEvaluator> logger)
     {
         _modelRouter = modelRouter;
@@ -98,7 +99,7 @@ public sealed class AnswerFaithfulnessEvaluator : IAnswerFaithfulnessEvaluator
 
         try
         {
-            var client = _modelRouter.GetClientForOperation("faithfulness_evaluation");
+            var client = (await _modelRouter.RouteOperationAsync("faithfulness_evaluation", cancellationToken)).Client;
 
             var contextText = string.Join("\n---\n", supportingContext.Select((r, i) =>
                 $"[Chunk {i + 1}] (rerank score: {r.RerankScore:F2})\n{r.RetrievalResult.Chunk.Content}"));
