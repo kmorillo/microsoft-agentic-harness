@@ -4,6 +4,7 @@ using Application.AI.Common.Interfaces.Agents;
 using Domain.AI.Agents;
 using Domain.AI.Governance;
 using Domain.AI.Orchestration;
+using Domain.AI.Routing.Models;
 using Domain.Common.Config;
 using Microsoft.Extensions.Options;
 
@@ -124,9 +125,12 @@ public sealed class CapabilityMatchStrategy : ISupervisorStrategy
             var typeAlignment = ComputeTypeAlignment(agent.AgentType, classifiedType);
             var tierHeadroom = ComputeTierHeadroom((int)agent.AutonomyLevel, minimumTier);
 
+            var complexityBonus = ComputeComplexityBonus(agent, context.ComplexityAssessment);
+
             var totalScore = (_normalizedToolWeight * toolCoverage)
                            + (_normalizedTypeWeight * typeAlignment)
-                           + (_normalizedHeadroomWeight * tierHeadroom);
+                           + (_normalizedHeadroomWeight * tierHeadroom)
+                           + complexityBonus;
 
             scores.Add(new CapabilityScore
             {
@@ -192,6 +196,33 @@ public sealed class CapabilityMatchStrategy : ISupervisorStrategy
         sb.Append($"TypeAlignment={score.TypeAlignment:F2}, ");
         sb.Append($"TierHeadroom={score.TierHeadroom:F2}).");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Returns a small additive bonus when the agent's autonomy tier aligns with
+    /// the assessed task complexity. This is a soft preference — the three primary
+    /// dimensions (ToolCoverage, TypeAlignment, TierHeadroom) remain dominant.
+    /// </summary>
+    private static double ComputeComplexityBonus(
+        AgentCandidate agent,
+        TaskComplexityAssessment? assessment)
+    {
+        if (assessment is null)
+            return 0.0;
+
+        // Map agent autonomy and task complexity to comparable integer tiers.
+        // Complex tasks prefer higher autonomy (more capable agents).
+        // Trivial/Simple tasks prefer lower autonomy (efficient, least-privilege).
+        var agentTier = (int)agent.AutonomyLevel;
+        var complexityTier = (int)assessment.Complexity;
+
+        var distance = Math.Abs(agentTier - complexityTier);
+        return distance switch
+        {
+            0 => 0.10,
+            1 => 0.05,
+            _ => 0.0
+        };
     }
 
     private static double ComputeToolCoverage(

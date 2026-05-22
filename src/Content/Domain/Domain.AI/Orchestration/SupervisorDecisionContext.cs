@@ -1,4 +1,5 @@
 using Domain.AI.Governance;
+using Domain.AI.Routing.Models;
 
 namespace Domain.AI.Orchestration;
 
@@ -25,4 +26,11 @@ public sealed record SupervisorDecisionContext
 
     /// <summary>Maximum allowed nesting depth.</summary>
     public required int MaxDelegationDepth { get; init; }
+
+    /// <summary>
+    /// Optional complexity assessment from <c>IModelRouter</c>.
+    /// When present, used by <c>ISupervisorStrategy</c> as a soft scoring bonus
+    /// to prefer agents whose autonomy tier aligns with the task complexity.
+    /// </summary>
+    public TaskComplexityAssessment? ComplexityAssessment { get; init; }
 }

@@ -5,6 +5,7 @@ using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Agents;
 using Application.AI.Common.Interfaces.Escalation;
 using Application.AI.Common.Interfaces.Governance;
+using Application.AI.Common.Interfaces.Routing;
 using Application.AI.Common.OpenTelemetry.Metrics;
 using Domain.AI.Agents;
 using Domain.AI.Escalation;
@@ -38,6 +39,7 @@ public sealed class CapabilityMatchSupervisor : ISupervisor, IDisposable
     private readonly IGovernanceAuditService _auditService;
     private readonly AgentExecutionContextFactory _contextFactory;
     private readonly IAgentFactory _agentFactory;
+    private readonly IModelRouter? _modelRouter;
     private readonly IEscalationService? _escalationService;
     private readonly IOptionsMonitor<AppConfig> _options;
     private readonly ILogger<CapabilityMatchSupervisor> _logger;
@@ -57,6 +59,7 @@ public sealed class CapabilityMatchSupervisor : ISupervisor, IDisposable
     /// <param name="agentFactory">Factory for creating configured AI agent instances.</param>
     /// <param name="options">Application configuration for orchestration settings.</param>
     /// <param name="logger">Logger instance.</param>
+    /// <param name="modelRouter">Optional model router for complexity-aware agent selection.</param>
     /// <param name="escalationService">Optional escalation service for autonomy tier violations.</param>
     public CapabilityMatchSupervisor(
         [FromKeyedServices("capability-match")] ISupervisorStrategy strategy,
@@ -69,6 +72,7 @@ public sealed class CapabilityMatchSupervisor : ISupervisor, IDisposable
         IAgentFactory agentFactory,
         IOptionsMonitor<AppConfig> options,
         ILogger<CapabilityMatchSupervisor> logger,
+        IModelRouter? modelRouter = null,
         IEscalationService? escalationService = null)
     {
         _strategy = strategy;
@@ -81,6 +85,7 @@ public sealed class CapabilityMatchSupervisor : ISupervisor, IDisposable
         _agentFactory = agentFactory;
         _options = options;
         _logger = logger;
+        _modelRouter = modelRouter;
         _escalationService = escalationService;
 
         var maxConcurrent = options.CurrentValue.AI?.Orchestration?.Subagent?.MaxConcurrentDelegations ?? 5;
@@ -102,7 +107,7 @@ public sealed class CapabilityMatchSupervisor : ISupervisor, IDisposable
         if (currentDelegationDepth >= maxDepth)
             return DelegationResult.Fail($"Delegation depth limit ({maxDepth}) exceeded.");
 
-        var context = BuildDecisionContext(taskDescription, requiredCapabilities, minimumTier, currentDelegationDepth, maxDepth);
+        var context = await BuildDecisionContextAsync(taskDescription, requiredCapabilities, minimumTier, currentDelegationDepth, maxDepth, ct);
         var selection = _strategy.SelectAgent(context);
 
         if (selection is null)
@@ -248,12 +253,13 @@ public sealed class CapabilityMatchSupervisor : ISupervisor, IDisposable
         }
     }
 
-    private SupervisorDecisionContext BuildDecisionContext(
+    private async Task<SupervisorDecisionContext> BuildDecisionContextAsync(
         string taskDescription,
         IReadOnlyList<string> requiredCapabilities,
         AutonomyLevel minimumTier,
         int currentDepth,
-        int maxDepth)
+        int maxDepth,
+        CancellationToken ct)
     {
         var profiles = _profileRegistry.GetAllProfiles();
         var candidates = new List<AgentCandidate>(profiles.Count);
@@ -273,6 +279,22 @@ public sealed class CapabilityMatchSupervisor : ISupervisor, IDisposable
             });
         }
 
+        Domain.AI.Routing.Models.TaskComplexityAssessment? complexityAssessment = null;
+
+        if (_modelRouter is not null)
+        {
+            try
+            {
+                complexityAssessment = await _modelRouter.AssessTaskComplexityAsync(
+                    taskDescription, requiredCapabilities, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex,
+                    "Model router complexity assessment failed — proceeding without complexity hint");
+            }
+        }
+
         return new SupervisorDecisionContext
         {
             TaskDescription = taskDescription,
@@ -280,7 +302,8 @@ public sealed class CapabilityMatchSupervisor : ISupervisor, IDisposable
             MinimumAutonomyLevel = minimumTier,
             AvailableAgents = candidates,
             CurrentDelegationDepth = currentDepth,
-            MaxDelegationDepth = maxDepth
+            MaxDelegationDepth = maxDepth,
+            ComplexityAssessment = complexityAssessment
         };
     }
 
