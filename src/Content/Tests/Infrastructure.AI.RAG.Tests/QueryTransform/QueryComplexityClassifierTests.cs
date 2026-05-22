@@ -3,7 +3,7 @@ using Domain.AI.Routing.Enums;
 using Domain.AI.Routing.Models;
 using Domain.Common.Config.AI;
 using FluentAssertions;
-using Infrastructure.AI.RAG.QueryTransform;
+using Infrastructure.AI.Routing;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -36,10 +36,10 @@ public sealed class QueryComplexityClassifierTests
             });
     }
 
-    private QueryComplexityClassifier CreateClassifier()
+    private TaskComplexityClassifier CreateClassifier()
         => new(
             _mockRouter.Object,
-            Mock.Of<ILogger<QueryComplexityClassifier>>());
+            Mock.Of<ILogger<TaskComplexityClassifier>>());
 
     private void SetupChatResponse(string jsonResponse)
     {

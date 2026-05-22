@@ -113,7 +113,7 @@ public sealed class RetrievalDecisionGateTests
     [Fact]
     public void Decide_RoutingDisabled_AlwaysReturnsFullPipeline()
     {
-        var gate = CreateGate(c => c.AI.Rag.ComplexityRouting.Enabled = false);
+        var gate = CreateGate(c => c.AI.ModelRouting.Enabled = false);
         var classification = RagTestData.CreateTrivialClassification();
 
         var decision = gate.Decide(classification);

@@ -36,7 +36,7 @@ namespace Infrastructure.AI.RAG.Orchestration;
 /// retrieval and delegates directly to <see cref="IGraphRagService.GlobalSearchAsync"/>.
 /// </para>
 /// <para>
-/// For <see cref="QueryComplexity.Complex"/> queries (Phase B), the pipeline uses
+/// For <see cref="Domain.AI.Routing.Enums.TaskComplexity.Complex"/> queries (Phase B), the pipeline uses
 /// multi-hop iterative retrieval with post-assembly faithfulness evaluation.
 /// </para>
 /// </remarks>
@@ -140,7 +140,7 @@ public sealed partial class RagOrchestrator : IRagOrchestrator
         if (effectiveTopK <= 0) effectiveTopK = DefaultTopK;
 
         // Complexity-based routing (when enabled and services available)
-        if (ragConfig.ComplexityRouting.Enabled
+        if (_configMonitor.CurrentValue.AI.ModelRouting.Enabled
             && _complexityClassifier is not null
             && _decisionGate is not null
             && strategyOverride is null)

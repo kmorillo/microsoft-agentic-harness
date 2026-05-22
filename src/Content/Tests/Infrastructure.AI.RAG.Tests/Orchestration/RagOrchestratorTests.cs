@@ -279,7 +279,7 @@ public sealed class RagOrchestratorTests
             .ReturnsAsync(RagTestData.CreateTrivialClassification());
 
         var orchestrator = CreateOrchestrator(cfg =>
-            cfg.AI.Rag.ComplexityRouting.Enabled = false);
+            cfg.AI.ModelRouting.Enabled = false);
 
         var result = await orchestrator.SearchAsync("trivial query with routing off");
 
@@ -316,7 +316,7 @@ public sealed class RagOrchestratorTests
         var orchestrator = CreateOrchestrator(cfg =>
         {
             cfg.AI.Rag.MultiSource.Enabled = true;
-            cfg.AI.Rag.ComplexityRouting.Enabled = false;
+            cfg.AI.ModelRouting.Enabled = false;
         });
 
         var result = await orchestrator.SearchAsync("multi-source query");
@@ -344,7 +344,7 @@ public sealed class RagOrchestratorTests
         var orchestrator = CreateOrchestrator(cfg =>
         {
             cfg.AI.Rag.MultiSource.Enabled = true;
-            cfg.AI.Rag.ComplexityRouting.Enabled = false;
+            cfg.AI.ModelRouting.Enabled = false;
         });
 
         var result = await orchestrator.SearchAsync("empty multi-source query");
@@ -364,7 +364,7 @@ public sealed class RagOrchestratorTests
         var orchestrator = CreateOrchestrator(cfg =>
         {
             cfg.AI.Rag.MultiSource.Enabled = false;
-            cfg.AI.Rag.ComplexityRouting.Enabled = false;
+            cfg.AI.ModelRouting.Enabled = false;
         });
 
         await orchestrator.SearchAsync("cost-tracked query");

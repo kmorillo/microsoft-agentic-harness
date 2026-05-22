@@ -31,7 +31,7 @@ public sealed class MultiHopIntegrationTests
     {
         var config = RagTestData.CreateConfigMonitor(c =>
         {
-            c.AI.Rag.ComplexityRouting.Enabled = true;
+            c.AI.ModelRouting.Enabled = true;
             c.AI.Rag.MultiHop.Enabled = true;
             c.AI.Rag.Faithfulness.Enabled = true;
             configure?.Invoke(c);

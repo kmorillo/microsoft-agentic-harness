@@ -60,7 +60,7 @@ public sealed class ComplexityRoutingIntegrationTests
             .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateTrivialClassification(0.95));
 
-        var orchestrator = CreateOrchestrator(c => c.AI.Rag.ComplexityRouting.Enabled = true);
+        var orchestrator = CreateOrchestrator(c => c.AI.ModelRouting.Enabled = true);
         var result = await orchestrator.SearchAsync("What is 2+2?");
 
         result.AssembledText.Should().BeEmpty();
@@ -90,7 +90,7 @@ public sealed class ComplexityRoutingIntegrationTests
             .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateSimpleClassification(0.9));
 
-        var orchestrator = CreateOrchestrator(c => c.AI.Rag.ComplexityRouting.Enabled = true);
+        var orchestrator = CreateOrchestrator(c => c.AI.ModelRouting.Enabled = true);
         var result = await orchestrator.SearchAsync("What is the default topK?");
 
         result.AssembledText.Should().Be("simple result");
@@ -132,7 +132,7 @@ public sealed class ComplexityRoutingIntegrationTests
                 Reasoning = "Low confidence",
             });
 
-        var orchestrator = CreateOrchestrator(c => c.AI.Rag.ComplexityRouting.Enabled = true);
+        var orchestrator = CreateOrchestrator(c => c.AI.ModelRouting.Enabled = true);
         var result = await orchestrator.SearchAsync("Ambiguous query");
 
         result.AssembledText.Should().Be("full result");

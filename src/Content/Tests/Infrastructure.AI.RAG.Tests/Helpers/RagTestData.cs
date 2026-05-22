@@ -156,23 +156,6 @@ internal static class RagTestData
             Reasoning = "Multi-hop query requiring iterative retrieval across documents."
         };
 
-    public static ComplexityRoutingConfig CreateComplexityRoutingConfig(
-        Action<ComplexityRoutingConfig>? configure = null)
-    {
-        var config = new ComplexityRoutingConfig
-        {
-            Enabled = true,
-            ConfidenceThreshold = 0.7,
-            SimpleTopK = 5,
-            ModerateTopK = null,
-            ComplexTopK = 15,
-            SkipRerankForSimple = true,
-            SkipCragForSimple = true,
-        };
-        configure?.Invoke(config);
-        return config;
-    }
-
     public static SubQuery CreateSubQuery(
         string text = "What is the default chunking strategy?",
         int order = 1,
@@ -441,15 +424,6 @@ internal static class RagTestData
         appConfig.AI.Rag.QueryTransform.EnableClassification = false;
         appConfig.AI.Rag.QueryTransform.EnableRagFusion = false;
         appConfig.AI.Rag.QueryTransform.EnableHyde = false;
-        appConfig.AI.Rag.ComplexityRouting = new ComplexityRoutingConfig
-        {
-            Enabled = true,
-            ConfidenceThreshold = 0.7,
-            SimpleTopK = 5,
-            ComplexTopK = 15,
-            SkipRerankForSimple = true,
-            SkipCragForSimple = true,
-        };
         appConfig.AI.Rag.MultiHop = new MultiHopConfig
         {
             Enabled = true,
