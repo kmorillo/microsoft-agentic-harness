@@ -10,6 +10,7 @@ using Domain.Common.Config.AI.Permissions;
 using Domain.Common.Config.AI.Planner;
 using Domain.Common.Config.AI.RAG;
 using Domain.Common.Config.AI.Resilience;
+using Domain.Common.Config.AI.Routing;
 using Domain.Common.Config.AI.Sandbox;
 
 namespace Domain.Common.Config.AI;
@@ -34,6 +35,7 @@ namespace Domain.Common.Config.AI;
 /// ├── Orchestration     — Subagent management and streaming execution
 /// ├── Resilience        — LLM fallback chains, circuit breakers, retry, degraded mode
 /// ├── Rag               — RAG pipeline: ingestion, retrieval, reranking, model tiering
+/// ├── ModelRouting       — Unified model routing: complexity classification, tier selection, escalation
 /// ├── DriftDetection    — EWMA-based drift detection for quality regressions
 /// ├── Learnings         — Cross-session learnings: feedback blending, decay, pruning
 /// ├── Planner           — Plan execution: concurrency, timeouts, persistence
@@ -108,6 +110,12 @@ public class AIConfig
     /// retrieval, reranking, query transformation, and model tiering.
     /// </summary>
     public RagConfig Rag { get; set; } = new();
+
+    /// <summary>
+    /// Unified model routing configuration for complexity-aware tier selection.
+    /// Routes agent turns, RAG operations, and supervisor delegation to appropriate model tiers.
+    /// </summary>
+    public ModelRoutingConfig ModelRouting { get; set; } = new();
 
     /// <summary>
     /// LLM provider resilience configuration including fallback chains,
