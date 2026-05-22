@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Application.AI.Common.Interfaces.Planner;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
+using Domain.AI.Routing.Models;
 using Domain.AI.Planner;
 using Microsoft.Extensions.Logging;
 
@@ -26,7 +28,7 @@ public sealed class RetrievalPlanStepExecutor : IPlanStepExecutor
 
     private readonly IRagOrchestrator _ragOrchestrator;
     private readonly IMultiSourceOrchestrator _multiSourceOrchestrator;
-    private readonly IQueryComplexityClassifier _complexityClassifier;
+    private readonly ITaskComplexityClassifier _complexityClassifier;
     private readonly IRetrievalCostTracker _costTracker;
     private readonly IPlanProgressNotifier _notifier;
     private readonly PlanExecutionContext _executionContext;
@@ -37,7 +39,7 @@ public sealed class RetrievalPlanStepExecutor : IPlanStepExecutor
     /// </summary>
     /// <param name="ragOrchestrator">Single-source RAG pipeline orchestrator.</param>
     /// <param name="multiSourceOrchestrator">Multi-source orchestrator for fan-out retrieval.</param>
-    /// <param name="complexityClassifier">Query complexity classifier for multi-source routing.</param>
+    /// <param name="complexityClassifier">Task complexity classifier for multi-source routing.</param>
     /// <param name="costTracker">Tracks token usage and latency per retrieval call.</param>
     /// <param name="notifier">Plan progress notifier for real-time status updates.</param>
     /// <param name="executionContext">Current plan execution context with depth tracking.</param>
@@ -45,7 +47,7 @@ public sealed class RetrievalPlanStepExecutor : IPlanStepExecutor
     public RetrievalPlanStepExecutor(
         IRagOrchestrator ragOrchestrator,
         IMultiSourceOrchestrator multiSourceOrchestrator,
-        IQueryComplexityClassifier complexityClassifier,
+        ITaskComplexityClassifier complexityClassifier,
         IRetrievalCostTracker costTracker,
         IPlanProgressNotifier notifier,
         PlanExecutionContext executionContext,
@@ -133,7 +135,9 @@ public sealed class RetrievalPlanStepExecutor : IPlanStepExecutor
         _logger.LogDebug("Executing multi-source retrieval: query={Query}, topK={TopK}",
             query, config.TopK);
 
-        var classification = await _complexityClassifier.ClassifyAsync(query, ct);
+        var classification = await _complexityClassifier.ClassifyAsync(
+            new AgentTurnContext { ConversationId = "planner-retrieval", UserMessage = query, TurnNumber = 1 },
+            ct);
 
         _logger.LogDebug("Query classified as {Complexity} with {Confidence:P0} confidence",
             classification.Complexity, classification.Confidence);

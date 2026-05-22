@@ -1,5 +1,8 @@
-using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
+using Domain.Common.Config.AI;
 using FluentAssertions;
 using Infrastructure.AI.RAG.QueryTransform;
 using Microsoft.Extensions.AI;
@@ -11,14 +14,21 @@ namespace Infrastructure.AI.RAG.Tests.QueryTransform;
 
 public sealed class QueryDecomposerTests
 {
-    private readonly Mock<IRagModelRouter> _mockRouter = new();
+    private readonly Mock<IModelRouter> _mockRouter = new();
     private readonly Mock<IChatClient> _mockChatClient = new();
 
     public QueryDecomposerTests()
     {
         _mockRouter
-            .Setup(r => r.GetClientForOperation("query_decomposition"))
-            .Returns(_mockChatClient.Object);
+            .Setup(r => r.RouteOperationAsync("query_decomposition", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModelRoutingDecision
+            {
+                Client = _mockChatClient.Object,
+                SelectedTier = new ModelTier { Name = "standard", ClientType = AIAgentFrameworkClientType.AzureOpenAI, DeploymentName = "gpt-4o" },
+                Complexity = TaskComplexity.Moderate,
+                Source = ClassificationSource.Heuristic,
+                Confidence = 1.0,
+            });
     }
 
     private QueryDecomposer CreateDecomposer()

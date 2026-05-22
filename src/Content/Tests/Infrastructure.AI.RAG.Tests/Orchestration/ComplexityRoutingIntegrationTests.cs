@@ -1,6 +1,8 @@
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
 using Domain.Common.Config;
 using FluentAssertions;
 using Infrastructure.AI.RAG.Orchestration;
@@ -23,7 +25,7 @@ public sealed class ComplexityRoutingIntegrationTests
     private readonly Mock<ICragEvaluator> _mockCrag = new();
     private readonly Mock<IRagContextAssembler> _mockAssembler = new();
     private readonly Mock<IGraphRagService> _mockGraphRag = new();
-    private readonly Mock<IQueryComplexityClassifier> _mockClassifier = new();
+    private readonly Mock<ITaskComplexityClassifier> _mockClassifier = new();
 
     private RagOrchestrator CreateOrchestrator(Action<AppConfig>? configure = null)
     {
@@ -55,7 +57,7 @@ public sealed class ComplexityRoutingIntegrationTests
     public async Task TrivialQuery_NoRetrieverCalled_ReturnsEmptyContext()
     {
         _mockClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateTrivialClassification(0.95));
 
         var orchestrator = CreateOrchestrator(c => c.AI.Rag.ComplexityRouting.Enabled = true);
@@ -85,7 +87,7 @@ public sealed class ComplexityRoutingIntegrationTests
             .Setup(a => a.AssembleAsync(It.IsAny<IReadOnlyList<RerankedResult>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RagAssembledContext { AssembledText = "simple result", TotalTokens = 50, WasTruncated = false });
         _mockClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(RagTestData.CreateSimpleClassification(0.9));
 
         var orchestrator = CreateOrchestrator(c => c.AI.Rag.ComplexityRouting.Enabled = true);
@@ -121,11 +123,12 @@ public sealed class ComplexityRoutingIntegrationTests
             .Setup(a => a.AssembleAsync(It.IsAny<IReadOnlyList<RerankedResult>>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new RagAssembledContext { AssembledText = "full result", TotalTokens = 100, WasTruncated = false });
         _mockClassifier
-            .Setup(c => c.ClassifyAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ComplexityClassification
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskComplexityAssessment
             {
-                Complexity = QueryComplexity.Trivial,
+                Complexity = TaskComplexity.Trivial,
                 Confidence = 0.4,
+                Source = ClassificationSource.LlmClassifier,
                 Reasoning = "Low confidence",
             });
 

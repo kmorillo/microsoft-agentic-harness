@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
 
 namespace Infrastructure.AI.RAG.Orchestration;
 
@@ -17,7 +17,7 @@ internal sealed class GraphRetrievalSource(IGraphRagService graphRagService) : I
 
     /// <inheritdoc />
     public async Task<SourceRetrievalResult> RetrieveAsync(
-        string query, int topK, QueryComplexity complexity, CancellationToken cancellationToken)
+        string query, int topK, TaskComplexity complexity, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
         var results = await graphRagService.LocalSearchAsync(query, topK, cancellationToken);

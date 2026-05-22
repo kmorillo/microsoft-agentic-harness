@@ -1,7 +1,7 @@
 using System.Text.Json;
-using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
-using Domain.AI.RAG.Models;
+using Application.AI.Common.Interfaces.Routing;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 
@@ -12,9 +12,9 @@ namespace Infrastructure.AI.RAG.QueryTransform;
 /// Uses few-shot prompting to classify queries as Trivial, Simple, Moderate, or Complex.
 /// Falls back to Moderate on any failure to ensure retrieval safety.
 /// </summary>
-public sealed class QueryComplexityClassifier : IQueryComplexityClassifier
+public sealed class QueryComplexityClassifier : ITaskComplexityClassifier
 {
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly ILogger<QueryComplexityClassifier> _logger;
 
     private const string SystemPrompt = """
@@ -44,7 +44,7 @@ public sealed class QueryComplexityClassifier : IQueryComplexityClassifier
     /// <param name="modelRouter">Model router for selecting the appropriate tier chat client.</param>
     /// <param name="logger">Logger for recording classification outcomes and failures.</param>
     public QueryComplexityClassifier(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         ILogger<QueryComplexityClassifier> logger)
     {
         _modelRouter = modelRouter;
@@ -52,13 +52,14 @@ public sealed class QueryComplexityClassifier : IQueryComplexityClassifier
     }
 
     /// <inheritdoc />
-    public async Task<ComplexityClassification> ClassifyAsync(
-        string query,
+    public async Task<TaskComplexityAssessment> ClassifyAsync(
+        AgentTurnContext context,
         CancellationToken cancellationToken = default)
     {
+        var query = context.UserMessage;
         try
         {
-            var client = _modelRouter.GetClientForOperation("complexity_classification");
+            var client = (await _modelRouter.RouteOperationAsync("complexity_classification", cancellationToken)).Client;
             var messages = new List<ChatMessage>
             {
                 new(ChatRole.System, SystemPrompt),
@@ -77,7 +78,7 @@ public sealed class QueryComplexityClassifier : IQueryComplexityClassifier
         }
     }
 
-    private ComplexityClassification ParseClassification(string content)
+    private TaskComplexityAssessment ParseClassification(string content)
     {
         try
         {
@@ -93,18 +94,19 @@ public sealed class QueryComplexityClassifier : IQueryComplexityClassifier
 
             var complexity = dto.Complexity?.ToLowerInvariant() switch
             {
-                "trivial" => QueryComplexity.Trivial,
-                "simple" => QueryComplexity.Simple,
-                "moderate" => QueryComplexity.Moderate,
-                "complex" => QueryComplexity.Complex,
-                _ => QueryComplexity.Moderate,
+                "trivial" => TaskComplexity.Trivial,
+                "simple" => TaskComplexity.Simple,
+                "moderate" => TaskComplexity.Moderate,
+                "complex" => TaskComplexity.Complex,
+                _ => TaskComplexity.Moderate,
             };
 
-            return new ComplexityClassification
+            return new TaskComplexityAssessment
             {
                 Complexity = complexity,
                 Confidence = Math.Clamp(dto.Confidence, 0.0, 1.0),
-                Reasoning = dto.Reasoning,
+                Source = ClassificationSource.LlmClassifier,
+                Reasoning = dto.Reasoning ?? string.Empty,
             };
         }
         catch (Exception ex)
@@ -114,11 +116,12 @@ public sealed class QueryComplexityClassifier : IQueryComplexityClassifier
         }
     }
 
-    private static ComplexityClassification CreateFallback()
+    private static TaskComplexityAssessment CreateFallback()
         => new()
         {
-            Complexity = QueryComplexity.Moderate,
+            Complexity = TaskComplexity.Moderate,
             Confidence = 0.5,
+            Source = ClassificationSource.Heuristic,
             Reasoning = "Classification failed; defaulting to Moderate for safety.",
         };
 

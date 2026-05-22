@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.KnowledgeGraph.Models;
 using Domain.AI.RAG.Models;
 using Microsoft.Agents.AI.Workflows;
@@ -34,7 +35,7 @@ public sealed class ExtractEntitiesExecutor : Executor<KgIngestionInput, Extract
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly ILogger<ExtractEntitiesExecutor> _logger;
 
     /// <summary>
@@ -43,7 +44,7 @@ public sealed class ExtractEntitiesExecutor : Executor<KgIngestionInput, Extract
     /// <param name="modelRouter">Routes LLM calls to the appropriate model tier.</param>
     /// <param name="logger">Logger for recording extraction progress and failures.</param>
     public ExtractEntitiesExecutor(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         ILogger<ExtractEntitiesExecutor> logger)
         : base("extract_entities")
     {
@@ -66,7 +67,7 @@ public sealed class ExtractEntitiesExecutor : Executor<KgIngestionInput, Extract
         IWorkflowContext context,
         CancellationToken cancellationToken = default)
     {
-        var client = _modelRouter.GetClientForOperation("graph_entity_extraction");
+        var client = (await _modelRouter.RouteOperationAsync("graph_entity_extraction", cancellationToken)).Client;
         var allNodes = new List<GraphNode>();
         var allEdges = new List<GraphEdge>();
 

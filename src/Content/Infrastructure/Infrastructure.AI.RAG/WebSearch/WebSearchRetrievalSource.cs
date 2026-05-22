@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
 
 namespace Infrastructure.AI.RAG.WebSearch;
 
@@ -19,7 +19,7 @@ internal sealed class WebSearchRetrievalSource(IWebSearchProvider webSearchProvi
 
     /// <inheritdoc />
     public async Task<SourceRetrievalResult> RetrieveAsync(
-        string query, int topK, QueryComplexity complexity, CancellationToken cancellationToken)
+        string query, int topK, TaskComplexity complexity, CancellationToken cancellationToken)
     {
         var sw = Stopwatch.StartNew();
         var webResults = await webSearchProvider.SearchAsync(query, topK, cancellationToken);

@@ -1,5 +1,8 @@
-using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
+using Domain.Common.Config.AI;
 using FluentAssertions;
 using Infrastructure.AI.RAG.Evaluation;
 using Infrastructure.AI.RAG.Tests.Helpers;
@@ -12,14 +15,21 @@ namespace Infrastructure.AI.RAG.Tests.Evaluation;
 
 public sealed class RetrievalQualityEvaluatorTests
 {
-    private readonly Mock<IRagModelRouter> _mockRouter = new();
+    private readonly Mock<IModelRouter> _mockRouter = new();
     private readonly Mock<IChatClient> _mockChatClient = new();
 
     public RetrievalQualityEvaluatorTests()
     {
         _mockRouter
-            .Setup(r => r.GetClientForOperation(It.IsAny<string>()))
-            .Returns(_mockChatClient.Object);
+            .Setup(r => r.RouteOperationAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ModelRoutingDecision
+            {
+                Client = _mockChatClient.Object,
+                SelectedTier = new ModelTier { Name = "standard", ClientType = AIAgentFrameworkClientType.AzureOpenAI, DeploymentName = "gpt-4o" },
+                Complexity = TaskComplexity.Moderate,
+                Source = ClassificationSource.Heuristic,
+                Confidence = 1.0,
+            });
     }
 
     private RetrievalQualityEvaluator CreateEvaluator()

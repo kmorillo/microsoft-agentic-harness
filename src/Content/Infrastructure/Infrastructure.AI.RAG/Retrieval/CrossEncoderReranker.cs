@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -28,7 +29,7 @@ public sealed class CrossEncoderReranker : IReranker
 {
     private const int BatchSize = 10;
 
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly ILogger<CrossEncoderReranker> _logger;
 
     /// <summary>
@@ -37,7 +38,7 @@ public sealed class CrossEncoderReranker : IReranker
     /// <param name="modelRouter">The model router for selecting the reranking model.</param>
     /// <param name="logger">The logger instance.</param>
     public CrossEncoderReranker(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         ILogger<CrossEncoderReranker> logger)
     {
         _modelRouter = modelRouter;
@@ -53,7 +54,7 @@ public sealed class CrossEncoderReranker : IReranker
     {
         if (results.Count == 0) return [];
 
-        var client = _modelRouter.GetClientForOperation("reranking");
+        var client = (await _modelRouter.RouteOperationAsync("reranking", cancellationToken)).Client;
         var scoredResults = new List<(RetrievalResult Result, int OriginalRank, double Score)>();
 
         var batches = results

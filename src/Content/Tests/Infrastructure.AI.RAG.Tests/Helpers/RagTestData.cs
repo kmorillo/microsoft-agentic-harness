@@ -2,6 +2,8 @@ using Domain.AI.KnowledgeGraph.Models;
 using Domain.AI.Planner;
 using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
 using Domain.Common.Config;
 using Domain.Common.Config.AI.RAG;
 using Microsoft.Extensions.Options;
@@ -118,35 +120,39 @@ internal static class RagTestData
             Reasoning = "Results are not relevant"
         };
 
-    public static ComplexityClassification CreateTrivialClassification(double confidence = 0.9) =>
+    public static TaskComplexityAssessment CreateTrivialClassification(double confidence = 0.9) =>
         new()
         {
-            Complexity = QueryComplexity.Trivial,
+            Complexity = TaskComplexity.Trivial,
             Confidence = confidence,
+            Source = ClassificationSource.Heuristic,
             Reasoning = "Query can be answered from general knowledge without retrieval."
         };
 
-    public static ComplexityClassification CreateSimpleClassification(double confidence = 0.85) =>
+    public static TaskComplexityAssessment CreateSimpleClassification(double confidence = 0.85) =>
         new()
         {
-            Complexity = QueryComplexity.Simple,
+            Complexity = TaskComplexity.Simple,
             Confidence = confidence,
+            Source = ClassificationSource.Heuristic,
             Reasoning = "Direct factual lookup requiring single-pass retrieval."
         };
 
-    public static ComplexityClassification CreateModerateClassification(double confidence = 0.8) =>
+    public static TaskComplexityAssessment CreateModerateClassification(double confidence = 0.8) =>
         new()
         {
-            Complexity = QueryComplexity.Moderate,
+            Complexity = TaskComplexity.Moderate,
             Confidence = confidence,
+            Source = ClassificationSource.Heuristic,
             Reasoning = "Query requires hybrid retrieval with quality evaluation."
         };
 
-    public static ComplexityClassification CreateComplexClassification(double confidence = 0.75) =>
+    public static TaskComplexityAssessment CreateComplexClassification(double confidence = 0.75) =>
         new()
         {
-            Complexity = QueryComplexity.Complex,
+            Complexity = TaskComplexity.Complex,
             Confidence = confidence,
+            Source = ClassificationSource.Heuristic,
             Reasoning = "Multi-hop query requiring iterative retrieval across documents."
         };
 

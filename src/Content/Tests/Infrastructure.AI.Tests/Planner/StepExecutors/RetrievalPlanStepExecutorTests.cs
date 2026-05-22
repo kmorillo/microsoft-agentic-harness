@@ -1,9 +1,12 @@
 using System.Text.Json;
 using Application.AI.Common.Interfaces.Planner;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.Planner;
 using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
+using Domain.AI.Routing.Models;
 using Infrastructure.AI.Planner.StepExecutors;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -15,7 +18,7 @@ public sealed class RetrievalPlanStepExecutorTests
 {
     private readonly Mock<IRagOrchestrator> _mockRagOrchestrator = new();
     private readonly Mock<IMultiSourceOrchestrator> _mockMultiSource = new();
-    private readonly Mock<IQueryComplexityClassifier> _mockComplexityClassifier = new();
+    private readonly Mock<ITaskComplexityClassifier> _mockComplexityClassifier = new();
     private readonly Mock<IRetrievalCostTracker> _mockCostTracker = new();
     private readonly Mock<IPlanProgressNotifier> _mockNotifier = new();
     private readonly PlanExecutionContext _context = new() { CurrentPlanId = new PlanId(Guid.NewGuid()) };
@@ -88,11 +91,17 @@ public sealed class RetrievalPlanStepExecutorTests
         var step = CreateRetrievalStep(config);
 
         _mockComplexityClassifier
-            .Setup(c => c.ClassifyAsync("Multi-hop query", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new ComplexityClassification { Complexity = QueryComplexity.Complex, Confidence = 0.9 });
+            .Setup(c => c.ClassifyAsync(It.IsAny<AgentTurnContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TaskComplexityAssessment
+            {
+                Complexity = TaskComplexity.Complex,
+                Confidence = 0.9,
+                Source = ClassificationSource.LlmClassifier,
+                Reasoning = string.Empty,
+            });
 
         _mockMultiSource
-            .Setup(m => m.RetrieveFromAllSourcesAsync("Multi-hop query", 10, QueryComplexity.Complex, It.IsAny<CancellationToken>()))
+            .Setup(m => m.RetrieveFromAllSourcesAsync("Multi-hop query", 10, TaskComplexity.Complex, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<RetrievalResult>
             {
                 new()
@@ -122,7 +131,7 @@ public sealed class RetrievalPlanStepExecutorTests
         Assert.Equal(StepExecutionStatus.Completed, result.Status);
 
         _mockMultiSource.Verify(
-            m => m.RetrieveFromAllSourcesAsync("Multi-hop query", 10, QueryComplexity.Complex, It.IsAny<CancellationToken>()),
+            m => m.RetrieveFromAllSourcesAsync("Multi-hop query", 10, TaskComplexity.Complex, It.IsAny<CancellationToken>()),
             Times.Once);
         _mockRagOrchestrator.Verify(
             r => r.SearchAsync(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<RetrievalStrategy?>(), It.IsAny<CancellationToken>()),

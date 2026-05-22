@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
 using Domain.AI.Telemetry.Conventions;
 using Microsoft.Extensions.AI;
@@ -20,7 +21,7 @@ public sealed class RaptorSummarizer : IRaptorSummarizer
     private const int MinClusterSize = 5;
     private const int MaxClusterSize = 10;
 
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly IEmbeddingService _embeddingService;
     private readonly ILogger<RaptorSummarizer> _logger;
 
@@ -31,7 +32,7 @@ public sealed class RaptorSummarizer : IRaptorSummarizer
     /// <param name="embeddingService">Embedding service for embedding generated summaries.</param>
     /// <param name="logger">Logger for recording summarization progress.</param>
     public RaptorSummarizer(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         IEmbeddingService embeddingService,
         ILogger<RaptorSummarizer> logger)
     {
@@ -104,7 +105,7 @@ public sealed class RaptorSummarizer : IRaptorSummarizer
         int level,
         CancellationToken cancellationToken)
     {
-        var chatClient = _modelRouter.GetClientForOperation("raptor_summarization");
+        var chatClient = (await _modelRouter.RouteOperationAsync("raptor_summarization", cancellationToken)).Client;
         var summaries = new List<DocumentChunk>();
 
         for (var i = 0; i < clusters.Count; i++)

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
 using Domain.AI.Telemetry.Conventions;
@@ -28,7 +29,7 @@ public sealed class CragEvaluator : ICragEvaluator
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly IRagModelRouter _modelRouter;
+    private readonly IModelRouter _modelRouter;
     private readonly IOptionsMonitor<AppConfig> _configMonitor;
     private readonly ILogger<CragEvaluator> _logger;
 
@@ -39,7 +40,7 @@ public sealed class CragEvaluator : ICragEvaluator
     /// <param name="configMonitor">Configuration monitor for CRAG threshold values.</param>
     /// <param name="logger">Logger for recording evaluation outcomes and failures.</param>
     public CragEvaluator(
-        IRagModelRouter modelRouter,
+        IModelRouter modelRouter,
         IOptionsMonitor<AppConfig> configMonitor,
         ILogger<CragEvaluator> logger)
     {
@@ -57,8 +58,9 @@ public sealed class CragEvaluator : ICragEvaluator
         using var activity = ActivitySource.StartActivity("rag.crag.evaluate");
         var cragConfig = _configMonitor.CurrentValue.AI.Rag.Crag;
 
-        var chatClient = _modelRouter.GetClientForOperation("crag_evaluation");
-        var tier = _modelRouter.GetTierForOperation("crag_evaluation");
+        var routingDecision = await _modelRouter.RouteOperationAsync("crag_evaluation", cancellationToken);
+        var chatClient = routingDecision.Client;
+        var tier = routingDecision.SelectedTier.ToString().ToLowerInvariant();
         activity?.SetTag(RagConventions.ModelTier, tier);
         activity?.SetTag(RagConventions.ModelOperation, "crag_evaluation");
 

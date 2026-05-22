@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
+using Domain.AI.Routing.Enums;
 using Domain.Common.Config;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -53,7 +53,7 @@ public sealed class MultiSourceOrchestrator : IMultiSourceOrchestrator
     public async Task<IReadOnlyList<RetrievalResult>> RetrieveFromAllSourcesAsync(
         string query,
         int topK,
-        QueryComplexity complexity,
+        TaskComplexity complexity,
         CancellationToken cancellationToken = default)
     {
         using var activity = ActivitySource.StartActivity("rag.multi_source.retrieve");
@@ -90,7 +90,7 @@ public sealed class MultiSourceOrchestrator : IMultiSourceOrchestrator
         return sorted;
     }
 
-    private IReadOnlyList<string> DetermineSourcesForComplexity(QueryComplexity complexity)
+    private IReadOnlyList<string> DetermineSourcesForComplexity(TaskComplexity complexity)
     {
         var config = _configMonitor.CurrentValue.AI.Rag.MultiSource;
         var complexityKey = complexity.ToString();
@@ -106,7 +106,7 @@ public sealed class MultiSourceOrchestrator : IMultiSourceOrchestrator
     private async Task<IReadOnlyList<SourceRetrievalResult>> FanOutToSourcesAsync(
         string query,
         int topK,
-        QueryComplexity complexity,
+        TaskComplexity complexity,
         IReadOnlyList<string> sources,
         TimeSpan sourceTimeout,
         CancellationToken cancellationToken)
@@ -122,7 +122,7 @@ public sealed class MultiSourceOrchestrator : IMultiSourceOrchestrator
         string sourceName,
         string query,
         int topK,
-        QueryComplexity complexity,
+        TaskComplexity complexity,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {

@@ -1,5 +1,5 @@
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
+using Domain.AI.Routing.Enums;
 using Domain.AI.RAG.Models;
 using FluentAssertions;
 using Infrastructure.AI.RAG.WebSearch;
@@ -24,7 +24,7 @@ public sealed class WebSearchRetrievalSourceTests
 
         var sut = new WebSearchRetrievalSource(_provider.Object);
 
-        var result = await sut.RetrieveAsync("test", 5, QueryComplexity.Complex, CancellationToken.None);
+        var result = await sut.RetrieveAsync("test", 5, TaskComplexity.Complex, CancellationToken.None);
 
         result.SourceName.Should().Be("web_search");
         result.Results.Should().HaveCount(2);
@@ -43,7 +43,7 @@ public sealed class WebSearchRetrievalSourceTests
 
         var sut = new WebSearchRetrievalSource(_provider.Object);
 
-        var result = await sut.RetrieveAsync("test", 5, QueryComplexity.Complex, CancellationToken.None);
+        var result = await sut.RetrieveAsync("test", 5, TaskComplexity.Complex, CancellationToken.None);
 
         result.Results.Should().BeEmpty();
     }

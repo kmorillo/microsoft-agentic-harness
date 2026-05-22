@@ -1,4 +1,5 @@
 using Application.AI.Common.Interfaces.RAG;
+using Application.AI.Common.Interfaces.Routing;
 using Azure;
 using Azure.Search.Documents;
 using Domain.Common.Config;
@@ -93,8 +94,8 @@ public static class DependencyInjection
 		// Embedding service
 		services.AddSingleton<IEmbeddingService, EmbeddingService>();
 
-		// Model router (cost control)
-		services.AddSingleton<IRagModelRouter, RagModelRouter>();
+		// Model router is registered by Infrastructure.AI (unified IModelRouter)
+		// IRagModelRouter removed — use IModelRouter from Application.AI.Common.Interfaces.Routing
 	}
 
 	private static void AddRagRetrieval(IServiceCollection services, AppConfig appConfig)
@@ -149,7 +150,7 @@ public static class DependencyInjection
 
 		services.AddKeyedSingleton<IReranker>("cross_encoder", (sp, _) =>
 			new CrossEncoderReranker(
-				sp.GetRequiredService<IRagModelRouter>(),
+				sp.GetRequiredService<IModelRouter>(),
 				sp.GetRequiredService<ILogger<CrossEncoderReranker>>()));
 
 		services.AddKeyedSingleton<IReranker>("none", (_, _) =>
@@ -174,13 +175,13 @@ public static class DependencyInjection
 		// Query transformers — keyed by strategy name
 		services.AddKeyedSingleton<IQueryTransformer>("rag_fusion", (sp, _) =>
 			new RagFusionTransformer(
-				sp.GetRequiredService<IRagModelRouter>(),
+				sp.GetRequiredService<IModelRouter>(),
 				sp.GetRequiredService<IOptionsMonitor<AppConfig>>(),
 				sp.GetRequiredService<ILogger<RagFusionTransformer>>()));
 
 		services.AddKeyedSingleton<IQueryTransformer>("hyde", (sp, _) =>
 			new HydeTransformer(
-				sp.GetRequiredService<IRagModelRouter>(),
+				sp.GetRequiredService<IModelRouter>(),
 				sp.GetRequiredService<ILogger<HydeTransformer>>()));
 
 		// Query router (orchestrates classification + transformation)
@@ -212,7 +213,7 @@ public static class DependencyInjection
 		services.AddSingleton<IGraphRagService>(sp =>
 			new ManagedCodeGraphRagService(
 				sp.GetRequiredService<IGraphDatabaseBackend>(),
-				sp.GetRequiredService<IRagModelRouter>(),
+				sp.GetRequiredService<IModelRouter>(),
 				sp.GetRequiredService<IProvenanceStamper>(),
 				sp.GetRequiredService<ICommunityDetector>(),
 				sp.GetRequiredService<ILogger<ManagedCodeGraphRagService>>(),
@@ -236,7 +237,7 @@ public static class DependencyInjection
 	/// </summary>
 	private static void AddRagComplexityRouting(IServiceCollection services)
 	{
-		services.AddSingleton<IQueryComplexityClassifier, QueryComplexityClassifier>();
+		// IQueryComplexityClassifier removed — use ITaskComplexityClassifier from IModelRouter
 		services.AddSingleton<IRetrievalDecisionGate, RetrievalDecisionGate>();
 	}
 
@@ -279,7 +280,7 @@ public static class DependencyInjection
 				sp.GetService<IFeedbackWeightedScorer>(),
 				sp.GetRequiredService<QueryRouter>(),
 				sp.GetService<IMultiSourceOrchestrator>(),
-				sp.GetService<IQueryComplexityClassifier>(),
+				sp.GetService<ITaskComplexityClassifier>(),
 				sp.GetService<IRetrievalCostTracker>(),
 				sp.GetRequiredService<IOptionsMonitor<AppConfig>>(),
 				sp.GetRequiredService<ILogger<RagOrchestrator>>(),
@@ -325,7 +326,7 @@ public static class DependencyInjection
 	{
 		services.AddSingleton<IRetrievalQualityEvaluator>(sp =>
 			new RetrievalQualityEvaluator(
-				sp.GetRequiredService<IRagModelRouter>(),
+				sp.GetRequiredService<IModelRouter>(),
 				sp.GetRequiredService<ILogger<RetrievalQualityEvaluator>>()));
 	}
 

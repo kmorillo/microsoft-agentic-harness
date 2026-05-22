@@ -1,5 +1,5 @@
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
+using Domain.AI.Routing.Enums;
 using Domain.AI.RAG.Models;
 using Domain.Common.Config;
 using FluentAssertions;
@@ -46,7 +46,7 @@ public sealed class MultiSourceOrchestratorTests
     {
         _mockVectorSource.Setup(s => s.SourceName).Returns("vector");
         _mockVectorSource
-            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SourceRetrievalResult
             {
                 SourceName = "vector",
@@ -71,7 +71,7 @@ public sealed class MultiSourceOrchestratorTests
 
         _mockGraphSource.Setup(s => s.SourceName).Returns("graph");
         _mockGraphSource
-            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SourceRetrievalResult
             {
                 SourceName = "graph",
@@ -89,14 +89,14 @@ public sealed class MultiSourceOrchestratorTests
         var orchestrator = CreateOrchestrator();
 
         var results = await orchestrator.RetrieveFromAllSourcesAsync(
-            "simple query", topK: 5, QueryComplexity.Simple);
+            "simple query", topK: 5, TaskComplexity.Simple);
 
         results.Should().HaveCount(3);
         _mockVectorSource.Verify(
-            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Once);
         _mockGraphSource.Verify(
-            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -108,14 +108,14 @@ public sealed class MultiSourceOrchestratorTests
         var orchestrator = CreateOrchestrator();
 
         var results = await orchestrator.RetrieveFromAllSourcesAsync(
-            "moderate query", topK: 10, QueryComplexity.Moderate);
+            "moderate query", topK: 10, TaskComplexity.Moderate);
 
         results.Should().HaveCount(5);
         _mockVectorSource.Verify(
-            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Once);
         _mockGraphSource.Verify(
-            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -128,14 +128,14 @@ public sealed class MultiSourceOrchestratorTests
 
         // Complex maps to vector + graph + web_search + sql_database, but only vector and graph are enabled
         var results = await orchestrator.RetrieveFromAllSourcesAsync(
-            "complex multi-faceted query", topK: 10, QueryComplexity.Complex);
+            "complex multi-faceted query", topK: 10, TaskComplexity.Complex);
 
         results.Should().HaveCountGreaterThanOrEqualTo(3);
         _mockVectorSource.Verify(
-            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Once);
         _mockGraphSource.Verify(
-            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Once);
     }
 
@@ -145,8 +145,8 @@ public sealed class MultiSourceOrchestratorTests
         SetupVectorResults(3);
         _mockGraphSource.Setup(s => s.SourceName).Returns("graph");
         _mockGraphSource
-            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()))
-            .Returns(async (string _, int _, QueryComplexity _, CancellationToken ct) =>
+            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()))
+            .Returns(async (string _, int _, TaskComplexity _, CancellationToken ct) =>
             {
                 await Task.Delay(TimeSpan.FromSeconds(30), ct);
                 return new SourceRetrievalResult
@@ -164,7 +164,7 @@ public sealed class MultiSourceOrchestratorTests
         });
 
         var results = await orchestrator.RetrieveFromAllSourcesAsync(
-            "query", topK: 10, QueryComplexity.Moderate);
+            "query", topK: 10, TaskComplexity.Moderate);
 
         results.Should().HaveCount(3);
     }
@@ -179,7 +179,7 @@ public sealed class MultiSourceOrchestratorTests
 
         _mockVectorSource.Setup(s => s.SourceName).Returns("vector");
         _mockVectorSource
-            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SourceRetrievalResult
             {
                 SourceName = "vector",
@@ -190,7 +190,7 @@ public sealed class MultiSourceOrchestratorTests
 
         _mockGraphSource.Setup(s => s.SourceName).Returns("graph");
         _mockGraphSource
-            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SourceRetrievalResult
             {
                 SourceName = "graph",
@@ -202,7 +202,7 @@ public sealed class MultiSourceOrchestratorTests
         var orchestrator = CreateOrchestrator();
 
         var results = await orchestrator.RetrieveFromAllSourcesAsync(
-            "query", topK: 10, QueryComplexity.Moderate);
+            "query", topK: 10, TaskComplexity.Moderate);
 
         results.Should().HaveCount(1);
         results[0].FusedScore.Should().Be(0.9);
@@ -213,18 +213,18 @@ public sealed class MultiSourceOrchestratorTests
     {
         _mockVectorSource.Setup(s => s.SourceName).Returns("vector");
         _mockVectorSource
-            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Vector store unavailable"));
 
         _mockGraphSource.Setup(s => s.SourceName).Returns("graph");
         _mockGraphSource
-            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()))
+            .Setup(s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Graph unavailable"));
 
         var orchestrator = CreateOrchestrator();
 
         var results = await orchestrator.RetrieveFromAllSourcesAsync(
-            "query", topK: 10, QueryComplexity.Complex);
+            "query", topK: 10, TaskComplexity.Complex);
 
         results.Should().BeEmpty();
     }
@@ -240,11 +240,11 @@ public sealed class MultiSourceOrchestratorTests
         });
 
         var results = await orchestrator.RetrieveFromAllSourcesAsync(
-            "query", topK: 10, QueryComplexity.Complex);
+            "query", topK: 10, TaskComplexity.Complex);
 
         results.Should().HaveCount(3);
         _mockGraphSource.Verify(
-            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<QueryComplexity>(), It.IsAny<CancellationToken>()),
+            s => s.RetrieveAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<TaskComplexity>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 }

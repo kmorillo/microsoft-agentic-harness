@@ -78,7 +78,7 @@ public static class DependencyInjection
 
         services.AddSingleton<IFeedbackDetector>(sp =>
             new LlmFeedbackDetector(
-                sp.GetRequiredService<Application.AI.Common.Interfaces.RAG.IRagModelRouter>(),
+                sp.GetRequiredService<Application.AI.Common.Interfaces.Routing.IModelRouter>(),
                 sp.GetRequiredService<ILogger<LlmFeedbackDetector>>()));
 
         // Cross-session knowledge persistence (scoped per request/session)
