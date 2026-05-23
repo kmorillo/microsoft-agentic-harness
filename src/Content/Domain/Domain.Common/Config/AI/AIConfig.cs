@@ -37,6 +37,7 @@ namespace Domain.Common.Config.AI;
 /// ├── Resilience        — LLM fallback chains, circuit breakers, retry, degraded mode
 /// ├── Rag               — RAG pipeline: ingestion, retrieval, reranking, model tiering
 /// ├── ModelRouting       — Unified model routing: complexity classification, tier selection, escalation
+/// ├── KnowledgeBridge    — Conversation-to-Knowledge Bridge: fact extraction, confidence, timeout
 /// ├── DriftDetection    — EWMA-based drift detection for quality regressions
 /// ├── Learnings         — Cross-session learnings: feedback blending, decay, pruning
 /// ├── Planner           — Plan execution: concurrency, timeouts, persistence
@@ -119,6 +120,12 @@ public class AIConfig
     /// Routes agent turns, RAG operations, and supervisor delegation to appropriate model tiers.
     /// </summary>
     public ModelRoutingConfig ModelRouting { get; set; } = new();
+
+    /// <summary>
+    /// Conversation-to-Knowledge Bridge configuration controlling automatic
+    /// fact extraction from agent turns into the knowledge graph.
+    /// </summary>
+    public KnowledgeBridgeConfig KnowledgeBridge { get; set; } = new();
 
     /// <summary>
     /// LLM provider resilience configuration including fallback chains,
