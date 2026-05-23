@@ -14,7 +14,7 @@ namespace Application.Core.CQRS.Agents.ExecuteAgentTurn;
 /// Uses a 5-minute timeout to accommodate multi-step tool call chains.
 /// The default 30s MediatR timeout is too short for agentic workloads.
 /// </remarks>
-public record ExecuteAgentTurnCommand : IRequest<AgentTurnResult>, IAgentScopedRequest, IHasTimeout, IContentScreenable, IHasObservabilitySession
+public record ExecuteAgentTurnCommand : IRequest<AgentTurnResult>, IAgentTurnRequest, IHasTimeout, IContentScreenable, IHasObservabilitySession
 {
 	/// <inheritdoc />
 	public string ContentToScreen => UserMessage;
@@ -56,7 +56,7 @@ public record ExecuteAgentTurnCommand : IRequest<AgentTurnResult>, IAgentScopedR
 	/// </summary>
 	public float? Temperature { get; init; }
 
-	// IAgentScopedRequest
+	// IAgentScopedRequest / IAgentTurnRequest
 	public string AgentId => AgentName;
 	public string ConversationId { get; init; } = Guid.NewGuid().ToString();
 	public int TurnNumber { get; init; }
@@ -72,7 +72,7 @@ public record ExecuteAgentTurnCommand : IRequest<AgentTurnResult>, IAgentScopedR
 /// <summary>
 /// Result of a single agent turn execution.
 /// </summary>
-public record AgentTurnResult
+public record AgentTurnResult : IAgentTurnResult
 {
 	public required bool Success { get; init; }
 	public required string Response { get; init; }
