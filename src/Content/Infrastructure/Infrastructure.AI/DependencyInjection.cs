@@ -230,6 +230,7 @@ public static partial class DependencyInjection
         // --- Unified model routing ---
 
         services.AddSingleton(Options.Create(appConfig.AI.ModelRouting));
+        services.AddSingleton(Options.Create(appConfig.AI.KnowledgeBridge));
         services.AddSingleton<ITaskComplexityHeuristic, TaskComplexityHeuristic>();
         services.AddSingleton<IEscalationTracker, EscalationTracker>();
         services.AddSingleton<ITaskComplexityClassifier, TaskComplexityClassifier>();
