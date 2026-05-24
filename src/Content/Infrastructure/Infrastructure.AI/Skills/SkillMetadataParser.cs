@@ -57,7 +57,7 @@ public sealed class SkillMetadataParser
             AllowedTools = ParseList(frontmatter, "allowed-tools"),
             Prerequisites = ParseList(frontmatter, "prerequisites"),
             CompletionTool = ParseString(frontmatter, "completion_tool"),
-            Metadata = ParseMetadata(frontmatter),
+            Metadata = metaBlock?.ToDictionary(kv => kv.Key, kv => (object)kv.Value),
             Author = metaBlock != null && metaBlock.TryGetValue("author", out var author) ? author : null,
             FilePath = skillFilePath,
             BaseDirectory = sourcePath,
@@ -75,7 +75,10 @@ public sealed class SkillMetadataParser
     /// <param name="sourcePath">Directory containing the SKILL.md file.</param>
     public SkillDefinition Parse(string skillName, string? skillDescription, string body, string sourcePath)
     {
-        var skillFilePath = Path.Combine(sourcePath, "SKILL.md");
+        // Resolve to a canonical absolute path to eliminate any traversal sequences (e.g. "../")
+        // before constructing the file path from caller-supplied input.
+        var resolvedSourcePath = Path.GetFullPath(sourcePath);
+        var skillFilePath = Path.Combine(resolvedSourcePath, "SKILL.md");
         string? rawFrontmatter = null;
 
         try
@@ -112,10 +115,10 @@ public sealed class SkillMetadataParser
             AllowedTools = ParseList(rawFrontmatter, "allowed-tools"),
             Prerequisites = ParseList(rawFrontmatter, "prerequisites"),
             CompletionTool = ParseString(rawFrontmatter, "completion_tool"),
-            Metadata = ParseMetadata(rawFrontmatter),
+            Metadata = metaBlock?.ToDictionary(kv => kv.Key, kv => (object)kv.Value),
             Author = metaBlock != null && metaBlock.TryGetValue("author", out var author) ? author : null,
             FilePath = skillFilePath,
-            BaseDirectory = sourcePath,
+            BaseDirectory = resolvedSourcePath,
             LoadedAt = DateTime.UtcNow,
             IsFullyLoaded = true
         };
@@ -355,18 +358,5 @@ public sealed class SkillMetadataParser
         }
 
         return result.Count > 0 ? result : null;
-    }
-
-    /// <summary>
-    /// Parses the <c>metadata:</c> nested block from frontmatter into a string-keyed dictionary.
-    /// Returns null if the block is absent or empty.
-    /// </summary>
-    private static IDictionary<string, object>? ParseMetadata(string? frontmatter)
-    {
-        var block = ParseNestedBlock(frontmatter, "metadata");
-        if (block == null || block.Count == 0)
-            return null;
-
-        return block.ToDictionary(kv => kv.Key, kv => (object)kv.Value);
     }
 }

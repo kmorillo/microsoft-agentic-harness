@@ -184,4 +184,19 @@ public sealed class SkillMetadataParserNestedYamlTests : IDisposable
         result.Metadata.Should().NotContainKey("name");
         result.Metadata.Should().NotContainKey("category");
     }
+
+    [Fact]
+    public void Parse_NestedMetadata_ExtractsMetadataAndAuthor()
+    {
+        var content = "---\nname: plugin-skill\nmetadata:\n  author: Contoso\n  team: Platform\n---\n# Instructions\n\nDo the thing.";
+        var filePath = Path.Combine(_tempDir, "SKILL.md");
+        File.WriteAllText(filePath, content);
+
+        var result = _sut.Parse("plugin-skill", "A plugin skill", "# Instructions\n\nDo the thing.", _tempDir);
+
+        result.Metadata.Should().NotBeNull();
+        result.Metadata!["author"].Should().Be("Contoso");
+        result.Metadata["team"].Should().Be("Platform");
+        result.Author.Should().Be("Contoso");
+    }
 }
