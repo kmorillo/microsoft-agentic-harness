@@ -447,8 +447,13 @@ public class AgentExecutionContextFactory
             }
         }
 
-        if (!declaration.Optional)
-            _logger.LogWarning("Required tool {ToolName} could not be resolved", declaration.Name);
+        if (!declaration.Optional && !declaration.FallbackIsManual)
+        {
+            throw new InvalidOperationException(
+                $"Required tool '{declaration.Name}' could not be resolved. " +
+                "Ensure the tool is registered via keyed DI or available from an MCP server. " +
+                "Mark the tool declaration as Optional = true if the skill can function without it.");
+        }
 
         return null;
     }
