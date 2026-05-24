@@ -80,6 +80,12 @@ public class SkillDefinition
 	public string? Author { get; set; }
 
 	/// <summary>
+	/// Name of the plugin this skill was loaded from, if any.
+	/// Null for harness-native skills. Used for namespace tracking and dual skill mode.
+	/// </summary>
+	public string? PluginSource { get; set; }
+
+	/// <summary>
 	/// Primary category (e.g., "research", "analysis", "orchestration").
 	/// </summary>
 	public string? Category { get; set; }
@@ -266,6 +272,9 @@ public class SkillDefinition
 	public bool HasModelOverride => !string.IsNullOrEmpty(ModelOverride);
 	public bool HasPersistentAgentId => !string.IsNullOrEmpty(AgentId);
 	public bool HasLicense => !string.IsNullOrEmpty(License);
+
+	/// <summary>Whether this skill was loaded from a plugin.</summary>
+	public bool IsPluginSkill => !string.IsNullOrEmpty(PluginSource);
 
 	/// <summary>Whether this skill has prerequisite dependencies.</summary>
 	public bool HasPrerequisites => Prerequisites.Count > 0;
