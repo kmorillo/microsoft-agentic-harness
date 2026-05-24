@@ -38,12 +38,12 @@ public sealed record AgentDefinition
     public IReadOnlyList<string> Tags { get; init; } = [];
 
     /// <summary>
-    /// Id of the <see cref="Domain.AI.Skills.SkillDefinition"/> that provides this agent's
-    /// instructions, tool declarations, and behaviour. When null, consumers that require a
-    /// skill (e.g. the conversation hub) should fall back to <see cref="Id"/> or surface a
-    /// configuration error — the AGENT.md is missing a <c>skill:</c> frontmatter entry.
+    /// Skill IDs that provide this agent's instructions, tool declarations, and behaviour.
+    /// When empty, consumers should fall back to <see cref="Id"/> as a single skill ID.
+    /// Populated from the <c>skills:</c> frontmatter list or the singular <c>skill:</c> entry
+    /// in AGENT.md.
     /// </summary>
-    public string? Skill { get; init; }
+    public IReadOnlyList<string> Skills { get; init; } = [];
 
     /// <summary>Absolute path to the source <c>AGENT.md</c> file.</summary>
     public string FilePath { get; init; } = string.Empty;

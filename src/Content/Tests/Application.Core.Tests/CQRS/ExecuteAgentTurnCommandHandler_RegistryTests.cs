@@ -44,7 +44,7 @@ public class ExecuteAgentTurnCommandHandler_RegistryTests
         {
             Id = "my-agent",
             Name = "My Agent",
-            Skill = "research_skill"
+            Skills = ["research_skill"]
         };
         _agentRegistry
             .Setup(r => r.TryGet("my-agent"))
@@ -78,14 +78,13 @@ public class ExecuteAgentTurnCommandHandler_RegistryTests
     }
 
     [Fact]
-    public async Task Handle_RegistryHasNullSkill_FallsBackToAgentName()
+    public async Task Handle_RegistryHasEmptySkills_FallsBackToAgentName()
     {
         // Arrange
         var agentDef = new AgentDefinition
         {
             Id = "my-agent",
-            Name = "My Agent",
-            Skill = null
+            Name = "My Agent"
         };
         _agentRegistry
             .Setup(r => r.TryGet("my-agent"))
