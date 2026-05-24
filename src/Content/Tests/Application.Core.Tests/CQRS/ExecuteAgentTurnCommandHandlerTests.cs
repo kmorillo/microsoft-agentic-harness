@@ -59,7 +59,7 @@ public class ExecuteAgentTurnCommandHandlerTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                "TestAgent",
+                It.Is<IReadOnlyList<string>>(ids => ids.Count == 1 && ids[0] == "TestAgent"),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -83,7 +83,7 @@ public class ExecuteAgentTurnCommandHandlerTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -107,7 +107,7 @@ public class ExecuteAgentTurnCommandHandlerTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("Agent not found"));
@@ -131,7 +131,7 @@ public class ExecuteAgentTurnCommandHandlerTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -155,7 +155,7 @@ public class ExecuteAgentTurnCommandHandlerTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -185,7 +185,7 @@ public class ExecuteAgentTurnCommandHandlerTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -216,7 +216,7 @@ public class ExecuteAgentTurnCommandHandlerTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -246,10 +246,10 @@ public class ExecuteAgentTurnCommandHandlerTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<string, string, SkillAgentOptions, CancellationToken>((_, _, opts, _) => capturedOptions = opts)
+            .Callback<string, IReadOnlyList<string>, SkillAgentOptions, CancellationToken>((_, _, opts, _) => capturedOptions = opts)
             .ReturnsAsync(agent);
 
         var command = CreateCommand(systemPromptOverride: "You are a pirate.");
@@ -272,10 +272,10 @@ public class ExecuteAgentTurnCommandHandlerTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<string, string, SkillAgentOptions, CancellationToken>((_, _, opts, _) => capturedOptions = opts)
+            .Callback<string, IReadOnlyList<string>, SkillAgentOptions, CancellationToken>((_, _, opts, _) => capturedOptions = opts)
             .ReturnsAsync(agent);
 
         var command = CreateCommand(systemPromptOverride: null);
@@ -296,7 +296,7 @@ public class ExecuteAgentTurnCommandHandlerTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                "SpecificAgent",
+                It.Is<IReadOnlyList<string>>(ids => ids.Count == 1 && ids[0] == "SpecificAgent"),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -309,7 +309,7 @@ public class ExecuteAgentTurnCommandHandlerTests
         // Assert
         _agentCache.Verify(c => c.GetOrCreateAsync(
             It.IsAny<string>(),
-            "SpecificAgent",
+            It.Is<IReadOnlyList<string>>(ids => ids.Count == 1 && ids[0] == "SpecificAgent"),
             It.IsAny<SkillAgentOptions>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }

@@ -49,15 +49,18 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 
 		try
 		{
-			// AgentName from the hub is an agent id — resolve the declared skill id from the
+			// AgentName from the hub is an agent id — resolve the declared skill ids from the
 			// AGENT.md manifest. If the manifest has no `skills:` entry or the id isn't in the
 			// registry, fall back to treating AgentName as a skill id directly so callers
 			// which still pass skill ids (tests, tools) keep working.
-			var skillId = _agentRegistry.TryGet(request.AgentName)?.Skills.FirstOrDefault() ?? request.AgentName;
+			var agentDef = _agentRegistry.TryGet(request.AgentName);
+			IReadOnlyList<string> skillIds = agentDef?.Skills is { Count: > 0 }
+				? agentDef.Skills
+				: [request.AgentName];
 
 			var agent = await _agentCache.GetOrCreateAsync(
 				request.ConversationId,
-				skillId,
+				skillIds,
 				new SkillAgentOptions
 				{
 					AdditionalContext = request.SystemPromptOverride,

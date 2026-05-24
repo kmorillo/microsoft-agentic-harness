@@ -37,7 +37,7 @@ public class ExecuteAgentTurnCommandHandler_RegistryTests
     }
 
     [Fact]
-    public async Task Handle_RegistryHasSkillMapping_UsesSkillIdFromRegistry()
+    public async Task Handle_RegistryHasSkillMapping_UsesSkillIdsFromRegistry()
     {
         // Arrange
         var agentDef = new AgentDefinition
@@ -54,7 +54,7 @@ public class ExecuteAgentTurnCommandHandler_RegistryTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                "research_skill",
+                It.Is<IReadOnlyList<string>>(ids => ids.Count == 1 && ids[0] == "research_skill"),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -72,7 +72,48 @@ public class ExecuteAgentTurnCommandHandler_RegistryTests
         result.Success.Should().BeTrue();
         _agentCache.Verify(c => c.GetOrCreateAsync(
             It.IsAny<string>(),
-            "research_skill",
+            It.Is<IReadOnlyList<string>>(ids => ids.Count == 1 && ids[0] == "research_skill"),
+            It.IsAny<SkillAgentOptions>(),
+            It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_RegistryHasMultipleSkills_PassesAllSkillIds()
+    {
+        // Arrange
+        var agentDef = new AgentDefinition
+        {
+            Id = "my-agent",
+            Name = "My Agent",
+            Skills = ["research_skill", "write_skill"]
+        };
+        _agentRegistry
+            .Setup(r => r.TryGet("my-agent"))
+            .Returns(agentDef);
+
+        var agent = new TestableAIAgent("response");
+        _agentCache
+            .Setup(c => c.GetOrCreateAsync(
+                It.IsAny<string>(),
+                It.Is<IReadOnlyList<string>>(ids => ids.Count == 2 && ids[0] == "research_skill" && ids[1] == "write_skill"),
+                It.IsAny<SkillAgentOptions>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(agent);
+
+        var command = new ExecuteAgentTurnCommand
+        {
+            AgentName = "my-agent",
+            UserMessage = "test"
+        };
+
+        // Act
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        // Assert
+        result.Success.Should().BeTrue();
+        _agentCache.Verify(c => c.GetOrCreateAsync(
+            It.IsAny<string>(),
+            It.Is<IReadOnlyList<string>>(ids => ids.Count == 2),
             It.IsAny<SkillAgentOptions>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -94,7 +135,7 @@ public class ExecuteAgentTurnCommandHandler_RegistryTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                "my-agent",
+                It.Is<IReadOnlyList<string>>(ids => ids.Count == 1 && ids[0] == "my-agent"),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -112,7 +153,7 @@ public class ExecuteAgentTurnCommandHandler_RegistryTests
         result.Success.Should().BeTrue();
         _agentCache.Verify(c => c.GetOrCreateAsync(
             It.IsAny<string>(),
-            "my-agent",
+            It.Is<IReadOnlyList<string>>(ids => ids.Count == 1 && ids[0] == "my-agent"),
             It.IsAny<SkillAgentOptions>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -129,7 +170,7 @@ public class ExecuteAgentTurnCommandHandler_RegistryTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                "unknown-agent",
+                It.Is<IReadOnlyList<string>>(ids => ids.Count == 1 && ids[0] == "unknown-agent"),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -147,7 +188,7 @@ public class ExecuteAgentTurnCommandHandler_RegistryTests
         result.Success.Should().BeTrue();
         _agentCache.Verify(c => c.GetOrCreateAsync(
             It.IsAny<string>(),
-            "unknown-agent",
+            It.Is<IReadOnlyList<string>>(ids => ids.Count == 1 && ids[0] == "unknown-agent"),
             It.IsAny<SkillAgentOptions>(),
             It.IsAny<CancellationToken>()), Times.Once);
     }
@@ -165,10 +206,10 @@ public class ExecuteAgentTurnCommandHandler_RegistryTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<string, string, SkillAgentOptions, CancellationToken>((_, _, opts, _) => capturedOptions = opts)
+            .Callback<string, IReadOnlyList<string>, SkillAgentOptions, CancellationToken>((_, _, opts, _) => capturedOptions = opts)
             .ReturnsAsync(agent);
 
         var command = new ExecuteAgentTurnCommand
@@ -199,10 +240,10 @@ public class ExecuteAgentTurnCommandHandler_RegistryTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<string, string, SkillAgentOptions, CancellationToken>((_, _, opts, _) => capturedOptions = opts)
+            .Callback<string, IReadOnlyList<string>, SkillAgentOptions, CancellationToken>((_, _, opts, _) => capturedOptions = opts)
             .ReturnsAsync(agent);
 
         var command = new ExecuteAgentTurnCommand

@@ -56,7 +56,7 @@ public class ExecuteAgentTurnCommandHandler_ExtractContentTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -77,7 +77,7 @@ public class ExecuteAgentTurnCommandHandler_ExtractContentTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -99,7 +99,7 @@ public class ExecuteAgentTurnCommandHandler_ExtractContentTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -120,7 +120,7 @@ public class ExecuteAgentTurnCommandHandler_ExtractContentTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);
@@ -141,7 +141,7 @@ public class ExecuteAgentTurnCommandHandler_ExtractContentTests
         _agentCache
             .Setup(c => c.GetOrCreateAsync(
                 It.IsAny<string>(),
-                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
                 It.IsAny<SkillAgentOptions>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(agent);

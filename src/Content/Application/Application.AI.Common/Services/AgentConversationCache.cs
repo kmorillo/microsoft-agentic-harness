@@ -23,14 +23,14 @@ internal sealed class AgentConversationCache : IAgentConversationCache
 
     public async Task<AIAgent> GetOrCreateAsync(
         string conversationId,
-        string skillId,
+        IReadOnlyList<string> skillIds,
         SkillAgentOptions options,
         CancellationToken cancellationToken = default)
     {
         if (_cache.TryGetValue(conversationId, out AIAgent? cached) && cached is not null)
             return cached;
 
-        var agent = await _agentFactory.CreateAgentFromSkillAsync(skillId, options, cancellationToken);
+        var agent = await _agentFactory.CreateAgentFromSkillsAsync(skillIds, options, cancellationToken);
 
         _cache.Set(conversationId, agent, new MemoryCacheEntryOptions
         {

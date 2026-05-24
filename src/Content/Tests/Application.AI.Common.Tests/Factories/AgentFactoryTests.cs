@@ -1,5 +1,6 @@
 using Application.AI.Common.Factories;
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Tests.Fakes;
 using Domain.AI.Agents;
 using Domain.AI.Skills;
 using Domain.Common.Config;
@@ -41,6 +42,12 @@ public class AgentFactoryTests
                 [AIAgentFrameworkClientType.AzureOpenAI] = true,
                 [AIAgentFrameworkClientType.OpenAI] = false
             });
+        _chatClientFactory
+            .Setup(f => f.GetChatClientAsync(
+                It.IsAny<AIAgentFrameworkClientType>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new FakeChatClient());
 
         _skillRegistry = new Mock<ISkillMetadataRegistry>();
 
@@ -212,5 +219,44 @@ public class AgentFactoryTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*OpenAI*");
+    }
+
+    [Fact]
+    public async Task CreateAgentFromSkillsAsync_MultipleSkills_ResolvesAllFromRegistry()
+    {
+        var skill1 = new SkillDefinition { Id = "research", Name = "Research" };
+        var skill2 = new SkillDefinition { Id = "make-ppt", Name = "Make PPT" };
+        _skillRegistry.Setup(r => r.TryGet("research")).Returns(skill1);
+        _skillRegistry.Setup(r => r.TryGet("make-ppt")).Returns(skill2);
+
+        _contextFactory
+            .Setup(f => f.MapToAgentContextAsync(
+                It.Is<IReadOnlyList<SkillDefinition>>(s => s.Count == 2),
+                It.IsAny<SkillAgentOptions>(),
+                It.IsAny<IReadOnlyList<string>?>()))
+            .ReturnsAsync(new AgentExecutionContext
+            {
+                Name = "TestAgent",
+                Instruction = "merged",
+                AIAgentFrameworkType = AIAgentFrameworkClientType.AzureOpenAI
+            });
+
+        var agent = await _factory.CreateAgentFromSkillsAsync(
+            ["research", "make-ppt"], new SkillAgentOptions());
+
+        _skillRegistry.Verify(r => r.TryGet("research"), Times.Once);
+        _skillRegistry.Verify(r => r.TryGet("make-ppt"), Times.Once);
+    }
+
+    [Fact]
+    public async Task CreateAgentFromSkillsAsync_SkillNotFound_Throws()
+    {
+        _skillRegistry.Setup(r => r.TryGet("missing")).Returns((SkillDefinition?)null);
+
+        var act = () => _factory.CreateAgentFromSkillsAsync(
+            ["missing"], new SkillAgentOptions());
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*missing*not found*");
     }
 }

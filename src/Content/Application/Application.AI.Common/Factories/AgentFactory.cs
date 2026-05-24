@@ -195,21 +195,35 @@ public class AgentFactory : IAgentFactory
 
     /// <inheritdoc />
     public Task<AIAgent> CreateAgentFromSkillAsync(string skillId, CancellationToken cancellationToken = default)
-        => CreateAgentFromSkillAsync(skillId, new SkillAgentOptions(), cancellationToken);
+        => CreateAgentFromSkillsAsync([skillId], new SkillAgentOptions(), cancellationToken);
 
     /// <inheritdoc />
-    public async Task<AIAgent> CreateAgentFromSkillAsync(string skillId, SkillAgentOptions options, CancellationToken cancellationToken = default)
+    public Task<AIAgent> CreateAgentFromSkillAsync(string skillId, SkillAgentOptions options, CancellationToken cancellationToken = default)
+        => CreateAgentFromSkillsAsync([skillId], options, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<AIAgent> CreateAgentFromSkillsAsync(
+        IReadOnlyList<string> skillIds,
+        SkillAgentOptions options,
+        CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Creating agent from skill: {SkillId}", skillId);
+        _logger.LogDebug("Creating agent from {Count} skill(s): {SkillIds}",
+            skillIds.Count, string.Join(", ", skillIds));
 
-        var skill = _skillRegistry.TryGet(skillId)
-            ?? throw new InvalidOperationException(
-                $"Skill '{skillId}' not found. Ensure it exists in the configured skill paths.");
+        var skills = new List<SkillDefinition>();
+        foreach (var id in skillIds)
+        {
+            var skill = _skillRegistry.TryGet(id)
+                ?? throw new InvalidOperationException(
+                    $"Skill '{id}' not found. Ensure it exists in the configured skill paths.");
+            skills.Add(skill);
+        }
 
-        var agentContext = await _agentContextFactory.MapToAgentContextAsync(skill, options);
+        var agentContext = await _agentContextFactory.MapToAgentContextAsync(skills, options);
         var agent = await CreateAgentAsync(agentContext, cancellationToken);
 
-        _logger.LogInformation("Created agent {AgentName} from skill {SkillId}", agentContext.Name, skillId);
+        _logger.LogInformation("Created agent {AgentName} from {Count} skill(s): {SkillIds}",
+            agentContext.Name, skillIds.Count, string.Join(", ", skillIds));
         return agent;
     }
 

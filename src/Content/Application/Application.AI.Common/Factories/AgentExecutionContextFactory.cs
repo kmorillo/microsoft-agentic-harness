@@ -181,6 +181,25 @@ public class AgentExecutionContextFactory
     }
 
     /// <summary>
+    /// Maps multiple skill definitions to a single agent execution context by merging
+    /// instructions and tools from all skills. Temporary bridge: delegates to single-skill
+    /// overload using the first skill. Full multi-skill merge implemented in Task 5.
+    /// </summary>
+    /// <param name="skills">The skill definitions to merge.</param>
+    /// <param name="options">Configuration for resource loading and agent overrides.</param>
+    /// <param name="allowedTools">Optional tool allowlist applied after merge.</param>
+    public virtual Task<AgentExecutionContext> MapToAgentContextAsync(
+        IReadOnlyList<SkillDefinition> skills,
+        SkillAgentOptions options,
+        IReadOnlyList<string>? allowedTools = null)
+    {
+        if (skills.Count == 0)
+            throw new ArgumentException("At least one skill is required.", nameof(skills));
+
+        return MapToAgentContextAsync(skills[0], options);
+    }
+
+    /// <summary>
     /// Creates an execution context for a delegated agent. Used by <see cref="Interfaces.Agents.ISupervisor"/>
     /// when delegating a task. Bypasses skill-based tool resolution — tools are resolved separately
     /// by the supervisor using <see cref="Interfaces.Agents.ISubagentToolResolver"/>.

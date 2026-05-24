@@ -62,6 +62,18 @@ public interface IAgentFactory
     Task<AIAgent> CreateAgentFromSkillAsync(string skillId, SkillAgentOptions options, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Creates a single AI agent with multiple skills merged into one execution context.
+    /// All skills' instructions and tools are combined. The LLM self-orchestrates between skills.
+    /// </summary>
+    /// <param name="skillIds">The skill identifiers to merge.</param>
+    /// <param name="options">Configuration for resource loading and agent overrides.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<AIAgent> CreateAgentFromSkillsAsync(
+        IReadOnlyList<string> skillIds,
+        SkillAgentOptions options,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Creates agents for multiple skill IDs in a single call.
     /// Skills that fail to load are logged and skipped; the returned dictionary contains only successful agents.
     /// </summary>
