@@ -374,6 +374,27 @@ public class AgentExecutionContextFactory
     {
         var tools = new List<AITool>();
 
+        // Injected mode: plugin skill with no tool declarations gets all available MCP tools passed through.
+        // Managed mode (has AllowedTools, ToolDeclarations, or pre-created Tools) falls through to the
+        // standard resolution path below.
+        if (skill.IsPluginSkill && !skill.HasToolDeclarations && !skill.HasToolRestrictions
+            && skill.Tools is not { Count: > 0 } && _mcpToolProvider != null)
+        {
+            var allMcpTools = await _mcpToolProvider.GetAllToolsAsync();
+            foreach (var serverTools in allMcpTools.Values)
+                tools.AddRange(serverTools);
+
+            _logger.LogInformation(
+                "Injected mode: skill {SkillId} from plugin {Plugin} received {Count} MCP tools",
+                skill.Id, skill.PluginSource, tools.Count);
+
+            if (options.AdditionalTools?.Count > 0)
+                tools.AddRange(options.AdditionalTools);
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            return tools.Where(t => seen.Add(t.Name)).ToList();
+        }
+
         // 1. Pre-created tools from skill definition
         if (skill.Tools?.Count > 0)
             tools.AddRange(skill.Tools);
@@ -406,8 +427,8 @@ public class AgentExecutionContextFactory
             tools.AddRange(options.AdditionalTools);
 
         // Deduplicate by name — ToolDeclarations and AllowedTools can resolve the same tool
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        return tools.Where(t => seen.Add(t.Name)).ToList();
+        var seen2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return tools.Where(t => seen2.Add(t.Name)).ToList();
     }
 
     private async Task<IEnumerable<AITool>?> ProvisionToolAsync(Domain.AI.Tools.ToolDeclaration declaration)
