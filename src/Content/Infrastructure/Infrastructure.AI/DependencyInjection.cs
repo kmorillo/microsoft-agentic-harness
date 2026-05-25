@@ -136,9 +136,8 @@ public static partial class DependencyInjection
 
         // --- Plugins ---
 
-        // IPluginRegistry is registered by host startup after plugin loading completes (populated before DI is built).
-        // IPluginLoader is used only during startup and is not registered as a long-lived service.
         services.AddSingleton<IPluginManifestReader, PluginManifestReader>();
+        services.AddSingleton<IPluginRegistry, PluginRegistry>();
 
         // --- Tool execution ---
 

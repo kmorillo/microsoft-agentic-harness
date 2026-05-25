@@ -73,10 +73,16 @@ public sealed class PluginLoader : IPluginLoader
 
     private List<string> LoadSkills(string pluginPath, PluginDeclaration declaration, string skillsRelativePath)
     {
-        // Path.GetFullPath handles "./" prefixes correctly on all platforms.
-        // TrimEnd removes trailing directory separators so the path matches Path.Combine expectations.
         var skillsDir = Path.GetFullPath(Path.Combine(pluginPath, skillsRelativePath))
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        if (!IsContainedWithin(skillsDir, pluginPath))
+        {
+            _logger.LogWarning(
+                "Plugin {Name}: skills path {Path} escapes plugin directory, skipping",
+                declaration.Name, skillsDir);
+            return [];
+        }
 
         if (!Directory.Exists(skillsDir))
         {
@@ -97,8 +103,15 @@ public sealed class PluginLoader : IPluginLoader
 
     private List<string> LoadMcpServers(string pluginPath, PluginDeclaration declaration, string mcpRelativePath)
     {
-        // Path.GetFullPath handles "./" prefixes and dotfiles (e.g., ".mcp.json") correctly.
         var mcpPath = Path.GetFullPath(Path.Combine(pluginPath, mcpRelativePath));
+
+        if (!IsContainedWithin(mcpPath, pluginPath))
+        {
+            _logger.LogWarning(
+                "Plugin {Name}: MCP config path {Path} escapes plugin directory, skipping",
+                declaration.Name, mcpPath);
+            return [];
+        }
 
         if (!File.Exists(mcpPath))
         {
@@ -142,6 +155,17 @@ public sealed class PluginLoader : IPluginLoader
         }
 
         return names;
+    }
+
+    private static bool IsContainedWithin(string resolvedPath, string basePath)
+    {
+        var canonicalBase = Path.GetFullPath(basePath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var canonicalTarget = Path.GetFullPath(resolvedPath)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+        return canonicalTarget.StartsWith(canonicalBase + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || string.Equals(canonicalTarget, canonicalBase, StringComparison.Ordinal);
     }
 
     private static McpServerDefinition BuildServerDefinition(
