@@ -385,7 +385,11 @@ public class AgentExecutionContextFactory
             foreach (var serverTools in allMcpTools.Values)
                 tools.AddRange(serverTools);
 
-            // Apply plugin-boundary governance filtering
+            if (options.AdditionalTools?.Count > 0)
+                tools.AddRange(options.AdditionalTools);
+
+            // Apply plugin-boundary governance filtering after all tools are collected
+            // (including AdditionalTools) so denied tools can't bypass via that path.
             if (!string.IsNullOrEmpty(skill.PluginSource))
             {
                 var pluginRegistry = _serviceProvider.GetService<IPluginRegistry>();
@@ -397,9 +401,6 @@ public class AgentExecutionContextFactory
             _logger.LogInformation(
                 "Injected mode: skill {SkillId} from plugin {Plugin} received {Count} MCP tools",
                 skill.Id, skill.PluginSource, tools.Count);
-
-            if (options.AdditionalTools?.Count > 0)
-                tools.AddRange(options.AdditionalTools);
 
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             return tools.Where(t => seen.Add(t.Name)).ToList();

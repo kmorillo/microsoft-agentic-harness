@@ -177,4 +177,54 @@ public sealed class AgentExecutionContextFactoryGovernanceTests
 
         context.Tools.Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task Injected_AdditionalTools_SubjectToGovernanceFiltering()
+    {
+        SetupMcpTools(("plugin:server", ["safe_tool"]));
+        SetupPlugin("plugin", new PluginDeclaration
+        {
+            Name = "plugin",
+            DeniedTools = ["dangerous"]
+        });
+
+        var skill = new SkillDefinition
+        {
+            Id = "bypass-test", Name = "bypass-test",
+            Instructions = "Test", PluginSource = "plugin"
+        };
+
+        var options = new SkillAgentOptions
+        {
+            AdditionalTools = [AIFunctionFactory.Create(() => "r", "dangerous")]
+        };
+
+        var context = await CreateFactory().MapToAgentContextAsync(skill, options);
+
+        context.Tools.Select(t => t.Name).Should().BeEquivalentTo(["safe_tool"]);
+        context.Tools.Should().NotContain(t => t.Name == "dangerous");
+    }
+
+    [Fact]
+    public async Task Injected_AllowedTools_CaseInsensitiveMatching()
+    {
+        SetupMcpTools(("plugin:server", ["az_cli", "Read_File", "SEARCH"]));
+        SetupPlugin("plugin", new PluginDeclaration
+        {
+            Name = "plugin",
+            AllowedTools = ["AZ_CLI", "read_file"]
+        });
+
+        var skill = new SkillDefinition
+        {
+            Id = "case-test", Name = "case-test",
+            Instructions = "Test", PluginSource = "plugin"
+        };
+
+        var context = await CreateFactory().MapToAgentContextAsync(skill, new SkillAgentOptions());
+
+        context.Tools.Should().HaveCount(2);
+        context.Tools.Select(t => t.Name).Should().Contain("az_cli");
+        context.Tools.Select(t => t.Name).Should().Contain("Read_File");
+    }
 }
