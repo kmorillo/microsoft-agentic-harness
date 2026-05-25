@@ -23,5 +23,7 @@ public enum PermissionRuleSource
     /// <summary>Rule from a CLI argument or startup parameter.</summary>
     CliArgument,
     /// <summary>Rule generated from the agent's autonomy tier assignment.</summary>
-    AutonomyTier
+    AutonomyTier,
+    /// <summary>Rule from a plugin declaration's governance configuration.</summary>
+    PluginDeclaration
 }

@@ -12,7 +12,7 @@ public class PluginRegistryTests
 
     private static LoadedPlugin MakePlugin(string name, PluginLoadStatus status = PluginLoadStatus.Loaded) =>
         new(name, "1.0.0", $"/plugins/{name}", new PluginManifest { Name = name, Version = "1.0.0" },
-            status, [], []);
+            status, [], [], new PluginDeclaration { Name = name });
 
     [Fact]
     public void GetLoadedPlugins_Initially_ReturnsEmpty()

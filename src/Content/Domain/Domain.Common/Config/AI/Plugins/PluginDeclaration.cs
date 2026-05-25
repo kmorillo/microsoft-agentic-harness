@@ -22,4 +22,24 @@ public class PluginDeclaration
     /// Merged with the plugin's declared env vars (declaration wins on conflict).
     /// </summary>
     public Dictionary<string, string> Env { get; set; } = new();
+
+    /// <summary>
+    /// Tool name whitelist for Injected-mode skills. When non-null, only these tools
+    /// are provisioned. Applied before <see cref="DeniedTools"/>.
+    /// </summary>
+    public IReadOnlyList<string>? AllowedTools { get; set; }
+
+    /// <summary>
+    /// Tool name blacklist. Matched tools are removed after AllowedTools filtering.
+    /// DeniedTools wins when a tool appears in both lists.
+    /// </summary>
+    public IReadOnlyList<string>? DeniedTools { get; set; }
+
+    /// <summary>
+    /// Autonomy level override for all tools from this plugin. Emits permission
+    /// rules into the 3-phase resolver via <c>PluginPermissionRuleProvider</c>.
+    /// Valid values: "Restricted", "Supervised", "Autonomous". Null means no override.
+    /// Parsed to <c>Domain.AI.Governance.AutonomyLevel</c> at the Application layer.
+    /// </summary>
+    public string? AutonomyLevel { get; set; }
 }
