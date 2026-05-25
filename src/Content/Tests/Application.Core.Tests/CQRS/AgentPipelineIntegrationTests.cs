@@ -74,7 +74,7 @@ public class AgentPipelineIntegrationTests
         using var provider = BuildPipeline(cache =>
             cache
                 .Setup(c => c.GetOrCreateAsync(
-                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<SkillAgentOptions>(), It.IsAny<CancellationToken>()))
+                    It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<SkillAgentOptions>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new TestableAIAgent("Hello from the agent")));
 
         using var scope = provider.CreateScope();
@@ -107,7 +107,7 @@ public class AgentPipelineIntegrationTests
         using var provider = BuildPipeline(cache =>
             cache
                 .Setup(c => c.GetOrCreateAsync(
-                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<SkillAgentOptions>(), It.IsAny<CancellationToken>()))
+                    It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<SkillAgentOptions>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(agent));
 
         using var scope = provider.CreateScope();
@@ -137,7 +137,7 @@ public class AgentPipelineIntegrationTests
         using var provider = BuildPipeline(cache =>
             cache
                 .Setup(c => c.GetOrCreateAsync(
-                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<SkillAgentOptions>(), It.IsAny<CancellationToken>()))
+                    It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<SkillAgentOptions>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(TestableAIAgent.Throwing(new InvalidOperationException("Model unavailable"))));
 
         using var scope = provider.CreateScope();
@@ -164,7 +164,7 @@ public class AgentPipelineIntegrationTests
         using var provider = BuildPipeline(cache =>
             cache
                 .Setup(c => c.GetOrCreateAsync(
-                    It.IsAny<string>(), It.IsAny<string>(), It.IsAny<SkillAgentOptions>(), It.IsAny<CancellationToken>()))
+                    It.IsAny<string>(), It.IsAny<IReadOnlyList<string>>(), It.IsAny<SkillAgentOptions>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new TestableAIAgent("Direct turn response")));
 
         using var scope = provider.CreateScope();

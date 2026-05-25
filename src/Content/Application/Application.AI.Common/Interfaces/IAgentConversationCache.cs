@@ -16,11 +16,12 @@ public interface IAgentConversationCache
 {
     /// <summary>
     /// Returns the cached agent for <paramref name="conversationId"/>, creating and caching
-    /// a new one on a miss using the supplied <paramref name="skillId"/> and <paramref name="options"/>.
+    /// a new one on a miss using the supplied <paramref name="skillIds"/> and <paramref name="options"/>.
+    /// Multiple skill IDs are merged into a single agent execution context.
     /// </summary>
     Task<AIAgent> GetOrCreateAsync(
         string conversationId,
-        string skillId,
+        IReadOnlyList<string> skillIds,
         SkillAgentOptions options,
         CancellationToken cancellationToken = default);
 

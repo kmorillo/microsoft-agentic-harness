@@ -6,6 +6,7 @@ using Application.AI.Common.Interfaces.Compaction;
 using Application.AI.Common.Interfaces.Config;
 using Application.AI.Common.Interfaces.Hooks;
 using Application.AI.Common.Interfaces.MetaHarness;
+using Application.AI.Common.Interfaces.Plugins;
 using Application.AI.Common.Interfaces.Prompts;
 using Application.AI.Common.Interfaces.Skills;
 using Application.AI.Common.Interfaces.Memory;
@@ -27,6 +28,7 @@ using Infrastructure.AI.Generators;
 using Infrastructure.AI.Hooks;
 using Infrastructure.AI.Memory;
 using Infrastructure.AI.MetaHarness;
+using Infrastructure.AI.Plugins;
 using Infrastructure.AI.Prompts;
 using Infrastructure.AI.Prompts.Sections;
 using Infrastructure.AI.Security;
@@ -131,6 +133,11 @@ public static partial class DependencyInjection
         // CandidateSkillContentProvider is NOT registered here; the evaluator constructs it
         // directly with a HarnessCandidate snapshot for candidate-isolated evaluation.
         services.AddTransient<ISkillContentProvider, FileSystemSkillContentProvider>();
+
+        // --- Plugins ---
+
+        services.AddSingleton<IPluginManifestReader, PluginManifestReader>();
+        services.AddSingleton<IPluginRegistry, PluginRegistry>();
 
         // --- Tool execution ---
 

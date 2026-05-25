@@ -10,40 +10,6 @@ namespace Domain.AI.Skills;
 /// </summary>
 public class SkillAgentOptions
 {
-	#region Resource Loading
-
-	/// <summary>
-	/// Load all templates and include them in agent instructions.
-	/// </summary>
-	public bool LoadAllTemplates { get; set; }
-
-	/// <summary>
-	/// Load all references and include them in agent instructions.
-	/// </summary>
-	public bool LoadAllReferences { get; set; }
-
-	/// <summary>
-	/// Specific templates to load by file name.
-	/// </summary>
-	public IList<string>? TemplatesToLoad { get; set; }
-
-	/// <summary>
-	/// Specific references to load by file name.
-	/// </summary>
-	public IList<string>? ReferencesToLoad { get; set; }
-
-	/// <summary>
-	/// Include loaded resources in agent instructions.
-	/// </summary>
-	public bool IncludeResourcesInInstructions { get; set; } = true;
-
-	/// <summary>
-	/// Include a manifest of available resources.
-	/// </summary>
-	public bool IncludeResourceManifest { get; set; } = true;
-
-	#endregion
-
 	#region Skill Loading
 
 	/// <summary>

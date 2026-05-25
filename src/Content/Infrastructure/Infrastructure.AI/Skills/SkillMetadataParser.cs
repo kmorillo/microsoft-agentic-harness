@@ -10,7 +10,7 @@ namespace Infrastructure.AI.Skills;
 /// The framework's <c>FileAgentSkillLoader</c> parses only the standard <c>name</c> and
 /// <c>description</c> fields. This parser extracts harness-specific fields:
 /// <c>category</c>, <c>tags</c>, <c>version</c>, <c>model-override</c>, <c>agent-id</c>,
-/// <c>allowed-tools</c>, and <c>skill_type</c>.
+/// <c>allowed-tools</c>, <c>prerequisites</c>, <c>completion_tool</c>, and <c>skill_type</c>.
 /// </remarks>
 public sealed class SkillMetadataParser
 {
@@ -27,7 +27,8 @@ public sealed class SkillMetadataParser
     /// </summary>
     /// <param name="skillFilePath">Absolute path to the SKILL.md file.</param>
     /// <param name="sourcePath">Directory containing the SKILL.md file (used as <c>BaseDirectory</c>).</param>
-    public SkillDefinition ParseFromFile(string skillFilePath, string sourcePath)
+    /// <param name="pluginSource">Optional plugin source identifier; set when loading skills from a plugin package.</param>
+    public SkillDefinition ParseFromFile(string skillFilePath, string sourcePath, string? pluginSource = null)
     {
         var raw = File.ReadAllText(skillFilePath);
         var frontmatter = ExtractFrontmatter(raw);
@@ -37,6 +38,8 @@ public sealed class SkillMetadataParser
 
         var name = ParseString(frontmatter, "name") ?? Path.GetFileName(sourcePath);
         var description = ParseString(frontmatter, "description") ?? string.Empty;
+
+        var metaBlock = ParseNestedBlock(frontmatter, "metadata");
 
         return new SkillDefinition
         {
@@ -53,10 +56,15 @@ public sealed class SkillMetadataParser
             AgentId = ParseString(frontmatter, "agent-id"),
             Tags = ParseList(frontmatter, "tags"),
             AllowedTools = ParseList(frontmatter, "allowed-tools"),
+            Prerequisites = ParseList(frontmatter, "prerequisites"),
+            CompletionTool = ParseString(frontmatter, "completion_tool"),
+            Metadata = metaBlock?.ToDictionary(kv => kv.Key, kv => (object)kv.Value),
+            Author = metaBlock != null && metaBlock.TryGetValue("author", out var author) ? author : null,
             FilePath = skillFilePath,
             BaseDirectory = sourcePath,
             LoadedAt = DateTime.UtcNow,
-            IsFullyLoaded = true
+
+            PluginSource = pluginSource,
         };
     }
 
@@ -67,9 +75,13 @@ public sealed class SkillMetadataParser
     /// <param name="skillDescription">The skill description.</param>
     /// <param name="body">The SKILL.md body content (after frontmatter).</param>
     /// <param name="sourcePath">Directory containing the SKILL.md file.</param>
-    public SkillDefinition Parse(string skillName, string? skillDescription, string body, string sourcePath)
+    /// <param name="pluginSource">Optional plugin source identifier; set when loading skills from a plugin package.</param>
+    public SkillDefinition Parse(string skillName, string? skillDescription, string body, string sourcePath, string? pluginSource = null)
     {
-        var skillFilePath = Path.Combine(sourcePath, "SKILL.md");
+        // Resolve to a canonical absolute path to eliminate any traversal sequences (e.g. "../")
+        // before constructing the file path from caller-supplied input.
+        var resolvedSourcePath = Path.GetFullPath(sourcePath);
+        var skillFilePath = Path.Combine(resolvedSourcePath, "SKILL.md");
         string? rawFrontmatter = null;
 
         try
@@ -87,6 +99,8 @@ public sealed class SkillMetadataParser
 
         var (objectives, traceFormat, instructions) = ExtractStructuredSections(body);
 
+        var metaBlock = ParseNestedBlock(rawFrontmatter, "metadata");
+
         return new SkillDefinition
         {
             Id = skillName,
@@ -102,10 +116,15 @@ public sealed class SkillMetadataParser
             AgentId = ParseString(rawFrontmatter, "agent-id"),
             Tags = ParseList(rawFrontmatter, "tags"),
             AllowedTools = ParseList(rawFrontmatter, "allowed-tools"),
+            Prerequisites = ParseList(rawFrontmatter, "prerequisites"),
+            CompletionTool = ParseString(rawFrontmatter, "completion_tool"),
+            Metadata = metaBlock?.ToDictionary(kv => kv.Key, kv => (object)kv.Value),
+            Author = metaBlock != null && metaBlock.TryGetValue("author", out var author) ? author : null,
             FilePath = skillFilePath,
-            BaseDirectory = sourcePath,
+            BaseDirectory = resolvedSourcePath,
             LoadedAt = DateTime.UtcNow,
-            IsFullyLoaded = true
+
+            PluginSource = pluginSource,
         };
     }
 
@@ -254,6 +273,10 @@ public sealed class SkillMetadataParser
 
         foreach (var line in frontmatter.Split('\n'))
         {
+            // Skip indented lines — they belong to a nested block, not the top level
+            if (line.Length > 0 && (line[0] == ' ' || line[0] == '\t'))
+                continue;
+
             var trimmed = line.Trim();
             if (!trimmed.StartsWith(key + ":", StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -272,6 +295,10 @@ public sealed class SkillMetadataParser
 
         foreach (var line in frontmatter.Split('\n'))
         {
+            // Skip indented lines — they belong to a nested block, not the top level
+            if (line.Length > 0 && (line[0] == ' ' || line[0] == '\t'))
+                continue;
+
             var trimmed = line.Trim();
             if (!trimmed.StartsWith(key + ":", StringComparison.OrdinalIgnoreCase))
                 continue;
@@ -289,5 +316,51 @@ public sealed class SkillMetadataParser
         }
 
         return [];
+    }
+
+    /// <summary>
+    /// Extracts all indented key-value pairs under a parent key (e.g., <c>metadata:</c>).
+    /// Returns null if the block is not found or contains no entries.
+    /// The block ends at the first non-indented line following the parent key.
+    /// </summary>
+    private static Dictionary<string, string>? ParseNestedBlock(string? frontmatter, string parentKey)
+    {
+        if (string.IsNullOrEmpty(frontmatter))
+            return null;
+
+        var lines = frontmatter.Split('\n');
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var inBlock = false;
+
+        foreach (var line in lines)
+        {
+            if (!inBlock)
+            {
+                // Match unindented "parentKey:" with no value after the colon
+                var trimmed = line.Trim();
+                if (trimmed.Equals(parentKey + ":", StringComparison.OrdinalIgnoreCase))
+                    inBlock = true;
+
+                continue;
+            }
+
+            // A non-indented line (or empty) terminates the block
+            if (line.Length == 0 || (line[0] != ' ' && line[0] != '\t'))
+                break;
+
+            // Parse "  key: value" — split on first colon only
+            var stripped = line.Trim();
+            var colonIdx = stripped.IndexOf(':', StringComparison.Ordinal);
+            if (colonIdx <= 0)
+                continue;
+
+            var entryKey = stripped[..colonIdx].Trim();
+            var entryValue = stripped[(colonIdx + 1)..].Trim().Trim('"', '\'');
+
+            if (!string.IsNullOrEmpty(entryKey))
+                result[entryKey] = entryValue;
+        }
+
+        return result.Count > 0 ? result : null;
     }
 }

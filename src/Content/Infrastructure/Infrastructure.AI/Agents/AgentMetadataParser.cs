@@ -51,7 +51,7 @@ public sealed class AgentMetadataParser
             Version = ParseString(yaml, "version"),
             Author = ParseString(yaml, "author"),
             Tags = ParseList(yaml, "tags"),
-            Skill = ParseString(yaml, "skill"),
+            Skills = ParseSkills(yaml),
             FilePath = agentFilePath,
             BaseDirectory = baseDirectory,
             LoadedAt = DateTime.UtcNow,
@@ -99,5 +99,19 @@ public sealed class AgentMetadataParser
         }
 
         return [];
+    }
+
+    /// <summary>
+    /// Parses skill IDs from frontmatter, trying the plural <c>skills:</c> key first,
+    /// then falling back to the singular <c>skill:</c> key for backward compatibility.
+    /// </summary>
+    private static IReadOnlyList<string> ParseSkills(string? frontmatter)
+    {
+        var list = ParseList(frontmatter, "skills");
+        if (list.Count > 0)
+            return list;
+
+        var single = ParseString(frontmatter, "skill");
+        return single is not null ? [single] : [];
     }
 }

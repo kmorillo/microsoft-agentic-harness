@@ -1,5 +1,7 @@
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Routing;
+using Application.AI.Common.Interfaces.Skills;
+using Application.AI.Common.Models;
 using Domain.AI.Agents;
 using Domain.AI.Routing.Models;
 using Domain.AI.Skills;
@@ -29,6 +31,7 @@ public class AgentFactory : IAgentFactory
     private readonly AgentExecutionContextFactory _agentContextFactory;
     private readonly IChatClientFactory _chatClientFactory;
     private readonly IServiceProvider _serviceProvider;
+    private readonly ISkillCompletionTracker _completionTracker;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AgentFactory"/> class.
@@ -41,6 +44,7 @@ public class AgentFactory : IAgentFactory
     /// <param name="skillRegistry">Registry for discovering skill metadata.</param>
     /// <param name="chatClientFactory">Factory for creating chat clients from configured providers.</param>
     /// <param name="serviceProvider">Service provider for resolving optional dependencies.</param>
+    /// <param name="completionTracker">Tracks skill completion state for prerequisite enforcement.</param>
     public AgentFactory(
         ILogger<AgentFactory> logger,
         IOptionsMonitor<AppConfig> appConfig,
@@ -49,7 +53,8 @@ public class AgentFactory : IAgentFactory
         AgentExecutionContextFactory agentContextFactory,
         ISkillMetadataRegistry skillRegistry,
         IChatClientFactory chatClientFactory,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        ISkillCompletionTracker completionTracker)
     {
         _logger = logger;
         _appConfig = appConfig;
@@ -59,6 +64,7 @@ public class AgentFactory : IAgentFactory
         _skillRegistry = skillRegistry;
         _chatClientFactory = chatClientFactory;
         _serviceProvider = serviceProvider;
+        _completionTracker = completionTracker;
     }
 
     /// <inheritdoc />
@@ -113,8 +119,25 @@ public class AgentFactory : IAgentFactory
                 inner,
                 _loggerFactory.CreateLogger<Middleware.ObservabilityMiddleware>()))
             .Use(inner => new Middleware.ToolDiagnosticsMiddleware(
-                inner, _loggerFactory.CreateLogger<Middleware.ToolDiagnosticsMiddleware>()))
-            .UseDistributedCache(_distributedCache);
+                inner, _loggerFactory.CreateLogger<Middleware.ToolDiagnosticsMiddleware>()));
+
+        // Wire prerequisite middleware when prerequisite metadata exists
+        if (agentContext.AdditionalProperties?.TryGetValue(
+                SkillPrerequisiteMap.AdditionalPropertiesKey, out var prereqObj) == true
+            && prereqObj is SkillPrerequisiteMap prereqMap
+            && prereqMap.HasAnyPrerequisites)
+        {
+            var conversationId = agentContext.AdditionalProperties.TryGetValue("conversationId", out var convId)
+                ? convId?.ToString() ?? Guid.NewGuid().ToString()
+                : Guid.NewGuid().ToString();
+
+            chatClientBuilder = chatClientBuilder.Use(inner =>
+                new Middleware.SkillPrerequisiteMiddleware(
+                    inner, _completionTracker, prereqMap, conversationId,
+                    _loggerFactory.CreateLogger<Middleware.SkillPrerequisiteMiddleware>()));
+        }
+
+        chatClientBuilder = chatClientBuilder.UseDistributedCache(_distributedCache);
 
         var middlewareEnabledChatClient = chatClientBuilder.Build();
 
@@ -195,21 +218,37 @@ public class AgentFactory : IAgentFactory
 
     /// <inheritdoc />
     public Task<AIAgent> CreateAgentFromSkillAsync(string skillId, CancellationToken cancellationToken = default)
-        => CreateAgentFromSkillAsync(skillId, new SkillAgentOptions(), cancellationToken);
+        => CreateAgentFromSkillsAsync([skillId], new SkillAgentOptions(), cancellationToken);
 
     /// <inheritdoc />
-    public async Task<AIAgent> CreateAgentFromSkillAsync(string skillId, SkillAgentOptions options, CancellationToken cancellationToken = default)
+    public Task<AIAgent> CreateAgentFromSkillAsync(string skillId, SkillAgentOptions options, CancellationToken cancellationToken = default)
+        => CreateAgentFromSkillsAsync([skillId], options, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<AIAgent> CreateAgentFromSkillsAsync(
+        IReadOnlyList<string> skillIds,
+        SkillAgentOptions options,
+        CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Creating agent from skill: {SkillId}", skillId);
+        _logger.LogDebug("Creating agent from {Count} skill(s): {SkillIds}",
+            skillIds.Count, string.Join(", ", skillIds));
 
-        var skill = _skillRegistry.TryGet(skillId)
-            ?? throw new InvalidOperationException(
-                $"Skill '{skillId}' not found. Ensure it exists in the configured skill paths.");
+        var skills = new List<SkillDefinition>();
+        foreach (var id in skillIds)
+        {
+            var skill = _skillRegistry.TryGet(id)
+                ?? throw new InvalidOperationException(
+                    $"Skill '{id}' not found. Ensure it exists in the configured skill paths.");
+            skills.Add(skill);
+        }
 
-        var agentContext = await _agentContextFactory.MapToAgentContextAsync(skill, options);
+        ValidatePrerequisites(skills);
+
+        var agentContext = await _agentContextFactory.MapToAgentContextAsync(skills, options);
         var agent = await CreateAgentAsync(agentContext, cancellationToken);
 
-        _logger.LogInformation("Created agent {AgentName} from skill {SkillId}", agentContext.Name, skillId);
+        _logger.LogInformation("Created agent {AgentName} from {Count} skill(s): {SkillIds}",
+            agentContext.Name, skillIds.Count, string.Join(", ", skillIds));
         return agent;
     }
 
@@ -271,5 +310,67 @@ public class AgentFactory : IAgentFactory
         var clientType = _appConfig.CurrentValue.AI?.AgentFramework?.ClientType
             ?? AIAgentFrameworkClientType.AzureOpenAI;
         return await _chatClientFactory.GetChatClientAsync(clientType, deployment, ct);
+    }
+
+    /// <summary>
+    /// Validates that all prerequisite references are valid and contain no cycles.
+    /// Uses Kahn's algorithm for topological sort — if the sort doesn't include all skills,
+    /// a cycle exists.
+    /// </summary>
+    private static void ValidatePrerequisites(IReadOnlyList<SkillDefinition> skills)
+    {
+        // Skip validation when no prerequisites exist
+        if (!skills.Any(s => s.HasPrerequisites))
+            return;
+
+        var skillIds = new HashSet<string>(skills.Select(s => s.Id), StringComparer.OrdinalIgnoreCase);
+
+        // Check all referenced prerequisites exist in the skill list
+        foreach (var skill in skills)
+        {
+            foreach (var prereq in skill.Prerequisites)
+            {
+                if (!skillIds.Contains(prereq))
+                    throw new InvalidOperationException(
+                        $"Skill '{skill.Id}' declares prerequisite '{prereq}' which is not in the agent's skill list. " +
+                        $"Available skills: [{string.Join(", ", skillIds)}]");
+            }
+        }
+
+        // Topological sort to detect cycles (Kahn's algorithm)
+        var inDegree = skills.ToDictionary(s => s.Id, _ => 0, StringComparer.OrdinalIgnoreCase);
+        var adj = skills.ToDictionary(s => s.Id, _ => new List<string>(), StringComparer.OrdinalIgnoreCase);
+
+        foreach (var skill in skills)
+        {
+            foreach (var prereq in skill.Prerequisites)
+            {
+                adj[prereq].Add(skill.Id);
+                inDegree[skill.Id]++;
+            }
+        }
+
+        var queue = new Queue<string>(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key));
+        var sorted = 0;
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            sorted++;
+            foreach (var dependent in adj[current])
+            {
+                inDegree[dependent]--;
+                if (inDegree[dependent] == 0)
+                    queue.Enqueue(dependent);
+            }
+        }
+
+        if (sorted != skills.Count)
+        {
+            var cycleSkills = inDegree.Where(kv => kv.Value > 0).Select(kv => kv.Key);
+            throw new InvalidOperationException(
+                $"Prerequisite cycle detected among skills: [{string.Join(", ", cycleSkills)}]. " +
+                "Remove or restructure prerequisites to eliminate the cycle.");
+        }
     }
 }

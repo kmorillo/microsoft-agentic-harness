@@ -1,16 +1,19 @@
 using Application.AI.Common.Helpers;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Context;
+using Application.AI.Common.Interfaces.Plugins;
 using Application.AI.Common.Interfaces.Resilience;
 using Application.AI.Common.Interfaces.Skills;
 using Application.AI.Common.Interfaces.Tools;
 using Application.AI.Common.Interfaces.Traces;
+using Application.AI.Common.Models;
 using Application.AI.Common.OpenTelemetry.Metrics;
 using Domain.AI.Agents;
 using Domain.AI.Skills;
 using Domain.AI.Telemetry.Conventions;
 using Domain.Common.Config;
 using Domain.Common.Config.AI;
+using Domain.Common.Config.AI.Plugins;
 using Domain.Common.MetaHarness;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -24,6 +27,7 @@ namespace Application.AI.Common.Factories;
 /// Bridges declarative skill definitions (SKILL.md) to runtime <see cref="AgentExecutionContext"/>.
 /// Handles tool provisioning (MCP-first, keyed DI fallback), instruction assembly, middleware
 /// resolution, and wiring of <see cref="AgentSkillsProvider"/> for progressive skill disclosure.
+/// Supports merging multiple skills into a single context with deduplication and AllowedTools filtering.
 /// </summary>
 public class AgentExecutionContextFactory
 {
@@ -70,21 +74,37 @@ public class AgentExecutionContextFactory
     }
 
     /// <summary>
-    /// Maps a skill definition and options to a runtime agent execution context.
-    /// Wires <see cref="AgentSkillsProvider"/> for progressive skill disclosure.
-    /// When an <see cref="IExecutionTraceStore"/> is available, starts a trace run and
-    /// stores the resulting <see cref="ITraceWriter"/> in <c>AdditionalProperties["__traceWriter"]</c>.
+    /// Maps a single skill definition and options to a runtime agent execution context.
+    /// Delegates to the multi-skill overload.
     /// </summary>
-    public async Task<AgentExecutionContext> MapToAgentContextAsync(SkillDefinition skill, SkillAgentOptions options)
+    public Task<AgentExecutionContext> MapToAgentContextAsync(SkillDefinition skill, SkillAgentOptions options)
+        => MapToAgentContextAsync([skill], options);
+
+    /// <summary>
+    /// Maps multiple skill definitions to a single agent execution context by merging
+    /// instructions, tools, and context providers from all skills. The first skill is
+    /// used as the primary for deployment resolution, agent ID, and additional properties.
+    /// </summary>
+    /// <param name="skills">The skill definitions to merge.</param>
+    /// <param name="options">Configuration for resource loading and agent overrides.</param>
+    /// <param name="allowedTools">Optional tool allowlist applied after merge — only tools with matching names are kept.</param>
+    public virtual async Task<AgentExecutionContext> MapToAgentContextAsync(
+        IReadOnlyList<SkillDefinition> skills,
+        SkillAgentOptions options,
+        IReadOnlyList<string>? allowedTools = null)
     {
-        var deploymentName = ResolveDeploymentName(skill, options);
-        var agentName = options.AgentNameOverride ?? ToAgentName(skill.Name);
-        var instruction = BuildInstruction(skill, options);
-        var tools = await BuildToolsAsync(skill, options);
-        var middlewareTypes = ResolveMiddlewareTypes(skill, options);
-        var aiContextProviders = BuildAIContextProviders(skill, options);
+        if (skills.Count == 0)
+            throw new ArgumentException("At least one skill is required.", nameof(skills));
+
+        var primarySkill = skills[0];
+        var deploymentName = ResolveDeploymentName(primarySkill, options);
+        var agentName = options.AgentNameOverride ?? ToAgentName(primarySkill.Name);
+        var instruction = BuildMergedInstruction(skills, options);
+        var tools = await BuildMergedToolsAsync(skills, options, allowedTools);
+        var middlewareTypes = ResolveMiddlewareTypes(primarySkill, options);
+        var aiContextProviders = BuildMergedAIContextProviders(skills, options);
         var frameworkType = options.FrameworkType
-            ?? ResolveFrameworkTypeFromMetadata(skill)
+            ?? ResolveFrameworkTypeFromMetadata(primarySkill)
             ?? _appConfig.CurrentValue.AI?.AgentFramework?.ClientType
             ?? AIAgentFrameworkClientType.AzureOpenAI;
 
@@ -116,7 +136,12 @@ public class AgentExecutionContextFactory
             }
         }
 
-        var additionalProps = BuildAdditionalProperties(skill, options);
+        var additionalProps = BuildAdditionalProperties(primarySkill, options);
+
+        // Compute prerequisite map for middleware consumption
+        var prerequisiteMap = BuildPrerequisiteMap(skills, tools);
+        if (prerequisiteMap.HasAnyPrerequisites)
+            additionalProps[SkillPrerequisiteMap.AdditionalPropertiesKey] = prerequisiteMap;
 
         // Expose candidate skill content provider so evaluation contexts can inject candidate content
         if (_skillContentProvider != null)
@@ -152,10 +177,10 @@ public class AgentExecutionContextFactory
         var context = new AgentExecutionContext
         {
             Name = agentName,
-            Description = skill.Description,
+            Description = primarySkill.Description,
             Instruction = instruction,
             DeploymentName = deploymentName,
-            AgentId = options.AgentId ?? skill.AgentId,
+            AgentId = options.AgentId ?? primarySkill.AgentId,
             AIAgentFrameworkType = frameworkType,
             Tools = tools,
             AIContextProviders = aiContextProviders,
@@ -174,8 +199,8 @@ public class AgentExecutionContextFactory
             _mcpToolProvider != null ? 1 : 0);
 
         _logger.LogInformation(
-            "Mapped skill {SkillId} to agent context {AgentName} with {ToolCount} tools and {ProviderCount} context providers",
-            skill.Id, agentName, tools?.Count ?? 0, aiContextProviders?.Count ?? 0);
+            "Mapped {SkillCount} skill(s) to agent context {AgentName} with {ToolCount} tools and {ProviderCount} context providers",
+            skills.Count, agentName, tools?.Count ?? 0, aiContextProviders?.Count ?? 0);
 
         return context;
     }
@@ -236,12 +261,25 @@ public class AgentExecutionContextFactory
         return _appConfig.CurrentValue.AI?.AgentFramework?.DefaultDeployment ?? "default";
     }
 
-    private static string BuildInstruction(SkillDefinition skill, SkillAgentOptions options)
+    /// <summary>
+    /// Merges instructions from all skills into a single instruction string.
+    /// When multiple skills are present, each skill's instructions are wrapped with a section header.
+    /// A single skill's instructions are used as-is without headers.
+    /// </summary>
+    private static string BuildMergedInstruction(IReadOnlyList<SkillDefinition> skills, SkillAgentOptions options)
     {
         var parts = new List<string>();
 
-        if (!string.IsNullOrEmpty(skill.Instructions))
-            parts.Add(skill.Instructions);
+        foreach (var skill in skills)
+        {
+            if (string.IsNullOrEmpty(skill.Instructions))
+                continue;
+
+            if (skills.Count > 1)
+                parts.Add($"## Skill: {skill.Name}\n\n{skill.Instructions}");
+            else
+                parts.Add(skill.Instructions);
+        }
 
         if (!string.IsNullOrEmpty(options.AdditionalContext))
             parts.Add(options.AdditionalContext);
@@ -249,11 +287,48 @@ public class AgentExecutionContextFactory
         return string.Join("\n\n", parts);
     }
 
-    private IList<AIContextProvider>? BuildAIContextProviders(SkillDefinition skill, SkillAgentOptions options)
+    /// <summary>
+    /// Merges tools from all skills, deduplicates by name (first occurrence wins),
+    /// and applies an optional AllowedTools whitelist.
+    /// </summary>
+    private async Task<List<AITool>> BuildMergedToolsAsync(
+        IReadOnlyList<SkillDefinition> skills,
+        SkillAgentOptions options,
+        IReadOnlyList<string>? allowedTools = null)
+    {
+        var allTools = new List<AITool>();
+
+        foreach (var skill in skills)
+        {
+            var skillTools = await BuildToolsAsync(skill, options);
+            allTools.AddRange(skillTools);
+        }
+
+        // Deduplicate by name across all skills — first occurrence wins
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var deduplicated = allTools.Where(t => seen.Add(t.Name)).ToList();
+
+        // Apply agent-level AllowedTools whitelist
+        if (allowedTools is { Count: > 0 })
+        {
+            var allowed = new HashSet<string>(allowedTools, StringComparer.OrdinalIgnoreCase);
+            deduplicated = deduplicated.Where(t => allowed.Contains(t.Name)).ToList();
+        }
+
+        return deduplicated;
+    }
+
+    /// <summary>
+    /// Unions context providers from all skills. Skill paths are resolved once (from options or config).
+    /// AllowedTools constraints from all skills are merged into a single <see cref="Services.Agent.ToolPermissionFilter"/>.
+    /// </summary>
+    private IList<AIContextProvider>? BuildMergedAIContextProviders(
+        IReadOnlyList<SkillDefinition> skills,
+        SkillAgentOptions options)
     {
         var providers = new List<AIContextProvider>();
 
-        // Resolve skill paths: options override > config default
+        // Resolve skill paths once — they come from options or config, not per-skill
         var skillPaths = ResolveSkillPaths(options);
 
         if (skillPaths.Count > 0)
@@ -262,22 +337,24 @@ public class AgentExecutionContextFactory
                 .UseFileScriptRunner(NoOpScriptRunner);
             foreach (var path in skillPaths)
                 builder.UseFileSkill(path);
-            var skillsProvider = builder.Build();
+            providers.Add(builder.Build());
 
-            providers.Add(skillsProvider);
-
-            _logger.LogDebug("Wired AgentSkillsProvider for agent {SkillId} with {PathCount} path(s)",
-                skill.Id, skillPaths.Count);
+            _logger.LogDebug("Wired AgentSkillsProvider with {PathCount} path(s)", skillPaths.Count);
         }
 
-        // Enforce allowed-tools constraint after all other providers have contributed tools.
-        // ToolPermissionFilter must be last so it operates on the complete tool set.
-        if (skill.AllowedTools?.Count > 0)
-        {
-            providers.Add(new Services.Agent.ToolPermissionFilter(skill.AllowedTools));
+        // Union AllowedTools from all skills for the permission filter
+        var allAllowedTools = skills
+            .Where(s => s.AllowedTools?.Count > 0)
+            .SelectMany(s => s.AllowedTools!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-            _logger.LogDebug("Wired ToolPermissionFilter for agent {SkillId} with {Count} allowed tool(s)",
-                skill.Id, skill.AllowedTools.Count);
+        if (allAllowedTools.Count > 0)
+        {
+            providers.Add(new Services.Agent.ToolPermissionFilter(allAllowedTools));
+
+            _logger.LogDebug("Wired ToolPermissionFilter with {Count} allowed tool(s) from {SkillCount} skill(s)",
+                allAllowedTools.Count, skills.Count);
         }
 
         return providers.Count > 0 ? providers : null;
@@ -298,6 +375,36 @@ public class AgentExecutionContextFactory
     private async Task<List<AITool>> BuildToolsAsync(SkillDefinition skill, SkillAgentOptions options)
     {
         var tools = new List<AITool>();
+
+        // Injected mode: plugin skill with no tool declarations gets all available MCP tools passed through.
+        // Managed mode (has AllowedTools, ToolDeclarations, or pre-created Tools) falls through to the
+        // standard resolution path below.
+        if (skill.Mode == SkillMode.Injected && _mcpToolProvider != null)
+        {
+            var allMcpTools = await _mcpToolProvider.GetAllToolsAsync();
+            foreach (var serverTools in allMcpTools.Values)
+                tools.AddRange(serverTools);
+
+            if (options.AdditionalTools?.Count > 0)
+                tools.AddRange(options.AdditionalTools);
+
+            // Apply plugin-boundary governance filtering after all tools are collected
+            // (including AdditionalTools) so denied tools can't bypass via that path.
+            if (!string.IsNullOrEmpty(skill.PluginSource))
+            {
+                var pluginRegistry = _serviceProvider.GetService<IPluginRegistry>();
+                var loadedPlugin = pluginRegistry?.GetPlugin(skill.PluginSource);
+                if (loadedPlugin != null)
+                    tools = ApplyPluginToolBoundary(tools, loadedPlugin.Declaration);
+            }
+
+            _logger.LogInformation(
+                "Injected mode: skill {SkillId} from plugin {Plugin} received {Count} MCP tools",
+                skill.Id, skill.PluginSource, tools.Count);
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            return tools.Where(t => seen.Add(t.Name)).ToList();
+        }
 
         // 1. Pre-created tools from skill definition
         if (skill.Tools?.Count > 0)
@@ -331,8 +438,30 @@ public class AgentExecutionContextFactory
             tools.AddRange(options.AdditionalTools);
 
         // Deduplicate by name — ToolDeclarations and AllowedTools can resolve the same tool
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        return tools.Where(t => seen.Add(t.Name)).ToList();
+        var seen2 = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return tools.Where(t => seen2.Add(t.Name)).ToList();
+    }
+
+    /// <summary>
+    /// Filters an Injected-mode tool list using plugin boundary declarations.
+    /// AllowedTools is applied first (whitelist), then DeniedTools (blacklist).
+    /// DeniedTools wins when a tool name appears in both lists.
+    /// </summary>
+    private static List<AITool> ApplyPluginToolBoundary(List<AITool> tools, PluginDeclaration declaration)
+    {
+        if (declaration.AllowedTools is { Count: > 0 } allowed)
+        {
+            var allowSet = new HashSet<string>(allowed, StringComparer.OrdinalIgnoreCase);
+            tools = tools.Where(t => allowSet.Contains(t.Name)).ToList();
+        }
+
+        if (declaration.DeniedTools is { Count: > 0 } denied)
+        {
+            var denySet = new HashSet<string>(denied, StringComparer.OrdinalIgnoreCase);
+            tools = tools.Where(t => !denySet.Contains(t.Name)).ToList();
+        }
+
+        return tools;
     }
 
     private async Task<IEnumerable<AITool>?> ProvisionToolAsync(Domain.AI.Tools.ToolDeclaration declaration)
@@ -372,8 +501,13 @@ public class AgentExecutionContextFactory
             }
         }
 
-        if (!declaration.Optional)
-            _logger.LogWarning("Required tool {ToolName} could not be resolved", declaration.Name);
+        if (!declaration.Optional && !declaration.FallbackIsManual)
+        {
+            throw new InvalidOperationException(
+                $"Required tool '{declaration.Name}' could not be resolved. " +
+                "Ensure the tool is registered via keyed DI or available from an MCP server. " +
+                "Mark the tool declaration as Optional = true if the skill can function without it.");
+        }
 
         return null;
     }
@@ -391,8 +525,8 @@ public class AgentExecutionContextFactory
                 return [converted];
         }
 
-        _logger.LogDebug("Resolved tool {ToolName} from keyed DI (no converter available)", toolName);
-        return null;
+        _logger.LogWarning("Tool {ToolName} found in keyed DI but no IToolConverter available to convert it", toolName);
+        return [];
     }
 
     private List<Type>? ResolveMiddlewareTypes(SkillDefinition skill, SkillAgentOptions options)
@@ -439,6 +573,45 @@ public class AgentExecutionContextFactory
         }
 
         return props;
+    }
+
+    /// <summary>
+    /// Builds the prerequisite metadata map from the resolved skills and their tools.
+    /// Maps each skill to its prerequisites, completion tool, and owned tool names.
+    /// </summary>
+    private static SkillPrerequisiteMap BuildPrerequisiteMap(
+        IReadOnlyList<SkillDefinition> skills,
+        IReadOnlyList<AITool> allTools)
+    {
+        var entries = new Dictionary<string, SkillPrerequisiteEntry>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var skill in skills)
+        {
+            // Collect tool names declared by this skill (from all declaration sources)
+            var declaredNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (skill.AllowedTools?.Count > 0)
+                foreach (var t in skill.AllowedTools) declaredNames.Add(t);
+            if (skill.ToolDeclarations?.Count > 0)
+                foreach (var td in skill.ToolDeclarations) declaredNames.Add(td.Name);
+            if (skill.Tools?.Count > 0)
+                foreach (var t in skill.Tools) declaredNames.Add(t.Name);
+
+            // Match against the actual resolved tools
+            var skillToolNames = allTools
+                .Where(t => declaredNames.Contains(t.Name))
+                .Select(t => t.Name)
+                .ToList();
+
+            entries[skill.Id] = new SkillPrerequisiteEntry
+            {
+                SkillId = skill.Id,
+                Prerequisites = skill.Prerequisites.ToList(),
+                CompletionTool = skill.CompletionTool,
+                ToolNames = skillToolNames
+            };
+        }
+
+        return new SkillPrerequisiteMap { Skills = entries };
     }
 
     private static string ToAgentName(string skillName)

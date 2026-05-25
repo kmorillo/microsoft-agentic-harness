@@ -33,7 +33,7 @@ public sealed class AgentDefinitionTests
         def.Version.Should().BeNull();
         def.Author.Should().BeNull();
         def.Tags.Should().BeEmpty();
-        def.Skill.Should().BeNull();
+        def.Skills.Should().NotBeNull().And.BeEmpty();
         def.FilePath.Should().BeEmpty();
         def.BaseDirectory.Should().BeEmpty();
     }
@@ -89,6 +89,7 @@ public sealed class AgentDefinitionTests
     public void AllProperties_SetExplicitly_RetainValues()
     {
         var tags = new List<string> { "research", "ml" };
+        var skills = new List<string> { "ml-research-skill", "data-analysis-skill" };
         var loadedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         var def = new AgentDefinition
@@ -101,7 +102,7 @@ public sealed class AgentDefinitionTests
             Version = "2.0.0",
             Author = "Team A",
             Tags = tags,
-            Skill = "ml-research-skill",
+            Skills = skills,
             FilePath = "/agents/ml-agent/AGENT.md",
             BaseDirectory = "/agents/ml-agent",
             LoadedAt = loadedAt
@@ -115,9 +116,34 @@ public sealed class AgentDefinitionTests
         def.Version.Should().Be("2.0.0");
         def.Author.Should().Be("Team A");
         def.Tags.Should().BeEquivalentTo(tags);
-        def.Skill.Should().Be("ml-research-skill");
+        def.Skills.Should().HaveCount(2);
+        def.Skills[0].Should().Be("ml-research-skill");
+        def.Skills[1].Should().Be("data-analysis-skill");
         def.FilePath.Should().Be("/agents/ml-agent/AGENT.md");
         def.BaseDirectory.Should().Be("/agents/ml-agent");
         def.LoadedAt.Should().Be(loadedAt);
+    }
+
+    [Fact]
+    public void Skills_DefaultsToEmptyList()
+    {
+        var def = new AgentDefinition { Id = "test", Name = "Test" };
+
+        def.Skills.Should().NotBeNull().And.BeEmpty();
+    }
+
+    [Fact]
+    public void Skills_CanBeInitializedWithMultipleSkills()
+    {
+        var def = new AgentDefinition
+        {
+            Id = "test",
+            Name = "Test",
+            Skills = ["research-topic", "make-ppt"]
+        };
+
+        def.Skills.Should().HaveCount(2);
+        def.Skills[0].Should().Be("research-topic");
+        def.Skills[1].Should().Be("make-ppt");
     }
 }

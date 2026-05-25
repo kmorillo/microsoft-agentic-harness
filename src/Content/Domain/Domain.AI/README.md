@@ -299,9 +299,7 @@ Domain.AI/
 │   └── Models/                  # DocumentChunk, CragEvaluation, RagAssembledContext, CitationSpan
 ├── Sandbox/                     # SandboxExecutionRequest/Result, ToolCapability, ToolPermissionProfile, ResourceLimits
 ├── Skills/
-│   ├── SkillDefinition.cs       # 3-tier progressive disclosure model
-│   ├── ContextContract.cs       # Input/output requirements
-│   ├── ContextLoading.cs        # Per-tier loading rules
+│   ├── SkillDefinition.cs       # Skill metadata and configuration model
 │   ├── SkillResource.cs         # Attached file (template, reference, script, asset)
 │   └── SkillAgentOptions.cs     # Skill-to-agent mapping options
 ├── Telemetry/Conventions/       # 15 convention classes (semantic OTel attributes)
@@ -320,8 +318,7 @@ Domain.AI/
 | `AgentExecutionContext` | Runtime config passed to agent factory | AgentFactory.CreateAgentAsync |
 | `SubagentDefinition` | Child agent spec | RunOrchestratedTask handler |
 | **Skills** | | |
-| `SkillDefinition` | 3-tier skill model | ISkillMetadataRegistry, TieredContextAssembler |
-| `ContextContract` | Input/output declaration | Context budget decisions |
+| `SkillDefinition` | Skill metadata and configuration | ISkillMetadataRegistry, AgentExecutionContextFactory |
 | `SkillResource` | Attached file artifact | Skill content providers |
 | **Tools** | | |
 | `ToolDeclaration` | Skill's tool requirement | AgentExecutionContextFactory |

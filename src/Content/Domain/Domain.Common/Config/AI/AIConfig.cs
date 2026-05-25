@@ -8,6 +8,7 @@ using Domain.Common.Config.AI.MCP;
 using Domain.Common.Config.AI.Orchestration;
 using Domain.Common.Config.AI.Permissions;
 using Domain.Common.Config.AI.Planner;
+using Domain.Common.Config.AI.Plugins;
 using Domain.Common.Config.AI.RAG;
 using Domain.Common.Config.AI.Resilience;
 using Domain.Common.Config.AI.Routing;
@@ -40,7 +41,8 @@ namespace Domain.Common.Config.AI;
 /// ├── Learnings         — Cross-session learnings: feedback blending, decay, pruning
 /// ├── Planner           — Plan execution: concurrency, timeouts, persistence
 /// ├── Sandbox           — Sandbox execution: resource limits, isolation, containers
-/// └── ToolOutputCompression — Tool output compression: thresholds, LLM fallback, strategies
+/// ├── ToolOutputCompression — Tool output compression: thresholds, LLM fallback, strategies
+/// └── Plugins              — Local plugin declarations for external skill/MCP discovery
 /// </code>
 /// </para>
 /// </remarks>
@@ -155,4 +157,10 @@ public class AIConfig
     /// and strategy selection for reducing context window consumption.
     /// </summary>
     public ToolOutputCompressionConfig ToolOutputCompression { get; set; } = new();
+
+    /// <summary>
+    /// Plugin system configuration: local plugin declarations for external skill
+    /// and MCP server discovery from external directories.
+    /// </summary>
+    public PluginsConfig Plugins { get; set; } = new();
 }

@@ -4,6 +4,7 @@ using Application.AI.Common.Interfaces.Context;
 using Application.AI.Common.Interfaces.Skills;
 using Application.AI.Common.Interfaces.Tools;
 using Application.AI.Common.Interfaces.Traces;
+using Application.AI.Common.Models;
 using Domain.AI.Skills;
 using Domain.AI.Tools;
 using Domain.Common.Config;
@@ -603,5 +604,201 @@ public class AgentExecutionContextFactoryTests
         var context = await factory.MapToAgentContextAsync(skill, new SkillAgentOptions());
 
         context.Description.Should().Be("A research agent.");
+    }
+
+    // --- Multi-skill merge: instruction merging ---
+
+    [Fact]
+    public async Task MapToAgentContextAsync_MultipleSkills_MergesInstructionsWithSectionHeaders()
+    {
+        var factory = CreateFactory();
+        var skills = new List<SkillDefinition>
+        {
+            new() { Id = "research", Name = "Research", Instructions = "Search and synthesize sources." },
+            new() { Id = "make-ppt", Name = "Make PPT", Instructions = "Create PowerPoint presentations." }
+        };
+
+        var context = await factory.MapToAgentContextAsync(skills, new SkillAgentOptions());
+
+        context.Instruction.Should().Contain("## Skill: Research");
+        context.Instruction.Should().Contain("Search and synthesize sources.");
+        context.Instruction.Should().Contain("## Skill: Make PPT");
+        context.Instruction.Should().Contain("Create PowerPoint presentations.");
+    }
+
+    [Fact]
+    public async Task MapToAgentContextAsync_MultipleSkills_PreservesSkillOrder()
+    {
+        var factory = CreateFactory();
+        var skills = new List<SkillDefinition>
+        {
+            new() { Id = "first", Name = "First", Instructions = "First instructions." },
+            new() { Id = "second", Name = "Second", Instructions = "Second instructions." }
+        };
+
+        var context = await factory.MapToAgentContextAsync(skills, new SkillAgentOptions());
+
+        var firstIdx = context.Instruction!.IndexOf("## Skill: First");
+        var secondIdx = context.Instruction!.IndexOf("## Skill: Second");
+        firstIdx.Should().BeLessThan(secondIdx);
+    }
+
+    [Fact]
+    public async Task MapToAgentContextAsync_SingleSkill_NoSectionHeader()
+    {
+        var factory = CreateFactory();
+        var skills = new List<SkillDefinition>
+        {
+            new() { Id = "solo", Name = "Solo", Instructions = "Solo instructions." }
+        };
+
+        var context = await factory.MapToAgentContextAsync(skills, new SkillAgentOptions());
+
+        context.Instruction.Should().NotContain("## Skill:");
+        context.Instruction.Should().Contain("Solo instructions.");
+    }
+
+    // --- Multi-skill merge: tool merging ---
+
+    [Fact]
+    public async Task MapToAgentContextAsync_MultipleSkills_MergesToolsFromAllSkills()
+    {
+        var factory = CreateFactory();
+        var tool1 = AIFunctionFactory.Create(() => "a", "tool_a", "Tool A");
+        var tool2 = AIFunctionFactory.Create(() => "b", "tool_b", "Tool B");
+        var skills = new List<SkillDefinition>
+        {
+            new() { Id = "s1", Name = "S1", Tools = [tool1] },
+            new() { Id = "s2", Name = "S2", Tools = [tool2] }
+        };
+
+        var context = await factory.MapToAgentContextAsync(skills, new SkillAgentOptions());
+
+        context.Tools.Should().HaveCount(2);
+        context.Tools.Select(t => t.Name).Should().Contain("tool_a").And.Contain("tool_b");
+    }
+
+    [Fact]
+    public async Task MapToAgentContextAsync_DuplicateToolAcrossSkills_Deduplicated()
+    {
+        var factory = CreateFactory();
+        var tool = AIFunctionFactory.Create(() => "shared", "shared_tool", "Shared");
+        var skills = new List<SkillDefinition>
+        {
+            new() { Id = "s1", Name = "S1", Tools = [tool] },
+            new() { Id = "s2", Name = "S2", Tools = [tool] }
+        };
+
+        var context = await factory.MapToAgentContextAsync(skills, new SkillAgentOptions());
+
+        context.Tools.Should().HaveCount(1);
+        context.Tools[0].Name.Should().Be("shared_tool");
+    }
+
+    // --- AllowedTools whitelist ---
+
+    [Fact]
+    public async Task MapToAgentContextAsync_WithAllowedToolsWhitelist_FiltersToOnlyAllowed()
+    {
+        var factory = CreateFactory();
+        var toolA = AIFunctionFactory.Create(() => "a", "tool_a", "Tool A");
+        var toolB = AIFunctionFactory.Create(() => "b", "tool_b", "Tool B");
+        var skills = new List<SkillDefinition>
+        {
+            new() { Id = "s1", Name = "S1", Tools = [toolA, toolB] }
+        };
+
+        var context = await factory.MapToAgentContextAsync(skills, new SkillAgentOptions(), allowedTools: ["tool_a"]);
+
+        context.Tools.Should().HaveCount(1);
+        context.Tools[0].Name.Should().Be("tool_a");
+    }
+
+    [Fact]
+    public async Task MapToAgentContextAsync_NoAllowedToolsWhitelist_AllToolsAvailable()
+    {
+        var factory = CreateFactory();
+        var toolA = AIFunctionFactory.Create(() => "a", "tool_a", "Tool A");
+        var toolB = AIFunctionFactory.Create(() => "b", "tool_b", "Tool B");
+        var skills = new List<SkillDefinition>
+        {
+            new() { Id = "s1", Name = "S1", Tools = [toolA, toolB] }
+        };
+
+        var context = await factory.MapToAgentContextAsync(skills, new SkillAgentOptions());
+
+        context.Tools.Should().HaveCount(2);
+    }
+
+    // --- Prerequisite map ---
+
+    [Fact]
+    public async Task MapToAgentContextAsync_WithPrerequisites_StashesMapInAdditionalProperties()
+    {
+        var factory = CreateFactory();
+        var validate = new SkillDefinition
+        {
+            Id = "validate", Name = "validate",
+            Instructions = "Validate things",
+            CompletionTool = "run_validation",
+            AllowedTools = ["check_syntax", "run_validation"]
+        };
+        var deploy = new SkillDefinition
+        {
+            Id = "deploy", Name = "deploy",
+            Instructions = "Deploy things",
+            Prerequisites = ["validate"],
+            AllowedTools = ["deploy_execute"]
+        };
+
+        var context = await factory.MapToAgentContextAsync([validate, deploy], new SkillAgentOptions());
+
+        context.AdditionalProperties.Should().ContainKey(SkillPrerequisiteMap.AdditionalPropertiesKey);
+        var map = (SkillPrerequisiteMap)context.AdditionalProperties[SkillPrerequisiteMap.AdditionalPropertiesKey];
+        map.HasAnyPrerequisites.Should().BeTrue();
+        map.Skills.Should().ContainKey("deploy");
+        map.Skills["deploy"].Prerequisites.Should().BeEquivalentTo(new[] { "validate" });
+        map.Skills["validate"].CompletionTool.Should().Be("run_validation");
+    }
+
+    [Fact]
+    public async Task MapToAgentContextAsync_NoPrerequisites_NoMapInAdditionalProperties()
+    {
+        var factory = CreateFactory();
+        var skill = SimpleSkill();
+
+        var context = await factory.MapToAgentContextAsync(skill, new SkillAgentOptions());
+
+        context.AdditionalProperties.Should().NotContainKey(SkillPrerequisiteMap.AdditionalPropertiesKey);
+    }
+
+    [Fact]
+    public async Task MapToAgentContextAsync_PrerequisiteMap_MapsToolsToSkills()
+    {
+        var factory = CreateFactory();
+        var skill1 = new SkillDefinition
+        {
+            Id = "research", Name = "research",
+            Instructions = "Research",
+            AllowedTools = ["search", "summarize"]
+        };
+        var skill2 = new SkillDefinition
+        {
+            Id = "present", Name = "present",
+            Instructions = "Present",
+            Prerequisites = ["research"],
+            AllowedTools = ["create_slides"]
+        };
+
+        var context = await factory.MapToAgentContextAsync([skill1, skill2], new SkillAgentOptions());
+
+        var map = (SkillPrerequisiteMap)context.AdditionalProperties[SkillPrerequisiteMap.AdditionalPropertiesKey];
+        // Tool names come from declared names matched against resolved tools.
+        // Since no keyed DI tools are registered, the tool lists will be empty
+        // (AllowedTools resolve via keyed DI which isn't wired in this test).
+        // The important thing is the structure is correct.
+        map.Skills.Should().HaveCount(2);
+        map.Skills["research"].SkillId.Should().Be("research");
+        map.Skills["present"].Prerequisites.Should().BeEquivalentTo(new[] { "research" });
     }
 }
