@@ -54,7 +54,8 @@ public sealed class PluginLoader : IPluginLoader
                 manifest,
                 PluginLoadStatus.Loaded,
                 skillPaths,
-                mcpServerNames);
+                mcpServerNames,
+                declaration);
         }
         catch (Exception ex)
         {
@@ -67,7 +68,8 @@ public sealed class PluginLoader : IPluginLoader
                 manifest,
                 PluginLoadStatus.Failed,
                 [],
-                []);
+                [],
+                declaration);
         }
     }
 

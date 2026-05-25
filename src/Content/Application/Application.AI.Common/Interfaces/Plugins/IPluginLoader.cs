@@ -28,7 +28,8 @@ public record LoadedPlugin(
     PluginManifest Manifest,
     PluginLoadStatus Status,
     IReadOnlyList<string> SkillPaths,
-    IReadOnlyList<string> McpServerNames);
+    IReadOnlyList<string> McpServerNames,
+    PluginDeclaration Declaration);
 
 /// <summary>Plugin load status.</summary>
 public enum PluginLoadStatus
