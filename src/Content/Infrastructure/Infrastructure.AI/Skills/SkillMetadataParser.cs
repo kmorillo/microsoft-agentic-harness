@@ -63,7 +63,7 @@ public sealed class SkillMetadataParser
             FilePath = skillFilePath,
             BaseDirectory = sourcePath,
             LoadedAt = DateTime.UtcNow,
-            IsFullyLoaded = true,
+
             PluginSource = pluginSource,
         };
     }
@@ -123,7 +123,7 @@ public sealed class SkillMetadataParser
             FilePath = skillFilePath,
             BaseDirectory = resolvedSourcePath,
             LoadedAt = DateTime.UtcNow,
-            IsFullyLoaded = true,
+
             PluginSource = pluginSource,
         };
     }

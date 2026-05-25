@@ -57,20 +57,12 @@ public sealed class SkillDefinitionTests
         skill.License.Should().BeNull();
         skill.CompletionTool.Should().BeNull();
         skill.Metadata.Should().BeNull();
-        skill.ContextContract.Should().BeNull();
-        skill.ContextLoading.Should().BeNull();
         skill.Tools.Should().BeNull();
         skill.StateConfiguration.Should().BeNull();
         skill.DecisionFramework.Should().BeNull();
         skill.ToolDeclarations.Should().BeNull();
         skill.Children.Should().BeNull();
         skill.ParentId.Should().BeNull();
-    }
-
-    [Fact]
-    public void IsFullyLoaded_Default_IsFalse()
-    {
-        new SkillDefinition().IsFullyLoaded.Should().BeFalse();
     }
 
     [Fact]

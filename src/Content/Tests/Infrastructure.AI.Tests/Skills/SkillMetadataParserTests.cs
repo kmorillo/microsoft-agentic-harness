@@ -68,7 +68,6 @@ public sealed class SkillMetadataParserTests : IDisposable
         result.AgentId.Should().Be("reviewer-agent");
         result.Tags.Should().BeEquivalentTo(["code", "review", "quality"]);
         result.AllowedTools.Should().BeEquivalentTo(["file_system", "search"]);
-        result.IsFullyLoaded.Should().BeTrue();
     }
 
     [Fact]

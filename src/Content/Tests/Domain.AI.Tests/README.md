@@ -52,12 +52,9 @@ Files mirror the domain model namespace structure: `Agents/`, `Skills/`, `Hooks/
 | `PromptCacheBreakReportTests` | Cache break report model | 3 | Unit |
 | `PromptHashSnapshotTests` | Prompt hash tracking | 3 | Unit |
 | `SystemPromptSectionTests` | System prompt section model | 4 | Unit |
-| `ContextContractTests` | Skill context contract model | 3 | Unit |
-| `ContextLoadingTests` | Context loading strategy model | 3 | Unit |
 | `SkillCacheStatisticsTests` | Cache hit/miss statistics | 3 | Unit |
 | `SkillChangedEventArgsTests` | Skill change notification | 3 | Unit |
-| `SkillDefinitionTests` | Skill defaults, computed properties | 22 | Unit |
-| `SkillDefinitionTokenEstimateTests` | Token estimation for skills | 4 | Unit |
+| `SkillDefinitionTests` | Skill defaults, computed properties | 20 | Unit |
 | `SkillResourceTests` | Skill resource model | 3 | Unit |
 | `SkillSourcesTests` | Skill source types | 3 | Unit |
 | `TelemetryConventionsTests` | OTel attribute naming constants | 5 | Unit |

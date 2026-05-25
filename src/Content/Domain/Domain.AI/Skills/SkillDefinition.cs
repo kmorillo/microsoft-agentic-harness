@@ -194,16 +194,6 @@ public class SkillDefinition
 	public IDictionary<string, object>? Metadata { get; set; }
 
 	/// <summary>
-	/// Context contract defining required/optional inputs, outputs, and dependencies.
-	/// </summary>
-	public ContextContract? ContextContract { get; set; }
-
-	/// <summary>
-	/// Three-tier context loading configuration.
-	/// </summary>
-	public ContextLoading? ContextLoading { get; set; }
-
-	/// <summary>
 	/// Pre-created AI tools available to agents using this skill.
 	/// </summary>
 	public IList<AITool>? Tools { get; set; }
@@ -239,16 +229,6 @@ public class SkillDefinition
 
 	#endregion
 
-	#region Loading State
-
-	/// <summary>
-	/// Whether this skill has been fully loaded (including Instructions).
-	/// When false, only Level 1 metadata is populated.
-	/// </summary>
-	public bool IsFullyLoaded { get; set; }
-
-	#endregion
-
 	#region Computed Properties
 
 	/// <summary>Whether this skill has structured objectives defined.</summary>
@@ -265,8 +245,6 @@ public class SkillDefinition
 	public bool IsChild => !string.IsNullOrEmpty(ParentId);
 	public bool HasTags => Tags.Count > 0;
 	public bool HasToolDeclarations => ToolDeclarations?.Count > 0;
-	public bool HasContextContract => ContextContract is not null && ContextContract.HasAnyRequirements;
-	public bool HasContextLoading => ContextLoading is not null && ContextLoading.HasConfiguration;
 	public bool HasToolRestrictions => AllowedTools?.Count > 0;
 	public bool HasSkillType => !string.IsNullOrEmpty(SkillType);
 	public bool HasModelOverride => !string.IsNullOrEmpty(ModelOverride);
@@ -295,62 +273,6 @@ public class SkillDefinition
 	public int TotalResourceCount =>
 		(Templates?.Count ?? 0) + (References?.Count ?? 0) +
 		(Scripts?.Count ?? 0) + (Assets?.Count ?? 0);
-
-	#endregion
-
-	#region Progressive Disclosure Metrics
-
-	/// <summary>
-	/// Estimated tokens for Level 1 (metadata). Target: ~100 per skill.
-	/// </summary>
-	public int Level1TokenEstimate
-	{
-		get
-		{
-			var count = EstimateTokens(Id) + EstimateTokens(Name) + EstimateTokens(Description);
-			count += EstimateTokens(Category ?? string.Empty);
-			count += Tags.Sum(EstimateTokens);
-			return count;
-		}
-	}
-
-	/// <summary>
-	/// Estimated tokens for Level 2 (instructions + structured sections). Target: ~5,000.
-	/// </summary>
-	public int Level2TokenEstimate =>
-		EstimateTokens(Instructions ?? string.Empty) +
-		EstimateTokens(Objectives ?? string.Empty) +
-		EstimateTokens(TraceFormat ?? string.Empty);
-
-	/// <summary>
-	/// Estimated tokens for loaded Level 3 resources (excludes scripts).
-	/// </summary>
-	public int Level3LoadedTokenEstimate
-	{
-		get
-		{
-			var count = 0;
-			foreach (var t in Templates.Where(r => r.IsLoaded))
-				count += EstimateTokens(t.Content ?? string.Empty);
-			foreach (var r in References.Where(r => r.IsLoaded))
-				count += EstimateTokens(r.Content ?? string.Empty);
-			foreach (var a in Assets.Where(r => r.IsLoaded))
-				count += EstimateTokens(a.Content ?? string.Empty);
-			return count;
-		}
-	}
-
-	/// <summary>
-	/// Total estimated tokens currently loaded across all levels.
-	/// </summary>
-	public int TotalLoadedTokenEstimate => Level1TokenEstimate + Level2TokenEstimate + Level3LoadedTokenEstimate;
-
-	/// <summary>
-	/// Whether Level 2 exceeds the recommended 5,000 token budget.
-	/// </summary>
-	public bool IsLevel2Oversized => Level2TokenEstimate > 5000;
-
-	private static int EstimateTokens(string text) => string.IsNullOrEmpty(text) ? 0 : (text.Length + 3) / 4;
 
 	#endregion
 }
