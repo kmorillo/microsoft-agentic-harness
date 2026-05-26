@@ -16,7 +16,7 @@ This project depends on Application.Common (pipeline behaviors, logging), Domain
                     └────────────┬────────────┘
                                  │
                     ┌────────────▼────────────┐
-                    │     Infrastructure.AI    │  (implements the 51 interfaces defined here)
+                    │     Infrastructure.AI    │  (implements the 58+ interfaces defined here)
                     └────────────┬────────────┘
                                  │
         ┌────────────────────────┼──────────────────────────┐
@@ -34,7 +34,7 @@ This project depends on Application.Common (pipeline behaviors, logging), Domain
             └───────────────┘  └───────────────┘  └─────────────────┘
 ```
 
-This is an Application layer project, so it defines interfaces (contracts) and orchestration logic but never touches external services directly. It cannot reference HTTP clients, database connections, or AI SDK implementations -- only their abstractions. The 51 interfaces it defines are implemented by Infrastructure projects.
+This is an Application layer project, so it defines interfaces (contracts) and orchestration logic but never touches external services directly. It cannot reference HTTP clients, database connections, or AI SDK implementations -- only their abstractions. The 58+ interfaces it defines are implemented by Infrastructure projects.
 
 ## Key Concepts
 
@@ -53,7 +53,8 @@ Request enters
               → PromptInjectionBehavior Scans for injection attacks
                 → HookBehavior     Fires pre/post lifecycle hooks
                   → RetrievalAuditBehavior  Records RAG retrieval metrics
-                    → [Generic behaviors from Application.Common]
+                    → ToolOutputCompressionBehavior  Compresses large tool outputs by content type
+                      → [Generic behaviors from Application.Common]
                       → Handler
 ```
 
@@ -83,11 +84,16 @@ Two factories handle the complex construction of agent instances:
 2. Creates a chat client via `IChatClientFactory`
 3. Builds the middleware pipeline (OpenTelemetry, function invocation, observability, tool diagnostics, distributed cache)
 4. Wires tools and context providers
-5. Returns a ready-to-use agent
+5. Optionally wires `SkillPrerequisiteMiddleware` for multi-skill prerequisite enforcement
+6. Returns a ready-to-use agent
 
 ```csharp
 // Creating an agent from a skill:
 var agent = await agentFactory.CreateAgentFromSkillAsync("agents/research");
+
+// Multi-skill agent with merged instructions, tools, and prerequisite ordering:
+var agent = await agentFactory.CreateAgentFromSkillsAsync(
+    new[] { "agents/research", "agents/analysis" });
 
 // Batch creation by category:
 var analysts = await agentFactory.CreateAgentsByCategoryAsync("analysis");
@@ -96,7 +102,12 @@ var analysts = await agentFactory.CreateAgentsByCategoryAsync("analysis");
 var (agent, agentId) = await agentFactory.CreatePersistentAgentAsync(context);
 ```
 
-**AgentExecutionContextFactory** maps a `SkillDefinition` to a runtime `AgentExecutionContext`. It resolves tools (MCP-first, then keyed DI fallback), assembles instructions, configures middleware, and sets deployment parameters.
+**AgentExecutionContextFactory** maps a `SkillDefinition` to a runtime `AgentExecutionContext`. It resolves tools (MCP-first, then keyed DI fallback), assembles instructions, configures middleware, and sets deployment parameters. For multi-skill agents it also:
+- Merges instructions and tool sets across skills
+- Supports dual skill mode (Managed uses ToolDeclarations, Injected gets all MCP tools)
+- Applies plugin-boundary governance filtering (AllowedTools/DeniedTools from PluginDeclaration)
+- Computes the `SkillPrerequisiteMap` for prerequisite middleware
+- Enforces required tool resolution (throws for unresolvable required tools)
 
 ### Context Budget Tracking
 
@@ -144,7 +155,7 @@ if (result.IsBlocked)
 
 Output screening happens at the agent orchestration loop level (after the LLM responds), since the pipeline behavior only has access to the typed *request*, not the generic response.
 
-### The 51 Interfaces
+### The 58+ Interfaces
 
 The interface surface defines the contracts that Infrastructure must implement:
 
@@ -154,6 +165,7 @@ The interface surface defines the contracts that Infrastructure must implement:
 | **Agents** | `IAgentMailbox`, `ISubagentProfileRegistry`, `ISubagentToolResolver` | Inter-agent messaging, subagent orchestration |
 | **Attestation** | `IAttestationService`, `IAttestationStore` | HMAC-signed execution attestations and audit persistence |
 | **Compaction** | `IContextCompactionService`, `IAutoCompactStateMachine`, `ICompactionStrategyExecutor` | Context window reduction when budget exhausted |
+| **Compression** | `ICompressionStrategy`, `IToolOutputCompressor` | Tool output compression with strategy dispatch |
 | **Config** | `IConfigDiscoveryService` | Filesystem config file discovery |
 | **Connectors** | `IConnectorClient`, `IConnectorClientFactory`, `ConnectorToolAdapter` | External service integrations as tools |
 | **Context** | `IContextBudgetTracker`, `ITieredContextAssembler`, `IToolResultStore` | Token budget and progressive skill loading |
@@ -164,11 +176,12 @@ The interface surface defines the contracts that Infrastructure must implement:
 | **MetaHarness** | `IEvaluationService`, `IHarnessProposer`, `ISnapshotBuilder` | Automated harness optimization |
 | **Permissions** | `IDenialTracker`, `IPatternMatcher`, `IPermissionRuleProvider`, `ISafetyGateRegistry` | Tool access control |
 | **Planner** | `IPlanExecutor`, `IPlanValidator`, `IPlanStateStore`, `IPlanProgressNotifier`, `IPlanStepExecutor`, `IPlanGenerator` | DAG-based plan execution, validation, persistence, and generation |
+| **Plugins** | `IPluginLoader`, `IPluginManifestReader`, `IPluginRegistry` | Local plugin loading, manifest reading, and tracking |
 | **Prompts** | `ISystemPromptComposer`, `IPromptSectionProvider`, `IPromptSectionCache`, `IPromptCacheTracker` | System prompt assembly and caching |
 | **RAG** | `IRagOrchestrator`, `IHybridRetriever`, `IVectorStore`, `IReranker`, `ICragEvaluator`, etc. | Full RAG pipeline (14 interfaces) |
 | **Safety** | `ITextContentSafetyService` | Content screening |
 | **Sandbox** | `ISandboxExecutor`, `ICapabilityEnforcer`, `IProcessResourceLimiter` | Sandboxed tool execution with capability-based permissions |
-| **Skills** | `ISkillContentProvider` | Skill resource loading |
+| **Skills** | `ISkillContentProvider`, `ISkillCompletionTracker` | Skill resource loading, conversation-scoped prerequisite tracking |
 | **Tools** | `ITool`, `IToolConverter`, `IToolExecutionStrategy`, `IToolConcurrencyClassifier`, `IFileSystemService` | Tool abstraction and execution |
 | **Traces** | `IExecutionTraceStore`, `ITraceWriter` | Execution trace persistence |
 
@@ -187,7 +200,7 @@ Eleven metric instruments track agent operations across the system. All use the 
 
 ```
 Application.AI.Common/
-├── DependencyInjection.cs             # Registers 9 behaviors, factories, services
+├── DependencyInjection.cs             # Registers 12 behaviors, factories, services
 ├── Exceptions/                        # 8 agent-specific exceptions
 │   ├── AgentExecutionException.cs     # Agent turn failure
 │   ├── AttackDetectionException.cs    # Prompt injection detected
@@ -204,7 +217,7 @@ Application.AI.Common/
 ├── Helpers/
 │   ├── PromptTemplateHelper.cs        # Mustache-style {{variable}} substitution
 │   └── TokenEstimationHelper.cs       # Approximate token counting
-├── Interfaces/                        # 51 contracts across 18 subdirectories
+├── Interfaces/                        # 160+ contracts across 25+ subdirectories
 │   ├── Attestation/
 │   │   ├── IAttestationService.cs     # HMAC sign/verify tool execution attestations
 │   │   └── IAttestationStore.cs       # Persist/retrieve attestations for audit trail
@@ -219,7 +232,16 @@ Application.AI.Common/
 │   │   ├── ISandboxExecutor.cs        # Isolated tool execution (keyed by SandboxIsolationLevel)
 │   │   ├── ICapabilityEnforcer.cs     # Three-phase capability permission resolution
 │   │   └── IProcessResourceLimiter.cs # OS-level process resource limits (Job Objects)
-│   ├── ... (15 other subdirectories)
+│   ├── Compression/
+│   │   ├── ICompressionStrategy.cs    # Strategy for content-type-specific compression
+│   │   └── IToolOutputCompressor.cs   # Orchestrates detection + strategy dispatch
+│   ├── Plugins/
+│   │   ├── IPluginLoader.cs           # Load plugins from local directories
+│   │   ├── IPluginManifestReader.cs   # Read plugin.json manifests
+│   │   └── IPluginRegistry.cs         # Track loaded plugins
+│   ├── Skills/
+│   │   └── ISkillCompletionTracker.cs # Conversation-scoped prerequisite tracking
+│   ├── ... (19 other subdirectories)
 ├── MediatRBehaviors/
 │   ├── AgentContextPropagationBehavior.cs  # Sets scoped agent identity
 │   ├── AuditTrailBehavior.cs          # Records who/what/when/outcome
@@ -227,14 +249,19 @@ Application.AI.Common/
 │   ├── GovernancePolicyBehavior.cs    # Policy evaluation gate
 │   ├── HookBehavior.cs               # Pre/post lifecycle hooks
 │   ├── PromptInjectionBehavior.cs     # Injection attack detection
+│   ├── ResponseSanitizationBehavior.cs # Sanitizes response content
 │   ├── RetrievalAuditBehavior.cs      # RAG retrieval metrics
+│   ├── TokenBudgetBehavior.cs         # Token budget enforcement
+│   ├── ToolOutputCompressionBehavior.cs # Compresses large tool outputs by content type
 │   ├── ToolPermissionBehavior.cs      # 3-phase permission check
 │   └── UnhandledExceptionBehavior.cs  # Outer safety net
 ├── Middleware/
 │   ├── ObservabilityMiddleware.cs     # Chat client middleware: tracks LLM calls
+│   ├── SkillPrerequisiteMiddleware.cs # Enforces skill prerequisite ordering per-turn
 │   └── ToolDiagnosticsMiddleware.cs   # Chat client middleware: logs tool usage
 ├── Models/
 │   ├── Context/ContextModels.cs       # Token allocation, budget status
+│   ├── SkillPrerequisiteMap.cs        # Prerequisite graph with cycle detection
 │   └── Tools/                         # ToolExecutionProgress, Request, Result
 ├── OpenTelemetry/
 │   ├── AiTelemetryConfigurator.cs     # Registers AI SDK OTel sources
@@ -249,6 +276,8 @@ Application.AI.Common/
     │   ├── ContextBudgetTracker.cs    # Token budget management
     │   └── TieredContextAssembler.cs  # Progressive skill tier loading
     ├── LlmUsageCapture.cs             # Per-turn token/cost accumulator
+    ├── Skills/
+    │   └── InMemorySkillCompletionTracker.cs  # In-memory prerequisite completion tracking
     └── Tools/
         ├── AIToolConverter.cs         # ITool → AIFunction bridge
         └── ToolDescriptionBuilder.cs  # Generates LLM-friendly tool descriptions
@@ -288,6 +317,17 @@ Application.AI.Common/
 | **Attestation** | | |
 | `IAttestationService` | HMAC sign/verify execution results | Sandbox executors, ToolUseStepExecutor |
 | `IAttestationStore` | Attestation audit trail persistence | PlanExecutor, audit queries |
+| **Compression** | | |
+| `ToolOutputCompressionBehavior<,>` | Compresses large tool outputs by content type | All agent-scoped requests |
+| `ICompressionStrategy` | Content-type-specific compression strategy | ToolOutputCompressor |
+| `IToolOutputCompressor` | Orchestrates content detection + strategy dispatch | ToolOutputCompressionBehavior |
+| **Plugins** | | |
+| `IPluginRegistry` | Track and lookup loaded plugins | AgentExecutionContextFactory |
+| `IPluginLoader` | Load plugins from local directories | Startup, plugin discovery |
+| **Skills (Prerequisite)** | | |
+| `SkillPrerequisiteMiddleware` | Enforces skill prerequisite ordering per-turn | DelegatingChatClient pipeline |
+| `ISkillCompletionTracker` | Conversation-scoped prerequisite tracking | SkillPrerequisiteMiddleware |
+| `SkillPrerequisiteMap` | Prerequisite graph with topological cycle detection | AgentFactory, middleware |
 
 ## Common Tasks
 

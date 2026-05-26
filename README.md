@@ -42,10 +42,10 @@ At its core, the harness runs a conversation loop. A user sends a message. The a
 This sounds simple, but the devil is in the execution. Every turn flows through a CQRS pipeline:
 
 ```
-Request --> Validation --> Caching --> Performance Logging --> Handler --> Response
+Request --> Validation --> Caching --> Performance Logging --> Tool Output Compression --> Handler --> Response
 ```
 
-Validation catches malformed requests before they reach the LLM. Performance logging flags turns that take too long. The handler itself is where the actual AI interaction happens — sending messages to Azure OpenAI (or AI Foundry, or a Semantic Kernel backend), processing tool calls, and managing conversation state.
+Validation catches malformed requests before they reach the LLM. Performance logging flags turns that take too long. Tool output compression detects content type (JSON, structured data, free text) and applies strategy-specific compression — array pruning, deduplication, sentence-boundary truncation — with an LLM fallback for content that exceeds token thresholds. The handler itself is where the actual AI interaction happens — sending messages to Azure OpenAI (or AI Foundry, or a Semantic Kernel backend), processing tool calls, and managing conversation state.
 
 Three commands drive everything:
 
@@ -70,6 +70,10 @@ Skills are declared in `SKILL.md` files — plain Markdown that humans can read 
 
 The `IContextBudgetTracker` watches over all of this, tracking how many tokens are allocated to the system prompt, loaded skills, tool schemas, and conversation history. When budget runs low, the `ITieredContextAssembler` knows to stop loading Tier 2 content and fall back to Index Cards.
 
+**Multi-Skill Agents.** An agent isn't limited to a single skill. `AgentDefinition.Skills` accepts a list — instructions from all active skills are merged into the system prompt, and their tool declarations are combined with namespace prefixes to avoid collisions. Each skill can define an `AllowedTools` whitelist to restrict which tools it exposes to the agent, keeping the tool surface intentional rather than open-ended.
+
+**Skill Prerequisites.** Skills can declare execution ordering through `prerequisites` (a list of skill IDs) and a `completion_tool` in the SKILL.md frontmatter. The `SkillPrerequisiteMiddleware` — a `DelegatingChatClient` — enforces this ordering per-turn: if skill B depends on skill A, the agent cannot invoke skill B's tools until skill A's completion tool has been called. A conversation-scoped `ISkillCompletionTracker` tracks which skills have completed, and cycle detection via topological sort prevents circular dependency declarations from deadlocking the agent.
+
 ### Tools: What Agents Can Do
 
 Tools are the agent's hands. The harness treats them as first-class citizens with their own lifecycle:
@@ -93,6 +97,16 @@ As an **MCP Client**, the harness discovers tools hosted on external MCP servers
 The Agent-to-Agent protocol handles distributed collaboration. Each agent publishes an Agent Card — a JSON document describing its name, capabilities, and endpoint URL — at a well-known location (`/.well-known/agent.json`). When the orchestrator needs to delegate work, it discovers available agents by querying these endpoints, selects the right one for the job, and sends it a task over HTTP.
 
 This is how the multi-agent orchestration actually works in practice. The orchestrator doesn't have hardcoded knowledge of its sub-agents. It discovers them, reads their capabilities, and makes routing decisions dynamically.
+
+### Plugins: Extending the Skill Surface
+
+The plugin system lets you extend the harness without modifying core code. Declare plugins in `appsettings.json` pointing at local directories, and the harness handles the rest.
+
+Each plugin directory contains a `plugin.json` manifest describing the skills it provides, any MCP servers it exposes, and its governance constraints. At startup, `PluginManifestReader` reads and validates the manifest, `PluginLoader` wires the declared skills and MCP servers into the harness, and `PluginRegistry` tracks loaded state for runtime introspection. Path containment checks prevent directory traversal — a plugin can't escape its declared root.
+
+Skills operate in one of two modes. **Managed** skills are harness-native: they declare explicit tool dependencies, and the harness resolves them through keyed DI like any built-in skill. **Injected** skills come from plugins and pass all their MCP tools straight through — the harness doesn't curate the tool surface, it just forwards what the plugin provides. The `SkillMode` (a computed property on `SkillDefinition`) determines which path a skill takes.
+
+Plugin-boundary governance adds two layers of control. At **provisioning time**, each `PluginDeclaration` can specify `AllowedTools` and `DeniedTools` lists, filtering the tool surface before the agent ever sees it. At **execution time**, `PluginPermissionRuleProvider` emits `ToolPermissionRule` entries into the three-phase permission resolver based on the plugin's declared `AutonomyLevel`. Deny always wins over allow, and denied tools are bypass-immune — no escalation path can override them.
 
 ### Observability: Seeing Inside the Black Box
 
@@ -188,7 +202,9 @@ Production agents need guardrails that go beyond content safety filters. The har
 
 **Resilience & Circuit Breaker** uses Polly-based circuit breakers with retry queues and provider fallback chains. Each provider maintains a health state (`Healthy`, `Degraded`, `Unhealthy`, `Exhausted`), and a capability registry enables automatic failover to alternative providers when the primary degrades.
 
-All five systems emit OpenTelemetry metrics and are wired into the AG-UI event stream for live frontend visualization.
+**Plugin-Boundary Governance** enforces security constraints on externally-loaded plugins. `PluginPermissionRuleProvider` reads `AllowedTools`/`DeniedTools` from each `PluginDeclaration` and emits `ToolPermissionRule` entries into the three-phase permission resolver. The plugin's `AutonomyLevel` (a string in config, parsed to enum at the Application layer) maps to permission behavior — a `Manual` plugin requires human approval for every tool call, while an `Autonomous` plugin executes freely within its allowed tool set. Deny rules are bypass-immune: once a tool is denied at the plugin boundary, no escalation or override can grant access.
+
+All six systems emit OpenTelemetry metrics and are wired into the AG-UI event stream for live frontend visualization.
 
 ### Knowledge Graph
 
@@ -233,6 +249,7 @@ The project follows Clean Architecture with strict dependency inversion. Each la
 │                        Application Layer                           │
 │  CQRS Commands/Handlers  ·  Agent Factories  ·  Context Budget    │
 │  Skill Loader  ·  Tool Converter  ·  FluentValidation Pipeline    │
+│  Plugin Interfaces  ·  Skill Prerequisites  ·  Compression        │
 ├─────────────────────────────────────────────────────────────────────┤
 │                       Infrastructure Layer                         │
 │  Azure OpenAI / AI Foundry  ·  MCP Client  ·  Connectors          │
@@ -241,12 +258,15 @@ The project follows Clean Architecture with strict dependency inversion. Each la
 │  RAG (hybrid retrieval, CRAG, complexity routing, multi-hop)       │
 │  Knowledge Graph (Neo4j/PostgreSQL, Leiden, cross-session memory)  │
 │  Governance (drift, escalation, autonomy, resilience, learnings)   │
+│  Plugin System (loader, manifest reader, registry)                 │
+│  Tool Output Compression (content detection, strategy dispatch)    │
 ├─────────────────────────────────────────────────────────────────────┤
 │                          Domain Layer                              │
 │  Agent Manifests  ·  Skill Definitions  ·  Tool Declarations      │
 │  Plan Graphs  ·  Sandbox Capabilities  ·  Attestation Models      │
 │  A2A Agent Cards  ·  Workflow State  ·  Configuration Hierarchy    │
 │  Knowledge Graph Models  ·  Governance Policies  ·  RAG Models     │
+│  Plugin Config  ·  Compression Models  ·  Skill Mode               │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -259,12 +279,14 @@ src/
 ├── Content/Domain/
 │   ├── Domain.Common/
 │   │   ├── Config/AI/                  AppConfig, AIConfig, A2AConfig, AIFoundryConfig
+│   │   ├── Config/AI/Plugins/          PluginDeclaration, PluginManifest, PluginsConfig
 │   │   ├── Constants/                  ClaimConstants, PolicyNameConstants
 │   │   └── Workflow/                   IStateManager, WorkflowState
 │   └── Domain.AI/
 │       ├── Agents/                     AgentManifest, AgentExecutionContext, SkillReference
-│       ├── Skills/                     SkillDefinition, ContextContract, ContextLoading
+│       ├── Skills/                     SkillDefinition, SkillMode (Managed/Injected)
 │       ├── Tools/                      ToolDeclaration
+│       ├── Compression/               ToolOutputCategory, CompressionResult
 │       ├── A2A/                        AgentCard
 │       ├── Planner/                    PlanGraph, PlanStep, PlanEdge, StepType, ErrorRecovery
 │       ├── Sandbox/                    SandboxExecutionRequest, ToolCapability, ResourceLimits
@@ -284,6 +306,10 @@ src/
 │   ├── Application.AI.Common/
 │   │   ├── Factories/                  AgentFactory, AgentExecutionContextFactory
 │   │   ├── Interfaces/                 IAgentFactory, IChatClientFactory, ISkillLoaderService
+│   │   ├── Interfaces/Plugins/         IPluginLoader, IPluginManifestReader, IPluginRegistry
+│   │   ├── Interfaces/Skills/          ISkillCompletionTracker
+│   │   ├── Interfaces/Compression/     ICompressionStrategy, IToolOutputCompressor
+│   │   ├── Middleware/                 SkillPrerequisiteMiddleware
 │   │   ├── Interfaces/RAG/            IVectorStore, IReranker, IRagOrchestrator + 19 more
 │   │   ├── Interfaces/KnowledgeGraph/  IKnowledgeGraphStore, IKnowledgeMemory, IFeedbackStore + 14 more
 │   │   ├── Interfaces/Governance/      IAutonomyTierResolver, ISafetyGateRegistry
@@ -305,6 +331,8 @@ src/
 │   │   ├── Sandbox/                    ProcessSandboxExecutor, DockerSandboxExecutor, Job Objects
 │   │   ├── Attestation/               HmacAttestationService, EfCoreAttestationStore
 │   │   ├── Persistence/               PlannerDbContext, EF Core entities, SQLite migrations
+│   │   ├── Plugins/                    PluginLoader, PluginManifestReader, PluginRegistry
+│   │   ├── Compression/               ContentTypeDetector, strategies, ToolOutputCompressor
 │   │   └── ...                        ChatClientFactory, A2AAgentHost, state management
 │   ├── Infrastructure.AI.Connectors/   Unified external API adapters with ITool bridge
 │   ├── Infrastructure.AI.Governance/   Autonomy tiers, response sanitizers, AGT adapters
@@ -512,6 +540,8 @@ The ConsoleUI launches an interactive [Spectre.Console](https://spectreconsole.n
 | `AppConfig.AI.Rag.Faithfulness` | Answer grounding: evaluation model, hallucination thresholds, citation requirements |
 | `AppConfig.AI.Rag.CrossSessionMemory` | Memory persistence: decay rates, retention policies, sync intervals |
 | `AppConfig.AI.Rag.GraphDatabase` | Graph backend: provider (InMemory/Neo4j/PostgreSQL), connection string, community level |
+| `AppConfig.AI.Plugins` | Plugin declarations: `Declarations[]` (name, local path, AllowedTools, DeniedTools, AutonomyLevel) |
+| `AppConfig.AI.ToolOutputCompression` | Compression: `Enabled`, `DefaultTokenThreshold`, per-category thresholds |
 | `AppConfig.AI.Permissions` | Autonomy tier policies: per-tier allowed operations, escalation triggers |
 | `AppConfig.AI.Orchestration` | Multi-agent: capability match weights, streaming execution, subagent config |
 | `MetaHarness` | Optimization settings: `EvalTasksPath`, `SeedCandidatePath`, `MaxIterations`, `ProposerModel`, `EvaluatorModel`, `ScoreImprovementThreshold`, `RegressionSuiteThreshold` (0.8), `ConsecutiveNoImprovementLimit` (5) |

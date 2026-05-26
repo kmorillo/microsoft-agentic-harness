@@ -6,7 +6,7 @@
 - **Key insight:** Observability isn't optional for production agents. Without it, debugging is guesswork. The harness creates a trace for every turn, tags it with agent name, turn index, and tool calls, and exports it to Jaeger/Prometheus. The meta-harness goes further — it uses these traces to automatically propose improvements to the agent's own skill files.
 - **"Why should I care?":** When you tell your AI coding tool "my agent is giving bad answers," the first question should be "what do the traces show?" Understanding observability means you can pinpoint *exactly* where in the pipeline things went wrong, instead of guessing and restarting.
 
-## Screens (5)
+## Screens (6)
 
 ### Screen 1: The Observability Stack (Pattern Cards)
 Show the three pillars as cards:
@@ -23,8 +23,13 @@ Flow animation showing a message that triggers content safety:
 3. Pipeline halts → Agent never sees the message
 4. Then a clean message goes through → ContentSafety approves → continues to handler
 
+### Screen 2b: Tool Output Compression (Visual)
+Large tool outputs (file reads, API responses, search results) can flood the context window. The harness includes a **ToolOutputCompressionBehavior** — a MediatR pipeline behavior that automatically compresses oversized tool results before they reach the agent. Compression strategies are selected by content type (structured data, free text, code, etc.) and applied transparently. This prevents context overflow and keeps the agent focused on relevant information rather than drowning in raw output.
+
+Visual: a funnel where raw tool output (large block) enters the top and a compressed summary exits the bottom, with a label showing "ToolOutputCompressionBehavior" on the funnel. Content-type badges (JSON, text, code) route to different compression strategies.
+
 ### Screen 3: The Permission System (Code Translation)
-Code↔English of the 3-phase permission resolution: Deny gates → Ask rules → Allow rules. Show SafetyGate and ToolPermissionRule.
+Code↔English of the 3-phase permission resolution: Deny gates → Ask rules → Allow rules. Show SafetyGate and ToolPermissionRule. Now includes `PluginDeclaration` as a rule source — plugins can emit bypass-immune deny rules at high priority, enforcing hard governance boundaries that no user confirmation can override.
 
 ### Screen 4: Meta-Harness — The Agent That Improves Itself
 Explanation of the optimization loop: trace history → proposer agent reads traces → proposes skill file changes → evaluator runs tasks → scores → keeps best candidate. This is the "whoa" moment of the course.
@@ -79,10 +84,13 @@ public sealed record ToolPermissionRule
     public required string ToolName { get; init; }
     public string? OperationPattern { get; init; }
     public required PermissionBehaviorType Behavior { get; init; }
-    public required PermissionRuleSource Source { get; init; }
+    public required PermissionRuleSource Source { get; init; }  // Now includes PluginDeclaration
     public int Priority { get; init; }
+    public bool IsBypassImmune { get; init; }  // Plugin deny rules use this
 }
 ```
+
+Note: `PermissionRuleSource` now includes `PluginDeclaration` — plugins emit deny rules at high priority with `IsBypassImmune = true`, meaning no override or user confirmation can bypass them. This is how plugin-boundary governance enforces hard limits on what plugin tools can do.
 
 ### Snippet 3: Meta-harness optimization loop
 ```csharp
@@ -130,8 +138,8 @@ public static class OrchestrationMetrics
 - [x] **Data flow animation** — content safety screening: 2 scenarios (blocked vs. approved), 8 steps total
 - [x] **Code↔English translation** — ContentSafetyBehavior and SafetyGate/ToolPermissionRule
 - [x] **Callout box** — "The meta-harness is an agent that optimizes other agents. Let that sink in."
-- [x] **Quiz** — 5 questions (final quiz): (1) Scenario: agent response is slow — which observability tool do you check first? (2) What happens when ContentSafety flags a message? (3) What are safety gates and why are they bypass-immune? (4) How does the meta-harness decide if a proposed change is better? (5) Trace a message through all 6 modules — put the pipeline steps in order (drag-and-drop)
-- [x] **Glossary tooltips** — OpenTelemetry, trace, span, metric, histogram, counter, Jaeger, Prometheus, content safety, prompt injection, safety gate, bypass-immune, meta-harness, proposer, evaluator, benchmark, causal trace, regression suite
+- [x] **Quiz** — 7 questions (final quiz): (1) Scenario: agent response is slow — which observability tool do you check first? (2) What happens when ContentSafety flags a message? (3) What are safety gates and why are they bypass-immune? (4) How does the meta-harness decide if a proposed change is better? (5) Trace a message through all 6 modules — put the pipeline steps in order (drag-and-drop) (6) A plugin declares `DeniedTools: ["bash"]` — can a user override this in auto-approve mode? (answer: No — plugin deny rules are bypass-immune) (7) What does ToolOutputCompressionBehavior do? (answer: detects content type, applies strategy-specific compression to large tool outputs, prevents context overflow)
+- [x] **Glossary tooltips** — OpenTelemetry, trace, span, metric, histogram, counter, Jaeger, Prometheus, content safety, prompt injection, safety gate, bypass-immune, meta-harness, proposer, evaluator, benchmark, causal trace, regression suite, plugin permission rules, PluginDeclaration source, tool output compression, AutonomyLevel
 
 ## Reference Files to Read
 - `references/content-philosophy.md` → all sections

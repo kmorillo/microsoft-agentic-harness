@@ -3,13 +3,13 @@
 ## Teaching Arc
 - **Metaphor:** A Swiss Army knife with a safety lock — each blade (tool) is sharp and useful, but there's a mechanism that prevents you from opening the dangerous ones without explicit permission. The MCP protocol is like a universal adapter that lets you snap in new blades from other manufacturers.
 - **Opening hook:** "Skills tell the agent what it knows. Tools are what it can actually *do*. But giving an AI agent unrestricted access to your file system, APIs, and databases is a terrible idea — so the harness puts every tool behind a permission system and a security sandbox."
-- **Key insight:** Tools are registered with string keys in the dependency injection container and resolved lazily — the agent only gets the tools its current skill declares. MCP extends this by letting external servers contribute tools at runtime. A2A goes further — instead of borrowing tools, agents can delegate entire tasks to other agents.
+- **Key insight:** Tools are registered with string keys in the dependency injection container and resolved lazily — the agent only gets the tools its current skill declares. MCP extends this by letting external servers contribute tools at runtime. The plugin system goes further — local plugins bundle skills and MCP servers together, with governance filters (AllowedTools/DeniedTools) controlling which plugin tools reach the agent. Managed skills resolve tools individually; Injected skills get all tools from their plugin's MCP servers. A2A goes even further — instead of borrowing tools, agents can delegate entire tasks to other agents.
 - **"Why should I care?":** When you're building with AI agents, tool selection is everything. Too many tools and the agent gets confused. Too few and it can't do the job. Understanding keyed DI and MCP means you can precisely control what your agent can and can't do — and extend its capabilities by plugging into external services.
 
 ## Screens (5)
 
 ### Screen 1: How Tools Get to the Agent (Flow Animation)
-Flow animation: Skill declares tool names → AgentExecutionContextFactory resolves tools → tries MCP first → falls back to keyed DI → converts ITool to AITool → agent receives tool list.
+Flow animation: Skill declares tools → Factory checks skill mode → If **Managed**: resolve each tool via MCP first, fall back to keyed DI → If **Injected**: get ALL MCP tools from plugin's servers → Apply plugin governance filters (AllowedTools/DeniedTools) → Convert to AITool → Agent receives filtered tool list.
 
 ### Screen 2: The Tool Resolution Chain (Code Translation)
 Code↔English of the tool provisioning logic showing MCP-first, keyed DI fallback.
@@ -17,7 +17,7 @@ Code↔English of the tool provisioning logic showing MCP-first, keyed DI fallba
 ### Screen 3: The Sandbox — FileSystemService (Code Translation)
 Show how FileSystemService restricts file operations to allowed base paths. Code↔English translation.
 
-### Screen 4: MCP — Plugging Into the World (Group Chat)
+### Screen 4: MCP & The Plugin System (Group Chat + Visual)
 Group chat showing MCP client discovering and invoking a remote tool:
 - MCPClient → ExternalServer: "What tools do you have?"
 - ExternalServer → MCPClient: "I have web_search, code_analysis, image_gen"
@@ -26,6 +26,11 @@ Group chat showing MCP client discovering and invoking a remote tool:
 - MCPClient → ExternalServer: "Invoke web_search(...)"
 - ExternalServer → MCPClient: "Here are the results..."
 - MCPClient → Agent: "Tool returned: [results]"
+
+**Local Plugin System** (visual below group chat):
+Plugins are local directories declared in config. Each contains a `plugin.json` that wires skills and MCP servers into the harness. The harness reads the declaration, loads the plugin's skills as **Injected** skills, connects to the plugin's MCP servers, and applies governance filters before any tool reaches the agent.
+
+Plugin-boundary governance acts as a firewall: `AllowedTools` whitelists specific tools from the plugin, `DeniedTools` blacklists dangerous ones, and `AutonomyLevel` feeds into the permission system to control how much freedom plugin tools get.
 
 ### Screen 5: A2A — Agents Talking to Agents + Quiz
 Brief explanation of AgentCard discovery and task delegation, then quiz.
@@ -78,6 +83,15 @@ private async Task<IEnumerable<AITool>?> ProvisionToolAsync(ToolDeclaration decl
 }
 ```
 
+### Snippet 1b: Plugin governance filtering
+```csharp
+// Plugin-boundary governance: filter tools after resolution
+if (loadedPlugin?.Declaration.AllowedTools is { Count: > 0 } allowed)
+    tools = tools.Where(t => allowed.Contains(t.Name, StringComparer.OrdinalIgnoreCase)).ToList();
+if (loadedPlugin?.Declaration.DeniedTools is { Count: > 0 } denied)
+    tools = tools.Where(t => !denied.Contains(t.Name, StringComparer.OrdinalIgnoreCase)).ToList();
+```
+
 ### Snippet 2: ToolPermissionBehavior (safety)
 ```csharp
 public class ToolPermissionBehavior<TRequest, TResponse>
@@ -109,8 +123,8 @@ public sealed record AgentCard
 - [x] **Data flow animation** — tool resolution chain: Skill → Factory → MCP → Keyed DI → AITool conversion. 6 actors, 8 steps.
 - [x] **Code↔English translation** — ProvisionToolAsync (tool resolution) and ToolPermissionBehavior concept
 - [x] **Group chat animation** — MCP client/server discovery and invocation (7 messages)
-- [x] **Quiz** — 4 questions: (1) Why does the harness try MCP before keyed DI? (2) Scenario: you add a new tool but the agent can't see it — what did you forget? (3) What does "sandboxed" mean for FileSystemService? (4) Match: MCP vs A2A vs keyed DI — what each does
-- [x] **Glossary tooltips** — dependency injection, keyed DI, lazy resolution, MCP (Model Context Protocol), A2A (Agent-to-Agent), AITool, ITool, sandbox, allowed base paths, JWT, HTTP transport, AgentCard, tool declaration, fallback
+- [x] **Quiz** — 6 questions: (1) Why does the harness try MCP before keyed DI? (2) Scenario: you add a new tool but the agent can't see it — what did you forget? (3) What does "sandboxed" mean for FileSystemService? (4) Match: MCP vs A2A vs keyed DI — what each does (5) What is the difference between Managed and Injected skill mode for tool resolution? (answer: Managed resolves each declared tool individually via MCP/keyed DI; Injected gets all MCP tools from the plugin's servers and applies governance filters) (6) A plugin's DeniedTools list blocks `delete_file` — can the agent still call it? (answer: No — plugin deny rules emit bypass-immune permission rules at high priority; the tool is filtered out before the agent ever sees it)
+- [x] **Glossary tooltips** — dependency injection, keyed DI, lazy resolution, MCP (Model Context Protocol), A2A (Agent-to-Agent), AITool, ITool, sandbox, allowed base paths, JWT, HTTP transport, AgentCard, tool declaration, fallback, plugin, plugin declaration, plugin.json, AllowedTools, DeniedTools, AutonomyLevel, Managed mode, Injected mode, plugin governance
 
 ## Reference Files to Read
 - `references/content-philosophy.md` → all sections

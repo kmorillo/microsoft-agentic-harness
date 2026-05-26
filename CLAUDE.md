@@ -1,7 +1,7 @@
 # Project: Microsoft Agentic Harness
 
 ## Purpose
-Production-grade template for a Microsoft Agent Framework agent with a full agentic harness — skills, MCP, tools, RAG, and knowledge graph systems — modeled after Claude Code's architecture. Built on the ApplicationTemplate Clean Architecture pattern. Designed for enterprise consumers to clone and extend.
+Production-grade template for a Microsoft Agent Framework agent with a full agentic harness — multi-skill agents, local plugins, MCP, tools, RAG, and knowledge graph systems — modeled after Claude Code's architecture. Built on the ApplicationTemplate Clean Architecture pattern. Designed for enterprise consumers to clone and extend.
 
 ## RAG & Knowledge Architecture
 The harness includes a full RAG pipeline (`Infrastructure.AI.RAG`) and a production knowledge graph layer (`Infrastructure.AI.KnowledgeGraph`) inspired by [Cognee](https://github.com/topoteretes/cognee).
@@ -48,12 +48,14 @@ Clean Architecture with Domain → Application → Infrastructure → Presentati
 Reference implementation: `C:\CodeRepos\ApplicationTemplate` (same layer structure, DI patterns, and conventions).
 
 Key architectural concepts from the reference:
-- **Progressive Disclosure Skills**: 3-tier loading (Index Card → Folder → Filing Cabinet) to manage context budget
+- **Skills System**: Multi-skill agents with prerequisite ordering, dual mode (Managed/Injected), plugin-sourced skills
+- **Plugin System**: Local plugin declarations with manifest reading, skill + MCP server wiring, boundary governance (AllowedTools/DeniedTools/AutonomyLevel)
+- **Tool Output Compression**: MediatR pipeline behavior with content-type detection and strategy-specific compression
 - **Keyed DI Tools**: Tools registered with string keys (`"file_system"`, `"calculation_engine"`) for lazy resolution from skill declarations
 - **Agent Manifest (AGENT.md)**: Declarative agent config with tool declarations, state config, decision frameworks
 - **MCP Server**: ASP.NET Core WebAPI exposing tools/prompts/resources via MCP protocol
 - **Factory Pattern**: AgentFactory, ChatClientFactory, AgentExecutionContextFactory for consistent agent construction
-- **MediatR Pipeline**: Validation → Caching → Performance → Exception handling behaviors
+- **MediatR Pipeline**: Validation → Caching → Performance → Tool Output Compression → Exception handling behaviors
 - **DAG Plan Execution**: PlanExecutor orchestrates PlanGraph with bounded concurrency, checkpoint/resume via EfCorePlanStateStore, error recovery (retry/escalate/skip)
 - **Sandbox Isolation**: ProcessSandboxExecutor (Job Objects) and DockerSandboxExecutor with HMAC attestation. Closed-by-default capability model
 - **Step Executors**: Keyed DI by StepType enum — LlmCall, ToolUse, HumanGate, ConditionalBranch, SubPlanInvocation
@@ -99,6 +101,8 @@ After changes: `dotnet build src/AgenticHarness.slnx && dotnet test src/AgenticH
 - Manually incrementing entity Version — SqliteVersionInterceptor handles this on save
 - Forgetting to check Result.IsSuccess on state store operations
 - Adding NotifyStepStarted in step executors — PlanExecutor owns notification centrally
+- Using `PluginSource` on a skill without declaring the plugin in `PluginsConfig`: the plugin won't load and tools won't resolve
+- Forgetting that DeniedTools on a plugin are bypass-immune: they can't be overridden by auto-approve modes
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

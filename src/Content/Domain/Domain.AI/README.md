@@ -57,7 +57,7 @@ var context = new AgentExecutionContext
 var agent = await agentFactory.CreateAgentAsync(context);
 ```
 
-### Skills: Progressive Disclosure
+### Skills: Progressive Disclosure and Dual-Mode Execution
 
 Skills are the harness's answer to "how does an agent know what it knows without blowing its context budget?" The `SkillDefinition` class models a three-tier progressive disclosure system:
 
@@ -67,13 +67,20 @@ Skills are the harness's answer to "how does an agent know what it knows without
 
 Without this tiering, an agent with 20 skills would burn 100K+ tokens on instructions alone before the user said anything.
 
+**Skill Modes**: Skills operate in two modes via the `SkillMode` enum. `Managed` skills are harness-native with explicit tool declarations -- the harness resolves only the tools the skill names. `Injected` skills come from plugins and receive all MCP tools from their plugin's servers, bypassing explicit tool declarations.
+
+**Prerequisites**: Skills can declare `Prerequisites` (a list of skill IDs that must complete first) and a `CompletionTool` (the tool name whose invocation marks the skill as complete). This enables ordered skill composition within a single agent run.
+
+**Multi-Skill Agents**: `AgentDefinition.Skills` is an `IReadOnlyList<SkillReference>` -- agents declare multiple skills, not just one. At context assembly time, instructions are merged and tools combined from all referenced skills.
+
 ```csharp
-// Checking tier sizes during skill development:
+// Skills support two modes:
+// Managed: harness-native skills with explicit tool declarations
+// Injected: plugin-provided skills that get all MCP tools passed through
 var skill = skillRegistry.TryGet("agents/research");
-Console.WriteLine($"Tier 1: {skill.Level1TokenEstimate} tokens");   // ~80
-Console.WriteLine($"Tier 2: {skill.Level2TokenEstimate} tokens");   // ~4200
-Console.WriteLine($"Tier 3: {skill.TotalResourceCount} resources"); // 6 files
-Console.WriteLine($"Oversized? {skill.IsLevel2Oversized}");         // false (under 5K)
+Console.WriteLine($"Mode: {skill.Mode}");              // Managed or Injected
+Console.WriteLine($"Plugin: {skill.PluginSource}");     // null for Managed skills
+Console.WriteLine($"Prerequisites: {skill.Prerequisites.Count}"); // skills that must complete first
 ```
 
 ### Tool Declarations
@@ -109,7 +116,7 @@ var rule = new ToolPermissionRule
 };
 ```
 
-Rules are evaluated in priority order across 8 possible sources (AgentManifest, SkillDefinition, UserSettings, ProjectSettings, LocalSettings, SessionOverride, PolicySettings, CliArgument).
+Rules are evaluated in priority order across 9 possible sources (AgentManifest, SkillDefinition, UserSettings, ProjectSettings, LocalSettings, SessionOverride, PolicySettings, CliArgument, PluginDeclaration). The `PluginDeclaration` source was added to support plugin-level autonomy and denied-tool rules that feed into the 3-phase resolver alongside agent-level rules.
 
 ### Hooks (Lifecycle Events)
 
@@ -298,10 +305,16 @@ Domain.AI/
 │   ├── Enums/                   # ChunkingStrategy, RetrievalStrategy, QueryType, VectorStoreProvider
 │   └── Models/                  # DocumentChunk, CragEvaluation, RagAssembledContext, CitationSpan
 ├── Sandbox/                     # SandboxExecutionRequest/Result, ToolCapability, ToolPermissionProfile, ResourceLimits
+├── Compression/
+│   ├── Enums/
+│   │   └── ToolOutputCategory.cs    # Default | Diagnostic | DataHeavy | Conversational
+│   └── Models/
+│       └── CompressionResult.cs     # Compression outcome with strategy and truncation info
 ├── Skills/
-│   ├── SkillDefinition.cs       # Skill metadata and configuration model
+│   ├── SkillDefinition.cs       # Skill metadata with dual-mode support (Managed/Injected)
+│   ├── SkillMode.cs             # Managed (harness-native) | Injected (plugin pass-through)
 │   ├── SkillResource.cs         # Attached file (template, reference, script, asset)
-│   └── SkillAgentOptions.cs     # Skill-to-agent mapping options
+│   └── SkillAgentOptions.cs     # Skill-to-agent mapping options (AdditionalTools)
 ├── Telemetry/Conventions/       # 15 convention classes (semantic OTel attributes)
 └── Tools/
     ├── ToolDeclaration.cs       # Skill's tool requirement (name, ops, fallback, guidance)
@@ -318,7 +331,8 @@ Domain.AI/
 | `AgentExecutionContext` | Runtime config passed to agent factory | AgentFactory.CreateAgentAsync |
 | `SubagentDefinition` | Child agent spec | RunOrchestratedTask handler |
 | **Skills** | | |
-| `SkillDefinition` | Skill metadata and configuration | ISkillMetadataRegistry, AgentExecutionContextFactory |
+| `SkillDefinition` | Skill metadata with dual-mode (Managed/Injected) and prerequisites | ISkillMetadataRegistry, AgentExecutionContextFactory |
+| `SkillMode` | Managed (harness-native) vs Injected (plugin) mode | AgentExecutionContextFactory |
 | `SkillResource` | Attached file artifact | Skill content providers |
 | **Tools** | | |
 | `ToolDeclaration` | Skill's tool requirement | AgentExecutionContextFactory |
@@ -349,6 +363,9 @@ Domain.AI/
 | **Telemetry** | | |
 | `AgentConventions` | Span attribute constants | All instrumentation code |
 | `SafetyConventions` | Safety metric tags | ContentSafetyBehavior |
+| **Compression** | | |
+| `ToolOutputCategory` | Classification for compression strategy selection | ITool, ToolOutputCompressor |
+| `CompressionResult` | Compression outcome with strategy used | ICompressionStrategy implementations |
 
 ## Common Tasks
 
@@ -403,7 +420,8 @@ Nothing else. The domain layer stays pure -- all implementation lives in Infrast
 ## Testing
 
 Tests for Domain.AI live in `Domain.AI.Tests`. Focus on:
-- `SkillDefinition` token estimation accuracy
+- `SkillDefinition` mode computation (`Managed` vs `Injected`) and prerequisite validation
+- `SkillMode` enum coverage
 - `DecisionFramework.Validate()` rule completeness checks
 - `ToolDeclaration` computed properties
 - Enum completeness and string conventions

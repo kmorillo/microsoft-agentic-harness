@@ -5,8 +5,9 @@
 - **Opening hook:** "An LLM has a finite memory — its context window. Dump everything into it and the agent drowns. Load too little and it doesn't know how to help. The skills system solves this with a simple trick: give the agent a table of contents first, and only load the full chapter when it's needed."
 - **Key insight:** Progressive disclosure is the idea that you only show information when it becomes relevant. This is the same principle behind how a good GPS works — it doesn't show you the entire route at once, it gives you the next turn. The 3-tier system (Index Card → Folder → Filing Cabinet) is how the harness applies this to AI context management.
 - **"Why should I care?":** Token budgets are real money. Loading unnecessary context wastes tokens (= costs) and can actually make the agent *worse* by drowning signal in noise. Understanding progressive disclosure helps you write better skills and debug context overflow issues.
+- **Additional insight:** Skills can now declare prerequisites (other skills that must complete first) and operate in two modes: **Managed** (harness-native with explicit tool declarations) or **Injected** (plugin-provided, receiving all MCP tools from the plugin's servers). Agents can use multiple skills simultaneously — instructions merge and tool lists combine.
 
-## Screens (5)
+## Screens (6)
 
 ### Screen 1: The Context Window Problem (Visual)
 Show a visual of a context window (like a glass jar) with tokens as colored marbles. System prompt = red marbles, skills = blue, tools = green, conversation = yellow. When the jar overflows, things get lost. The ContextBudgetTracker is the person watching the jar.
@@ -16,6 +17,13 @@ Interactive toggle showing the same skill at all 3 tiers:
 - Tier 1 (Index Card): just name, description, tags (~100 tokens)
 - Tier 2 (Folder): full instructions, tool declarations (~5,000 tokens)  
 - Tier 3 (Filing Cabinet): templates, references, scripts (unbounded, never loaded into context)
+
+### Screen 2b: Skill Modes & Prerequisites (Visual)
+Side-by-side comparison of the two skill modes:
+- **Managed** (harness-native): skill declares specific tool names in its `AllowedTools` list. The factory resolves only those tools via MCP or keyed DI. You control exactly what the skill can touch.
+- **Injected** (plugin-provided): skill comes from a local plugin directory. It gets *all* MCP tools from the plugin's configured servers. Plugin governance filters (AllowedTools/DeniedTools) control what reaches the agent.
+
+Below the comparison, show a prerequisite chain: Skill A (completion_tool: `finish_research`) must complete before Skill B can activate. Visual of a locked padlock on Skill B that opens when Skill A's completion tool fires.
 
 ### Screen 3: SKILL.md — How Skills Are Written (Code Translation)
 Show a real SKILL.md file with code↔English translation of the YAML frontmatter and markdown body.
@@ -32,31 +40,28 @@ Brief explanation of compaction strategies (boundary messages, micro-compaction)
 ```csharp
 public class SkillDefinition
 {
-    #region Level 1: Index Card (Metadata — Always Loaded)
-
+    // Tier 1: Always loaded — lightweight metadata
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
     public IList<string> Tags { get; set; } = new List<string>();
 
-    #endregion
-
-    #region Level 2: Folder (Instructions — On Demand)
-
+    // Tier 2: On-demand — full instructions and tool access
     public string Instructions { get; set; } = string.Empty;
     public IList<ToolDeclaration> ToolDeclarations { get; set; } = new List<ToolDeclaration>();
     public IList<string> AllowedTools { get; set; } = new List<string>();
 
-    #endregion
+    // Skill execution mode and plugin integration
+    public string? PluginSource { get; set; }
+    public SkillMode Mode => /* Managed or Injected based on PluginSource */;
+    public IReadOnlyList<string> Prerequisites { get; set; } = [];
+    public string? CompletionTool { get; set; }
 
-    #region Level 3: Filing Cabinet (Resources — On Demand)
-
+    // Tier 3: Resources — loaded only during execution
     public IList<SkillResource> Templates { get; set; } = new List<SkillResource>();
     public IList<SkillResource> References { get; set; } = new List<SkillResource>();
     public IList<SkillResource> Scripts { get; set; } = new List<SkillResource>();
-
-    #endregion
 }
 ```
 
@@ -135,8 +140,8 @@ public sealed record CompactionBoundaryMessage
 - [x] **Visual metaphor** — context window as a glass jar with colored marbles (CSS animation)
 - [x] **Code↔English translation** — SkillDefinition (3 tiers) and TieredContextAssembler
 - [x] **Group chat animation** — ContextBudgetTracker, TieredContextAssembler, and SkillLoader discussing whether to load Tier 2 for a skill: Budget says "We have 12,000 tokens left," Assembler says "Tier 2 for research-agent is 4,800 tokens," Budget says "That fits — go ahead," then later Budget says "Warning: only 2,100 tokens remain," Assembler says "Compaction needed — summarizing old messages."
-- [x] **Quiz** — 4 questions: (1) Why doesn't the agent load all skills at Tier 3 immediately? (2) Scenario: your agent keeps forgetting earlier instructions mid-conversation — what might be happening? (3) What triggers compaction? (4) Match the tier to its description (drag-and-drop)
-- [x] **Glossary tooltips** — context window, token, progressive disclosure, compaction, frontmatter, YAML, metadata, budget, allocation, estimation, micro-compaction, boundary message
+- [x] **Quiz** — 6 questions: (1) Why doesn't the agent load all skills at Tier 3 immediately? (2) Scenario: your agent keeps forgetting earlier instructions mid-conversation — what might be happening? (3) What triggers compaction? (4) Match the tier to its description (drag-and-drop) (5) What happens if Skill B lists Skill A as a prerequisite but Skill A hasn't completed yet? (answer: Skill B stays locked — the harness won't activate it until Skill A's completion tool fires) (6) What is the difference between a Managed skill and an Injected skill? (answer: Managed skills declare specific tools and the factory resolves only those; Injected skills come from plugins and receive all MCP tools from the plugin's servers, filtered by plugin governance)
+- [x] **Glossary tooltips** — context window, token, progressive disclosure, compaction, frontmatter, YAML, metadata, budget, allocation, estimation, micro-compaction, boundary message, skill mode, managed skill, injected skill, plugin, plugin source, prerequisite, completion tool
 
 ## Reference Files to Read
 - `references/content-philosophy.md` → all sections
