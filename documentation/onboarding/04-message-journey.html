@@ -146,6 +146,7 @@ var result = await _mediator.Send(cmd, cancellationToken);</code></pre>
                                 <li><code>RequestValidationBehavior</code> — runs FluentValidation validators in parallel.</li>
                                 <li><code>AuthorizationBehavior</code> — claim-based authorization (for HTTP-hosted commands).</li>
                                 <li><code>CachingBehavior</code> — looks up cached responses for cacheable queries.</li>
+                                <li><code>ToolOutputCompressionBehavior</code> — compresses large tool outputs by content type (JSON, XML, diagnostic, free text) to reduce token usage. Configurable size thresholds.</li>
                                 <li><code>AuditTrailBehavior</code> — persistent audit log of every command.</li>
                                 <li><code>HookBehavior</code> — invokes any configured pre/post hooks.</li>
                             </ol>
@@ -293,7 +294,7 @@ var usage = _usageCapture.TakeSnapshot(); // total tokens, cost, tools called</c
    │  Tracing → Timeout → ContextPropagation →    │
    │  PromptInjection → ContentSafety →           │
    │  Governance → ToolPermission → Validation →  │
-   │  Authorization → Caching → Audit → Hooks     │
+   │  Auth → Caching → Compression → Audit → Hooks│
    └──────────────────┬───────────────────────────┘
                       ▼
    ExecuteAgentTurnCommandHandler

@@ -216,6 +216,75 @@ services.AddKeyedSingleton&lt;ITool, WebSearchTool&gt;("web_search");
                         <a href="08-mcp.html">MCP Server &amp; Client</a> for the wrapping flow.
                     </p>
 
+                    <h2>Local plugin system</h2>
+                    <p>
+                        Beyond built-in tools and MCP-discovered tools, the harness supports <strong>local plugins</strong> —
+                        external directories that bundle their own skills and MCP servers. Declare plugins in
+                        <code>appsettings.json</code>:
+                    </p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">json · appsettings.json (excerpt)</span></div>
+                        <pre><code>"Plugins": {
+  "Declarations": [
+    {
+      "Id": "code-analysis",
+      "Path": "./plugins/code-analysis",
+      "AllowedTools": ["file_system_read", "ast_parser"],
+      "DeniedTools": ["file_system_write"],
+      "AutonomyLevel": "Supervised"
+    }
+  ]
+}</code></pre>
+                    </div>
+                    <p>
+                        Each plugin directory contains a <code>plugin.json</code> manifest that lists its skills and MCP
+                        server endpoints. At startup, <code>IPluginLoader</code> reads the manifest,
+                        <code>IPluginManifestReader</code> parses it, and <code>IPluginRegistry</code> tracks the loaded
+                        plugins. Skills from plugins are loaded as <strong>Injected</strong> mode — they receive all MCP
+                        tools from their plugin's servers automatically.
+                    </p>
+                    <div class="callout callout-warn">
+                        <span class="callout-icon">!</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Plugin boundary governance</div>
+                            <p style="margin: 0">
+                                <code>AllowedTools</code> restricts which tools the plugin's skills can access.
+                                <code>DeniedTools</code> is stronger — it's <strong>bypass-immune</strong>, meaning
+                                even auto-approve modes and Autonomous autonomy tiers cannot override it. Use
+                                DeniedTools for hard security boundaries (e.g. preventing a third-party plugin from
+                                writing files). <code>AutonomyLevel</code> sets the permission tier for the plugin's
+                                tool calls. See <a href="10-observability.html">Observability &amp; Safety</a> for
+                                how this integrates with the permission resolver.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>Tool output compression</h2>
+                    <p>
+                        Tools can return large outputs — a diagnostic dump, a JSON API response, or a verbose
+                        XML document. Sending all of this to the LLM wastes tokens and can exceed context limits.
+                        The <code>ToolOutputCompressionBehavior</code> MediatR pipeline behavior solves this by
+                        compressing tool outputs before they reach the agent.
+                    </p>
+                    <p>
+                        How it works: each tool declares a <code>ToolOutputCategory</code> (or the behavior
+                        auto-detects one). Based on the category, a strategy is selected:
+                    </p>
+                    <table>
+                        <thead><tr><th>Category</th><th>Strategy</th><th>What it does</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>DataHeavy</code></td><td>JSON / XML</td><td>Structural compression — removes redundant keys, collapses arrays, preserves schema</td></tr>
+                            <tr><td><code>Diagnostic</code></td><td>Diagnostic</td><td>Extracts error lines, stack traces, and key metrics from verbose logs</td></tr>
+                            <tr><td><code>Conversational</code></td><td>FreeText</td><td>Sentence-boundary truncation with optional LLM summarization fallback</td></tr>
+                            <tr><td><code>Default</code></td><td>FreeText</td><td>Generic truncation for uncategorized outputs</td></tr>
+                        </tbody>
+                    </table>
+                    <p>
+                        Compression only triggers when output exceeds the configurable threshold
+                        (<code>AppConfig.AI.Compression.ThresholdBytes</code>). Below that, tool output passes
+                        through unchanged.
+                    </p>
+
                     <h2>Where each tool lives in the repo</h2>
                     <table>
                         <thead><tr><th>Tool family</th><th>Project</th></tr></thead>
@@ -224,6 +293,8 @@ services.AddKeyedSingleton&lt;ITool, WebSearchTool&gt;("web_search");
                             <tr><td>RAG retrieval tools (document_search, etc.)</td><td><code>Infrastructure.AI.RAG/</code></td></tr>
                             <tr><td>External connector tools (GitHub, Jira, Slack)</td><td><code>Infrastructure.AI.Connectors/</code></td></tr>
                             <tr><td>MCP-discovered tools (wrapped)</td><td><code>Infrastructure.AI.MCP/</code></td></tr>
+                            <tr><td>Plugin-provided tools</td><td>Plugin's local directory; loaded via <code>IPluginLoader</code></td></tr>
+                            <tr><td>Tool output compression</td><td><code>Application.AI.Common/MediatRBehaviors/ToolOutputCompressionBehavior.cs</code></td></tr>
                             <tr><td>Tool DI registration</td><td><code>Infrastructure.Common/DependencyInjection.cs</code> &amp; per-project <code>DependencyInjection.cs</code></td></tr>
                             <tr><td>Tool conversion (bridge to <code>AITool</code>)</td><td><code>Application.AI.Common/Services/Tools/AIToolConverter.cs</code></td></tr>
                         </tbody>

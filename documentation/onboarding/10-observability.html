@@ -83,6 +83,7 @@
                         <li>Every tool call — span attributes include tool name, operation, latency, success/failure.</li>
                         <li>Every LLM request — via the Microsoft.Extensions.AI built-in tracing, augmented by our custom <code>LlmSpanProcessor</code> that recognizes spans from Agents.AI / Semantic Kernel and enriches them with agentic context.</li>
                         <li>RAG retrievals — span per query transform, retrieval, rerank, assembly.</li>
+                        <li>Tool output compression — <code>ToolOutputCompressionBehavior</code> logs compression events, strategy used, and size reduction ratio.</li>
                     </ul>
 
                     <h3>Setting up Jaeger locally</h3>
@@ -148,7 +149,26 @@ docker run -d --name jaeger \
                         tier (<code>Restricted</code>, <code>Supervised</code>, <code>Autonomous</code>). When the
                         decision is <code>Ask</code>, the user is prompted; <code>Deny</code> short-circuits.
                         Repeated denials for the same pattern auto-deny after
-                        <code>DenialRateLimitThreshold</code> attempts.
+                        <code>DenialRateLimitThreshold</code> attempts. Permission rules are resolved across
+                        <strong>9 sources</strong> including <code>PluginDeclaration</code> — plugin-level rules
+                        feed into the same 3-phase resolver (Deny gates → Ask rules → Allow rules) as
+                        agent-level rules.
+                    </p>
+
+                    <h3>4b · Plugin-boundary governance</h3>
+                    <p>
+                        When a skill comes from a <a href="06-tools.html">local plugin</a>, additional restrictions
+                        apply from the plugin's <code>PluginDeclaration</code>:
+                    </p>
+                    <ul>
+                        <li><strong><code>AllowedTools</code></strong> — whitelist of tools the plugin's skills can access. Tools not on the list are filtered out during context assembly.</li>
+                        <li><strong><code>DeniedTools</code></strong> — blacklist that is <strong>bypass-immune</strong>. Even when the agent runs in Autonomous mode, DeniedTools are always blocked. Use this for hard security boundaries.</li>
+                        <li><strong><code>AutonomyLevel</code></strong> — overrides the agent's default autonomy tier for this plugin's tool calls.</li>
+                    </ul>
+                    <p>
+                        This lets harness operators grant plugins access to capabilities while constraining their
+                        blast radius — a third-party plugin can read files but never write them, regardless of the
+                        agent's own permissions.
                     </p>
 
                     <h3>5 · The sandbox</h3>

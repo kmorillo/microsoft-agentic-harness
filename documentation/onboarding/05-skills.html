@@ -60,7 +60,8 @@
                         Think of a skill as a "job description" the agent receives at runtime. The job description
                         says: <em>here's your role, here are the tools you can use, here's how to think about typical
                         tasks, and here are the deeper references if you need them.</em> The harness can have dozens
-                        of skill files on disk, but only one is "in role" at any given turn.
+                        of skill files on disk. A single-skill agent has one skill "in role" at any given turn;
+                        a <strong>multi-skill agent</strong> merges instructions and tools from several skills simultaneously.
                     </p>
 
                     <h2>The three tiers — progressive disclosure</h2>
@@ -187,6 +188,14 @@ You are a thorough research assistant. When given a question, you:
     public IReadOnlyList&lt;string&gt; AllowedTools { get; init; } = [];
     public ContextLoading ContextLoading { get; init; } = new();
     public string? Deployment { get; init; }
+
+    // Dual-mode support
+    public SkillMode Mode { get; init; } = SkillMode.Managed;
+    public string? PluginSource { get; init; }           // plugin ID, if Injected
+
+    // Prerequisite ordering
+    public IReadOnlyList&lt;string&gt; Prerequisites { get; init; } = [];
+    public string? CompletionTool { get; init; }         // tool invocation marks this skill complete
     // ... category, tags, etc.
 }</code></pre>
                     </div>
@@ -194,7 +203,9 @@ You are a thorough research assistant. When given a question, you:
                     <p>
                         Notice it's a record with init-only properties — once a skill is loaded, it's immutable. To
                         change skill behavior at runtime, the harness produces a new <code>SkillDefinition</code> (or
-                        a <code>SkillAmendment</code>) and replaces the entry.
+                        a <code>SkillAmendment</code>) and replaces the entry. The <code>Mode</code>,
+                        <code>PluginSource</code>, and <code>Prerequisites</code> properties are covered in the
+                        sections below.
                     </p>
 
                     <h2>How a skill becomes an agent</h2>
@@ -206,8 +217,8 @@ You are a thorough research assistant. When given a question, you:
                             <p><code>SkillLoaderService</code> walks <code>AppConfig.AI.Skills.BasePath</code> (and any <code>AdditionalPaths</code>) at startup, finds every <code>SKILL.md</code>, parses the frontmatter into <code>SkillDefinition</code>, and registers each in <code>ISkillRegistry</code>. Only the Tier-1 metadata is in memory at this point — the Markdown body is held lazily.</p>
                         </li>
                         <li class="step">
-                            <div class="step-title">Selection per turn</div>
-                            <p>When <code>ExecuteAgentTurnCommandHandler</code> runs, it looks up the requested skill ID. If the agent manifest references multiple skills, the orchestrator or selector picks one based on the user message and the skill descriptions (Tier-1 metadata is enough for this).</p>
+                            <div class="step-title">Selection and assembly per turn</div>
+                            <p>When <code>ExecuteAgentTurnCommandHandler</code> runs, it looks up the agent's skill references. For a single-skill agent, one skill is selected. For a <strong>multi-skill agent</strong>, <code>AgentExecutionContextFactory</code> merges instructions and combines tool lists from all referenced skills into one unified <code>AgentExecutionContext</code>. If any skill has <strong>prerequisites</strong>, the factory enforces ordering — prerequisite skills must be marked complete (via their <code>CompletionTool</code>) before dependent skills activate.</p>
                         </li>
                         <li class="step">
                             <div class="step-title">Tier-2 promotion</div>
@@ -222,6 +233,86 @@ You are a thorough research assistant. When given a question, you:
                             <p>If the skill's <code>context-loading.references</code> list includes a file path, that file isn't read until the agent's <code>file_system_read</code> tool actually opens it. The path is exposed via the tool, not preloaded into the prompt.</p>
                         </li>
                     </ol>
+
+                    <h2>Skill modes — Managed vs Injected</h2>
+                    <p>
+                        Not all skills originate inside the harness. The <code>SkillMode</code> enum distinguishes two patterns:
+                    </p>
+                    <table>
+                        <thead><tr><th>Mode</th><th>Tool resolution</th><th>When to use</th></tr></thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Managed</strong> (default)</td>
+                                <td>Only the tools listed in <code>allowed-tools</code> are resolved from keyed DI or MCP. The harness controls exactly what the agent can call.</td>
+                                <td>Skills you author inside the harness — full control over tool surface.</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Injected</strong></td>
+                                <td>All MCP tools from the skill's parent plugin are passed through automatically, bypassing <code>allowed-tools</code> declarations.</td>
+                                <td>Skills provided by <a href="06-tools.html">local plugins</a> — the plugin author controls the tool surface.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p>
+                        Injected skills always set <code>PluginSource</code> to the owning plugin's ID. The harness still applies
+                        <strong>plugin-boundary governance</strong> (AllowedTools / DeniedTools) even when tools are passed through —
+                        see <a href="10-observability.html">Observability &amp; Safety</a>.
+                    </p>
+
+                    <h2>Prerequisites and completion tracking</h2>
+                    <p>
+                        In a multi-skill agent, some skills depend on the output of others. A "data gathering" skill
+                        should finish before an "analysis" skill starts. The harness supports this with two properties:
+                    </p>
+                    <ul>
+                        <li><strong><code>Prerequisites</code></strong> — a list of skill IDs that must complete before this skill activates.</li>
+                        <li><strong><code>CompletionTool</code></strong> — the tool name whose invocation marks this skill as complete. When the agent calls this tool, the harness records the skill as done, unlocking any dependents.</li>
+                    </ul>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">markdown · SKILL.md frontmatter</span></div>
+                        <pre><code>---
+id: analysis
+name: Analysis Agent
+prerequisites: [data-gathering]    # must complete first
+completion-tool: submit_report     # calling this marks analysis as done
+allowed-tools:
+  - submit_report
+  - file_system_read
+---</code></pre>
+                    </div>
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Ordering is skill-level, not step-level</div>
+                            <p style="margin: 0">
+                                Prerequisites enforce that one skill finishes before another starts — they don't
+                                control the order of tool calls within a skill. The agent still decides how to use
+                                its tools on each turn. For fine-grained step control, use the DAG plan executor instead.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2>Multi-skill agents</h2>
+                    <p>
+                        An agent's <code>AGENT.md</code> can reference multiple skills in its <code>skills:</code> list.
+                        At context assembly time, <code>AgentExecutionContextFactory</code> merges instructions from all
+                        referenced skills and combines their tool lists into a single <code>AgentExecutionContext</code>.
+                    </p>
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">markdown · agents/review-bot/AGENT.md (excerpt)</span></div>
+                        <pre><code>---
+skills:
+  - data-gathering      # prerequisite — runs first
+  - analysis            # depends on data-gathering
+  - code-reviewer       # independent — can run anytime
+---</code></pre>
+                    </div>
+                    <p>
+                        The factory handles each skill according to its <code>SkillMode</code>: Managed skills get
+                        explicit tool resolution; Injected skills get pass-through MCP tools. Prerequisites are
+                        enforced across the merged set. The result is one agent with the combined capabilities of
+                        all its skills.
+                    </p>
 
                     <h2>The context budget tracker</h2>
                     <p>

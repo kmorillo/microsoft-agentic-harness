@@ -4,7 +4,7 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>11 · Extending the Harness — Agentic Harness Developer Guide</title>
-        <meta name="description" content="Three end-to-end recipes — add a tool, add a skill, add a new agent. Copy-paste friendly with test patterns." />
+        <meta name="description" content="Four end-to-end recipes — add a tool, add a skill, add a multi-skill agent, add a local plugin. Copy-paste friendly with test patterns." />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -36,9 +36,9 @@
                     <span class="eyebrow">Chapter 11 · Building</span>
                     <h1 class="page-title">Extending the Harness</h1>
                     <p class="page-lead">
-                        Three end-to-end recipes for the changes you'll make most: adding a tool, adding a skill, and
-                        adding a new agent that combines both. Every recipe is copy-paste friendly and includes the
-                        tests that should accompany the change.
+                        Four end-to-end recipes for the changes you'll make most: adding a tool, adding a skill,
+                        adding a multi-skill agent that combines both, and integrating a local plugin. Every
+                        recipe is copy-paste friendly and includes the tests that should accompany the change.
                     </p>
 
                     <h2>Common vs Core — where does new code live?</h2>
@@ -235,8 +235,12 @@ name: Code Reviewer
 description: Reviews code changes for bugs, style, and design issues.
 category: development
 tags: [code, review, quality]
+mode: managed                       # explicit tool control (default)
+prerequisites: [data-gathering]     # optional: this skill waits for data-gathering to complete
+completion-tool: submit_review      # optional: calling this tool marks the skill as done
 allowed-tools:
   - file_system_read
+  - submit_review
 context-loading:
   references:
     - ./references/review-checklist.md
@@ -308,8 +312,8 @@ miss, you push back on premature abstractions, and you say what you mean.
 
                     <hr />
 
-                    <h2>Recipe 3 · Add a new agent</h2>
-                    <p>Scenario: you want an agent that combines the new code reviewer skill with a Git-aware skill (a hypothetical <code>git-history</code> skill). Agents are declared in <code>AGENT.md</code> files, which reference one or more skills.</p>
+                    <h2>Recipe 3 · Add a new multi-skill agent</h2>
+                    <p>Scenario: you want a <strong>multi-skill agent</strong> that combines the code reviewer skill with a Git-aware skill. Agents are declared in <code>AGENT.md</code> files and can reference multiple skills — at context assembly time, <code>AgentExecutionContextFactory</code> merges their instructions and combines their tool lists into a single agent context. Prerequisites enforce ordering between skills.</p>
 
                     <ol class="steps">
                         <li class="step">
@@ -360,7 +364,7 @@ You are the team's automated code review assistant. For each pull request:
 
                         <li class="step">
                             <div class="step-title">Verify the agent loader picks it up</div>
-                            <p>Restart. The agent metadata registry now contains <code>code-review-bot</code>. The handler in <code>ExecuteAgentTurnCommandHandler</code> uses <code>_agentRegistry.TryGet(name)?.Skill</code> to resolve the agent name into a skill ID — for this agent, that's <code>code-reviewer</code>. The agent now routes correctly.</p>
+                            <p>Restart. The agent metadata registry now contains <code>code-review-bot</code>. Because this agent lists two skills, <code>AgentExecutionContextFactory</code> will merge both skills' instructions into the system prompt and combine both skills' tool lists. If <code>code-reviewer</code> declares <code>prerequisites: [git-history]</code>, the git-history skill's <code>CompletionTool</code> must be called before code-reviewer activates.</p>
                         </li>
 
                         <li class="step">
@@ -410,6 +414,85 @@ You are the team's automated code review assistant. For each pull request:
 }</code></pre>
                             </div>
                             <p>Use <code>WebApplicationFactory&lt;Program&gt;</code> patterns in <code>TestHarnessFixture</code> to wire an in-memory composition of the harness — the same way the existing integration tests do.</p>
+                        </li>
+                    </ol>
+
+                    <hr />
+
+                    <h2>Recipe 4 · Add a local plugin</h2>
+                    <p>Scenario: you have an external directory with skills and an MCP server that you want to integrate without copying code into the harness. Local plugins let you declare external directories that the harness loads at startup.</p>
+
+                    <ol class="steps">
+                        <li class="step">
+                            <div class="step-title">Create the plugin directory</div>
+                            <p>Create a directory (e.g. <code>plugins/code-analysis/</code>) with a <code>plugin.json</code> manifest:</p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">json · plugins/code-analysis/plugin.json</span></div>
+                                <pre><code>{
+  "id": "code-analysis",
+  "name": "Code Analysis Plugin",
+  "version": "1.0.0",
+  "skills": ["skills/analyzer/SKILL.md"],
+  "mcpServers": [
+    { "name": "ast-server", "command": "dotnet", "args": ["run", "--project", "src/AstServer"] }
+  ]
+}</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Declare the plugin in config</div>
+                            <p>Add the plugin declaration to <code>appsettings.json</code>:</p>
+                            <div class="code-block">
+                                <div class="code-block-header"><span class="code-block-lang">json · appsettings.json</span></div>
+                                <pre><code>"Plugins": {
+  "Declarations": [
+    {
+      "Id": "code-analysis",
+      "Path": "./plugins/code-analysis",
+      "AllowedTools": ["file_system_read", "ast_parser"],
+      "DeniedTools": ["file_system_write"],
+      "AutonomyLevel": "Supervised"
+    }
+  ]
+}</code></pre>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Understand boundary governance</div>
+                            <p>
+                                The <code>AllowedTools</code> list restricts what the plugin can access.
+                                <code>DeniedTools</code> is stronger — it's <strong>bypass-immune</strong> and cannot
+                                be overridden by any autonomy mode. Use DeniedTools for hard security boundaries.
+                                <code>AutonomyLevel</code> sets the permission tier for the plugin's tool calls.
+                            </p>
+                            <div class="callout callout-warn">
+                                <span class="callout-icon">!</span>
+                                <div class="callout-body">
+                                    <div class="callout-title">DeniedTools cannot be overridden</div>
+                                    <p style="margin: 0">
+                                        If you put <code>file_system_write</code> in DeniedTools, no configuration —
+                                        not even an Autonomous autonomy tier — can grant the plugin write access. This
+                                        is by design: it lets operators give plugins capability without unbounded risk.
+                                    </p>
+                                </div>
+                            </div>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Skills from plugins are Injected mode</div>
+                            <p>
+                                Skills loaded from a plugin automatically use <code>SkillMode.Injected</code> — they
+                                receive all MCP tools from the plugin's servers, bypassing explicit
+                                <code>allowed-tools</code> declarations. The boundary governance (AllowedTools /
+                                DeniedTools) still applies on top.
+                            </p>
+                        </li>
+
+                        <li class="step">
+                            <div class="step-title">Verify</div>
+                            <p>Restart the harness. Check the logs for <code>Plugin loaded: code-analysis</code>. The plugin's skills should appear in the skill registry, and its MCP server should be connectable.</p>
                         </li>
                     </ol>
 
