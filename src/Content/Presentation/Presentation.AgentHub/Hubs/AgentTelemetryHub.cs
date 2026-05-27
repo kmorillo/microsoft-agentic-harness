@@ -1,42 +1,21 @@
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using Application.AI.Common.Interfaces;
-using Application.AI.Common.OpenTelemetry.Metrics;
-using Application.Core.CQRS.Agents.ExecuteAgentTurn;
-using Domain.AI.Telemetry.Conventions;
-using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
+using Presentation.AgentHub.DTOs;
 using Presentation.AgentHub.Extensions;
 using Presentation.AgentHub.Interfaces;
-using Presentation.AgentHub.Config;
-using Presentation.AgentHub.DTOs;
 
 namespace Presentation.AgentHub.Hubs;
 
 /// <summary>
-/// SignalR hub that connects browser clients to the agent execution pipeline.
-/// Handles conversation lifecycle, streaming agent responses, and telemetry subscriptions.
-///
-/// Authentication: all hub methods require a valid Azure AD bearer token, passed via
-/// the <c>access_token</c> query parameter for WebSocket upgrades (wired in DependencyInjection.cs).
-///
-/// Ownership: every conversation-scoped method calls <see cref="ValidateOwnershipAsync"/>
-/// and throws <see cref="HubException"/> on cross-user access — no ownership details
-/// are surfaced to the caller.
-///
-/// Turn serialization: <see cref="ConversationLockRegistry"/> (singleton) provides one
-/// <see cref="SemaphoreSlim"/> per conversation, preventing concurrent <c>SendMessage</c>
-/// calls from interleaving token streams or corrupting the conversation record.
+/// Thin SignalR adapter that translates WebSocket events to/from
+/// <see cref="IConversationOrchestrator"/> calls. All business logic — ownership
+/// validation, turn dispatch, metrics, session management — lives in the orchestrator.
 /// </summary>
 [Authorize]
 public sealed class AgentTelemetryHub : Hub
 {
     // -------------------------------------------------------------------------
     // Server-to-client event name constants
-    // Shared with the OTel bridge (section 05) and tests (section 07) to avoid magic strings.
     // -------------------------------------------------------------------------
 
     /// <summary>Emitted for each streamed token chunk during an agent turn.</summary>
@@ -72,83 +51,28 @@ public sealed class AgentTelemetryHub : Hub
     private const string GlobalTracesRole = "AgentHub.Traces.ReadAll";
 
     // -------------------------------------------------------------------------
-    // Connection-scoped conversation tracking (for lifecycle metrics on disconnect)
-    // -------------------------------------------------------------------------
-
-    internal sealed record ActiveConversationInfo(
-        string ConversationId, string AgentName, string UserId, DateTimeOffset StartedAt, int TurnCount,
-        Guid ObservabilitySessionId, int TotalInputTokens = 0, int TotalOutputTokens = 0,
-        int TotalCacheRead = 0, int TotalCacheWrite = 0, decimal TotalCostUsd = 0m, int ToolCallCount = 0)
-    {
-        internal DateTimeOffset LastActivityAt { get; init; } = DateTimeOffset.UtcNow;
-    }
-
-    internal static readonly ConcurrentDictionary<string, ActiveConversationInfo> ConnectionConversations = new();
-
-    // -------------------------------------------------------------------------
     // Dependencies
     // -------------------------------------------------------------------------
 
-    private readonly IMediator _mediator;
-    private readonly IConversationStore _conversationStore;
-    private readonly ConversationLockRegistry _lockRegistry;
-    private readonly ISessionHealthTracker _healthTracker;
-    private readonly IObservabilityStore _observabilityStore;
+    private readonly IConversationOrchestrator _orchestrator;
     private readonly ILogger<AgentTelemetryHub> _logger;
-    private readonly AgentHubConfig _config;
 
-    /// <summary>Initialises the hub with all required dependencies.</summary>
+    /// <summary>Initialises the hub with the orchestrator and logger.</summary>
     public AgentTelemetryHub(
-        IMediator mediator,
-        IConversationStore conversationStore,
-        ConversationLockRegistry lockRegistry,
-        ISessionHealthTracker healthTracker,
-        IObservabilityStore observabilityStore,
-        IOptions<AgentHubConfig> config,
+        IConversationOrchestrator orchestrator,
         ILogger<AgentTelemetryHub> logger)
     {
-        _mediator = mediator;
-        _conversationStore = conversationStore;
-        _lockRegistry = lockRegistry;
-        _healthTracker = healthTracker;
-        _observabilityStore = observabilityStore;
-        _config = config.Value;
+        _orchestrator = orchestrator;
         _logger = logger;
     }
 
     /// <inheritdoc />
-    public override Task OnConnectedAsync()
-    {
-        return base.OnConnectedAsync();
-    }
+    public override Task OnConnectedAsync() => base.OnConnectedAsync();
 
     /// <inheritdoc />
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        if (ConnectionConversations.TryRemove(Context.ConnectionId, out var info))
-        {
-            SessionMetrics.ActiveSessions.Add(-1, new TagList { { AgentConventions.Name, info.AgentName } });
-
-            if (info.TurnCount > 0)
-            {
-                var agentTag = new KeyValuePair<string, object?>(AgentConventions.Name, info.AgentName);
-                var elapsed = DateTimeOffset.UtcNow - info.StartedAt;
-                OrchestrationMetrics.ConversationDuration.Record(elapsed.TotalMilliseconds, agentTag);
-                OrchestrationMetrics.TurnsPerConversation.Record(info.TurnCount, agentTag);
-            }
-
-            var status = exception is null ? "completed" : "errored";
-            try
-            {
-                await _observabilityStore.EndSessionAsync(
-                    info.ObservabilitySessionId, status, exception?.Message);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogWarning(ex, "Failed to end observability session {SessionId}", info.ObservabilitySessionId);
-            }
-        }
-
+        await _orchestrator.HandleDisconnectAsync(Context.ConnectionId, exception, Context.ConnectionAborted);
         await base.OnDisconnectedAsync(exception);
     }
 
@@ -157,353 +81,155 @@ public sealed class AgentTelemetryHub : Hub
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Joins or creates a conversation. Returns the last <see cref="AgentHubConfig.MaxHistoryMessages"/>
-    /// messages so the client can restore UI state on reconnect.
-    ///
-    /// If <paramref name="conversationId"/> is empty or no matching record exists a new conversation
-    /// is created; the caller receives a <c>ConversationStarted</c> event with the generated ID.
-    /// If a matching record exists, ownership is validated before joining.
+    /// Joins or creates a conversation. Returns the last N messages so the client
+    /// can restore UI state on reconnect.
     /// </summary>
-    /// <returns>The conversation's message history (empty for new conversations).</returns>
     public async Task<IReadOnlyList<ConversationMessage>> StartConversation(
-        string agentName,
-        string conversationId)
+        string agentName, string conversationId)
     {
         var ct = Context.ConnectionAborted;
         var callerId = GetCallerId();
-        var existingRecord = await ValidateOwnershipAsync(conversationId, callerId, ct);
 
-        ConversationRecord record;
-        if (existingRecord is null)
-        {
-            // Create a new conversation, using the client-supplied GUID if provided (idempotent reconnect).
-            record = await _conversationStore.CreateAsync(
-                agentName, callerId,
-                conversationId: string.IsNullOrWhiteSpace(conversationId) ? null : conversationId,
-                ct: ct);
-
-            _logger.LogInformation("Created conversation {ConversationId} for user {UserId}.",
-                record.Id, callerId);
-        }
-        else
-        {
-            record = existingRecord;
-        }
+        var (record, history) = await _orchestrator.StartConversationAsync(
+            Context.ConnectionId, agentName, conversationId, callerId, ct);
 
         await Groups.AddToGroupAsync(Context.ConnectionId, ConversationGroup(record.Id), ct);
-
-        var history = await _conversationStore.GetHistoryForDispatch(
-            record.Id, _config.MaxHistoryMessages, ct) ?? [];
 
         return history;
     }
 
     /// <summary>
-    /// Replaces the per-conversation agent settings (deployment, temperature, system prompt
-    /// override). Validates ownership before writing. Throws <see cref="HubException"/> when
-    /// the conversation is missing or owned by another user.
+    /// Replaces the per-conversation agent settings. Throws <see cref="HubException"/>
+    /// when the conversation is missing or owned by another user.
     /// </summary>
     public async Task SetConversationSettings(string conversationId, ConversationSettings settings)
     {
         var ct = Context.ConnectionAborted;
         var callerId = GetCallerId();
-        _ = await ValidateOwnershipAsync(conversationId, callerId, ct)
-            ?? throw new HubException("Conversation not found.");
 
-        var updated = await _conversationStore.UpdateSettingsAsync(conversationId, settings, ct)
-            ?? throw new HubException("Conversation not found.");
-
-        _logger.LogInformation(
-            "Updated conversation {ConversationId} settings (deployment={Deployment}, temperature={Temperature}, promptOverride={HasPrompt}).",
-            updated.Id,
-            settings.DeploymentName ?? "(default)",
-            settings.Temperature?.ToString("0.##") ?? "(default)",
-            !string.IsNullOrEmpty(settings.SystemPromptOverride));
+        try
+        {
+            await _orchestrator.SetSettingsAsync(conversationId, settings, callerId, ct);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
+        {
+            throw new HubException(ex is UnauthorizedAccessException ? "Access denied." : "Conversation not found.");
+        }
     }
 
     /// <summary>
     /// Sends a user message, dispatches it to the agent pipeline, and streams the response
     /// back as <c>TokenReceived</c> events followed by a <c>TurnComplete</c> event.
-    ///
-    /// Turn serialization: per-conversation <see cref="SemaphoreSlim"/> from
-    /// <see cref="ConversationLockRegistry"/> ensures that concurrent <c>SendMessage</c>
-    /// calls on the same conversation complete in order — no interleaved token streams.
-    ///
-    /// <paramref name="userMessageId"/> is supplied by the client so that optimistic-UI user
-    /// messages share the same id as the server record; this is the id that retry/edit
-    /// operations reference.
     /// </summary>
     public async Task SendMessage(string conversationId, Guid userMessageId, string userMessage)
     {
         var ct = Context.ConnectionAborted;
         var callerId = GetCallerId();
-        var record = await ValidateOwnershipAsync(conversationId, callerId, ct)
-            ?? throw new HubException("Conversation not found.");
 
-        var semaphore = _lockRegistry.GetOrCreate(conversationId);
-        await semaphore.WaitAsync(ct);
+        TurnOutcome outcome;
         try
         {
-            var userMsg = new ConversationMessage(
-                userMessageId == Guid.Empty ? Guid.NewGuid() : userMessageId,
-                MessageRole.User, userMessage, DateTimeOffset.UtcNow);
-            await _conversationStore.AppendMessageAsync(conversationId, userMsg, ct);
-
-            await DispatchTurnAsync(conversationId, record.AgentName, userMessage, ct);
+            outcome = await _orchestrator.SendMessageAsync(
+                Context.ConnectionId, conversationId, userMessageId, userMessage, callerId,
+                (chunk, cct) => Clients.Caller.SendAsync(EventTokenReceived,
+                    new { conversationId, token = chunk, isComplete = false }, cct),
+                ct);
         }
-        finally
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
         {
-            semaphore.Release();
+            throw new HubException(ex is UnauthorizedAccessException ? "Access denied." : "Conversation not found.");
         }
+
+        await EmitTurnEventsAsync(conversationId, outcome, ct);
     }
 
     /// <summary>
     /// Drops the message identified by <paramref name="assistantMessageId"/> and everything
-    /// after it, then re-dispatches the preceding user message to the agent pipeline.
-    /// Used by the UI's "retry" action on an assistant message.
+    /// after it, then re-dispatches the preceding user message.
     /// </summary>
     public async Task RetryFromMessage(string conversationId, Guid assistantMessageId)
     {
         var ct = Context.ConnectionAborted;
         var callerId = GetCallerId();
-        var record = await ValidateOwnershipAsync(conversationId, callerId, ct)
-            ?? throw new HubException("Conversation not found.");
 
-        var semaphore = _lockRegistry.GetOrCreate(conversationId);
-        await semaphore.WaitAsync(ct);
+        TurnOutcome outcome;
         try
         {
-            var truncated = await _conversationStore.TruncateFromMessageAsync(conversationId, assistantMessageId, ct)
-                ?? throw new HubException("Conversation not found.");
-
-            // After truncation the last remaining message must be a user message — that's the
-            // one we re-dispatch. If somehow it isn't, surface the protocol error to the caller.
-            var last = truncated.Messages.LastOrDefault();
-            if (last is null || last.Role != MessageRole.User)
-                throw new HubException("Cannot retry: no preceding user message found.");
-
-            await Clients.Caller.SendAsync(EventHistoryTruncated,
-                new { conversationId, keepCount = truncated.Messages.Count }, ct);
-
-            await DispatchTurnAsync(conversationId, record.AgentName, last.Content, ct);
+            outcome = await _orchestrator.RetryFromMessageAsync(
+                Context.ConnectionId, conversationId, assistantMessageId, callerId,
+                (chunk, cct) => Clients.Caller.SendAsync(EventTokenReceived,
+                    new { conversationId, token = chunk, isComplete = false }, cct),
+                ct);
         }
-        finally
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
         {
-            semaphore.Release();
+            throw new HubException(ex is UnauthorizedAccessException
+                ? "Access denied."
+                : ex.Message.Contains("retry") ? ex.Message : "Conversation not found.");
         }
+
+        await EmitTurnEventsAsync(conversationId, outcome, ct);
     }
 
     /// <summary>
     /// Drops the user message identified by <paramref name="userMessageId"/> and everything
-    /// after it, appends a new user message with <paramref name="newUserMessageId"/> and
-    /// <paramref name="newContent"/>, then dispatches to the agent pipeline.
-    /// Used by the UI's "edit" action on a user message.
+    /// after it, appends a new user message, then dispatches to the agent pipeline.
     /// </summary>
     public async Task EditAndResubmit(
-        string conversationId,
-        Guid userMessageId,
-        Guid newUserMessageId,
-        string newContent)
+        string conversationId, Guid userMessageId, Guid newUserMessageId, string newContent)
     {
         var ct = Context.ConnectionAborted;
         var callerId = GetCallerId();
-        var record = await ValidateOwnershipAsync(conversationId, callerId, ct)
-            ?? throw new HubException("Conversation not found.");
 
-        var semaphore = _lockRegistry.GetOrCreate(conversationId);
-        await semaphore.WaitAsync(ct);
+        TurnOutcome outcome;
         try
         {
-            var truncated = await _conversationStore.TruncateFromMessageAsync(conversationId, userMessageId, ct)
-                ?? throw new HubException("Conversation not found.");
-
-            await Clients.Caller.SendAsync(EventHistoryTruncated,
-                new { conversationId, keepCount = truncated.Messages.Count }, ct);
-
-            var newUserMsg = new ConversationMessage(
-                newUserMessageId == Guid.Empty ? Guid.NewGuid() : newUserMessageId,
-                MessageRole.User, newContent, DateTimeOffset.UtcNow);
-            await _conversationStore.AppendMessageAsync(conversationId, newUserMsg, ct);
-
-            await DispatchTurnAsync(conversationId, record.AgentName, newContent, ct);
+            outcome = await _orchestrator.EditAndResubmitAsync(
+                Context.ConnectionId, conversationId, userMessageId, newUserMessageId, newContent, callerId,
+                (chunk, cct) => Clients.Caller.SendAsync(EventTokenReceived,
+                    new { conversationId, token = chunk, isComplete = false }, cct),
+                ct);
         }
-        finally
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
         {
-            semaphore.Release();
-        }
-    }
-
-    /// <summary>
-    /// Runs a single agent turn for <paramref name="conversationId"/>: reads truncated history,
-    /// invokes the mediator, streams the result, and appends the assistant response.
-    /// The per-conversation semaphore MUST be held by the caller.
-    /// </summary>
-    private async Task DispatchTurnAsync(string conversationId, string agentName, string userMessage, CancellationToken ct)
-    {
-        var callerId = GetCallerId();
-        Activity.Current?.SetTag("agent.conversation_id", conversationId);
-        Activity.Current?.SetTag(AgentConventions.Name, agentName);
-        Activity.Current?.SetTag(UserConventions.UserId, callerId);
-        Activity.Current?.AddBaggage("agent.conversation_id", conversationId);
-        Activity.Current?.AddBaggage(UserConventions.UserId, callerId);
-
-        // Start observability session on first turn, not on conversation join
-        if (!ConnectionConversations.TryGetValue(Context.ConnectionId, out var tracked)
-            || tracked.ConversationId != conversationId)
-        {
-            if (tracked is not null)
-            {
-                SessionMetrics.ActiveSessions.Add(-1, new TagList { { AgentConventions.Name, tracked.AgentName } });
-                await _observabilityStore.EndSessionAsync(tracked.ObservabilitySessionId, "completed", cancellationToken: ct);
-            }
-
-            var newSessionId = await _observabilityStore.StartSessionAsync(
-                conversationId, agentName, model: null, ct);
-
-            if (newSessionId == Guid.Empty)
-                _logger.LogWarning("StartSessionAsync returned empty GUID for conversation {ConversationId} — observability data will not be persisted", conversationId);
-
-            ConnectionConversations[Context.ConnectionId] = new ActiveConversationInfo(
-                conversationId, agentName, callerId, DateTimeOffset.UtcNow, 0, newSessionId);
-
-            SessionMetrics.ActiveSessions.Add(1, new TagList { { AgentConventions.Name, agentName } });
-            SessionMetrics.SessionsStarted.Add(1, new KeyValuePair<string, object?>(AgentConventions.Name, agentName));
-            UserActivityMetrics.SessionsStarted.Add(1,
-                new KeyValuePair<string, object?>(UserConventions.UserId, callerId));
+            throw new HubException(ex is UnauthorizedAccessException ? "Access denied." : "Conversation not found.");
         }
 
-        var history = await _conversationStore.GetHistoryForDispatch(
-            conversationId, _config.MaxHistoryMessages, ct) ?? [];
-
-        var updatedRecord = await _conversationStore.GetAsync(conversationId, ct);
-        var turnNumber = updatedRecord?.Messages.Count ?? 0;
-
-        var obsSessionId = ConnectionConversations.TryGetValue(Context.ConnectionId, out var ci)
-            ? ci.ObservabilitySessionId
-            : Guid.Empty;
-
-        var command = new ExecuteAgentTurnCommand
-        {
-            AgentName = agentName,
-            UserMessage = userMessage,
-            ConversationHistory = ToMeaiHistory(history),
-            ConversationId = conversationId,
-            TurnNumber = turnNumber,
-            DeploymentOverride = updatedRecord?.Settings?.DeploymentName,
-            Temperature = updatedRecord?.Settings?.Temperature,
-            SystemPromptOverride = updatedRecord?.Settings?.SystemPromptOverride,
-            ObservabilitySessionId = obsSessionId,
-        };
-
-        AgentTurnResult result;
-        try
-        {
-            result = await _mediator.Send(command, ct);
-        }
-        catch (Exception ex)
-        {
-            _healthTracker.RecordError(agentName);
-            await HandleTurnErrorAsync(conversationId, ex, ct);
-            return;
-        }
-
-        if (!result.Success)
-        {
-            _healthTracker.RecordError(agentName);
-            await HandleTurnErrorAsync(conversationId,
-                new InvalidOperationException(result.Error ?? "Agent returned a failure result."), ct);
-            return;
-        }
-
-        var agentTag = new KeyValuePair<string, object?>(AgentConventions.Name, agentName);
-        if (result.ToolsInvoked.Count > 0)
-            OrchestrationMetrics.ToolCalls.Add(result.ToolsInvoked.Count, agentTag);
-
-        _healthTracker.RecordSuccess(agentName);
-
-        var userTag = new KeyValuePair<string, object?>(UserConventions.UserId, callerId);
-        var userAgentTag = new KeyValuePair<string, object?>(AgentConventions.Name, agentName);
-        UserActivityMetrics.Turns.Add(1, userTag, userAgentTag);
-
-        if (ConnectionConversations.TryGetValue(Context.ConnectionId, out var convInfo))
-        {
-            var updated = convInfo with
-            {
-                TurnCount = convInfo.TurnCount + 1,
-                LastActivityAt = DateTimeOffset.UtcNow,
-                ToolCallCount = convInfo.ToolCallCount + result.ToolsInvoked.Count,
-                TotalInputTokens = convInfo.TotalInputTokens + result.InputTokens,
-                TotalOutputTokens = convInfo.TotalOutputTokens + result.OutputTokens,
-                TotalCacheRead = convInfo.TotalCacheRead + result.CacheRead,
-                TotalCacheWrite = convInfo.TotalCacheWrite + result.CacheWrite,
-                TotalCostUsd = convInfo.TotalCostUsd + result.CostUsd,
-            };
-            ConnectionConversations[Context.ConnectionId] = updated;
-
-            try
-            {
-                await _observabilityStore.UpdateSessionMetricsAsync(
-                    updated.ObservabilitySessionId,
-                    updated.TurnCount, updated.ToolCallCount, subagentCount: 0,
-                    updated.TotalInputTokens, updated.TotalOutputTokens,
-                    updated.TotalCacheRead, updated.TotalCacheWrite,
-                    updated.TotalCostUsd,
-                    updated.TotalInputTokens > 0
-                        ? (decimal)updated.TotalCacheRead / updated.TotalInputTokens
-                        : 0m,
-                    result.Model, ct);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogWarning(ex, "Failed to persist session metrics for session {SessionId}", updated.ObservabilitySessionId);
-            }
-        }
-
-        // TODO: Replace simulated 50-char chunking with real IAsyncEnumerable<string> streaming
-        // when ExecuteAgentTurnCommand supports it.
-        await StreamResponseAsync(conversationId, result.Response, ct);
-
-        var assistantMessageId = Guid.NewGuid();
-        var assistantMsg = new ConversationMessage(
-            assistantMessageId, MessageRole.Assistant, result.Response, DateTimeOffset.UtcNow);
-        await _conversationStore.AppendMessageAsync(conversationId, assistantMsg, ct);
-
-        var finalRecord = await _conversationStore.GetAsync(conversationId, ct);
-        var finalTurnNumber = finalRecord?.Messages.Count ?? turnNumber + 1;
-
-        await Clients.Caller.SendAsync(EventTurnComplete,
-            new
-            {
-                conversationId,
-                turnNumber = finalTurnNumber,
-                fullResponse = result.Response,
-                assistantMessageId,
-            }, ct);
+        await EmitTurnEventsAsync(conversationId, outcome, ct);
     }
 
     /// <summary>
     /// Invokes a named tool through the agent pipeline by synthesising a user message.
-    /// Ownership is validated via the underlying <see cref="SendMessage"/> call.
     /// </summary>
     public async Task InvokeToolViaAgent(string conversationId, string toolName, string inputJson)
     {
-        // Ownership validation is delegated to SendMessage — no double-check needed here.
         var userMessage = $"Please invoke the tool '{toolName}' with the following input: {inputJson}";
         await SendMessage(conversationId, Guid.NewGuid(), userMessage);
     }
+
+    // -------------------------------------------------------------------------
+    // Hub methods — group management
+    // -------------------------------------------------------------------------
 
     /// <summary>Adds this connection to the conversation's SignalR group.</summary>
     public async Task JoinConversationGroup(string conversationId)
     {
         var ct = Context.ConnectionAborted;
         var callerId = GetCallerId();
-        _ = await ValidateOwnershipAsync(conversationId, callerId, ct)
-            ?? throw new HubException("Conversation not found.");
+
+        try
+        {
+            await _orchestrator.ValidateAccessAsync(conversationId, callerId, ct);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or UnauthorizedAccessException)
+        {
+            throw new HubException(ex is UnauthorizedAccessException ? "Access denied." : "Conversation not found.");
+        }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, ConversationGroup(conversationId), ct);
     }
 
-    /// <summary>Removes this connection from the conversation's SignalR group. No ownership check — leaving is always safe.</summary>
+    /// <summary>Removes this connection from the conversation's SignalR group.</summary>
     public Task LeaveConversationGroup(string conversationId) =>
         Groups.RemoveFromGroupAsync(Context.ConnectionId, ConversationGroup(conversationId), Context.ConnectionAborted);
 
@@ -513,12 +239,8 @@ public sealed class AgentTelemetryHub : Hub
 
     /// <summary>
     /// Subscribes this connection to the global OpenTelemetry span firehose.
-    ///
-    /// Requires the <c>AgentHub.Traces.ReadAll</c> app role, which must be assigned in
-    /// the Azure AD app registration under <b>App roles</b>. It is intentionally absent
-    /// from the default tenant assignment — grant it only to internal observability users.
+    /// Requires the <c>AgentHub.Traces.ReadAll</c> app role.
     /// </summary>
-    /// <exception cref="HubException">Thrown if the caller lacks the required role.</exception>
     public async Task JoinGlobalTraces()
     {
         if (!Context.User!.IsInRole(GlobalTracesRole))
@@ -528,7 +250,7 @@ public sealed class AgentTelemetryHub : Hub
         _logger.LogInformation("Connection {ConnectionId} joined global-traces.", Context.ConnectionId);
     }
 
-    /// <summary>Unsubscribes this connection from the global trace firehose. No role check.</summary>
+    /// <summary>Unsubscribes this connection from the global trace firehose.</summary>
     public Task LeaveGlobalTraces() =>
         Groups.RemoveFromGroupAsync(Context.ConnectionId, GlobalTracesGroup, Context.ConnectionAborted);
 
@@ -540,92 +262,35 @@ public sealed class AgentTelemetryHub : Hub
         ?? throw new HubException("Unable to determine caller identity.");
 
     /// <summary>
-    /// Returns the conversation record if <paramref name="conversationId"/> is non-empty and exists,
-    /// or <c>null</c> if it doesn't exist. Throws <see cref="HubException"/> if the record
-    /// exists but belongs to a different user.
+    /// Emits the standard post-turn events to the caller: optional HistoryTruncated,
+    /// then either (final TokenReceived + TurnComplete) or Error.
     /// </summary>
-    private async Task<ConversationRecord?> ValidateOwnershipAsync(
-        string conversationId,
-        string callerId,
-        CancellationToken ct)
+    private async Task EmitTurnEventsAsync(string conversationId, TurnOutcome outcome, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(conversationId))
-            return null;
-
-        var record = await _conversationStore.GetAsync(conversationId, ct);
-        if (record is null)
-            return null;
-
-        if (record.UserId != callerId)
+        if (outcome.HistoryKeepCount.HasValue)
         {
-            _logger.LogWarning(
-                "User {CallerId} attempted to access conversation {ConversationId} owned by {OwnerId}.",
-                callerId, conversationId, record.UserId);
-            throw new HubException("Access denied.");
+            await Clients.Caller.SendAsync(EventHistoryTruncated,
+                new { conversationId, keepCount = outcome.HistoryKeepCount.Value }, ct);
         }
 
-        return record;
-    }
-
-    /// <summary>
-    /// Chunks <paramref name="response"/> into 50-character segments and sends each as a
-    /// <c>TokenReceived</c> event to the caller. Sends a final chunk with <c>isComplete = true</c>.
-    /// </summary>
-    private async Task StreamResponseAsync(string conversationId, string response, CancellationToken ct)
-    {
-        const int chunkSize = 50;
-        for (var i = 0; i < response.Length; i += chunkSize)
+        if (outcome.Success)
         {
-            var chunk = response.Substring(i, Math.Min(chunkSize, response.Length - i));
             await Clients.Caller.SendAsync(EventTokenReceived,
-                new { conversationId, token = chunk, isComplete = false }, ct);
+                new { conversationId, token = outcome.Response, isComplete = true }, ct);
+
+            await Clients.Caller.SendAsync(EventTurnComplete,
+                new
+                {
+                    conversationId,
+                    turnNumber = outcome.FinalTurnNumber,
+                    fullResponse = outcome.Response,
+                    assistantMessageId = outcome.AssistantMessageId,
+                }, ct);
         }
-
-        // Final marker with the full response for clients that prefer a single completion signal.
-        await Clients.Caller.SendAsync(EventTokenReceived,
-            new { conversationId, token = response, isComplete = true }, ct);
-    }
-
-    /// <summary>
-    /// Handles an agent turn error: logs the full exception server-side, appends a synthetic
-    /// error message to the conversation store, and sends a sanitized <c>Error</c> event to
-    /// the caller. Never surfaces exception details to the client.
-    /// </summary>
-    private async Task HandleTurnErrorAsync(string conversationId, Exception ex, CancellationToken ct)
-    {
-        _logger.LogError(ex, "Agent turn failed for conversation {ConversationId}.", conversationId);
-
-        try
+        else
         {
-            var errorMsg = new ConversationMessage(
-                Guid.NewGuid(),
-                MessageRole.Assistant,
-                "[Error] The agent encountered an error.",
-                DateTimeOffset.UtcNow);
-            await _conversationStore.AppendMessageAsync(conversationId, errorMsg, ct);
+            await Clients.Caller.SendAsync(EventError,
+                new { conversationId, message = outcome.ErrorMessage ?? "An error occurred.", code = "AGENT_ERROR" }, ct);
         }
-        catch (Exception storeEx)
-        {
-            _logger.LogError(storeEx, "Failed to append error message to conversation {ConversationId}.", conversationId);
-        }
-
-        await Clients.Caller.SendAsync(EventError,
-            new { conversationId, message = "An error occurred processing your request.", code = "AGENT_ERROR" }, ct);
     }
-
-    /// <summary>
-    /// Converts the store's <see cref="ConversationMessage"/> domain model to
-    /// <see cref="ChatMessage"/> instances expected by <see cref="ExecuteAgentTurnCommand"/>.
-    /// </summary>
-    private static IReadOnlyList<ChatMessage> ToMeaiHistory(IReadOnlyList<ConversationMessage> messages) =>
-        messages.Select(m => new ChatMessage(ToChatRole(m.Role), m.Content)).ToList();
-
-    private static ChatRole ToChatRole(MessageRole role) => role switch
-    {
-        MessageRole.User => ChatRole.User,
-        MessageRole.Assistant => ChatRole.Assistant,
-        MessageRole.System => ChatRole.System,
-        MessageRole.Tool => ChatRole.Tool,
-        _ => ChatRole.User,
-    };
 }

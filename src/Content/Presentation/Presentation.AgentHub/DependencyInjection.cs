@@ -17,10 +17,10 @@ using Presentation.AgentHub.AgUi;
 using Presentation.AgentHub.Auth;
 using Presentation.AgentHub.Hubs;
 using Presentation.AgentHub.Interfaces;
+using Presentation.AgentHub.Services;
 using Presentation.AgentHub.Notifications;
 using Presentation.AgentHub.Planner;
 using Presentation.AgentHub.Config;
-using Presentation.AgentHub.Services;
 using Presentation.AgentHub.Telemetry;
 using Microsoft.Extensions.Options;
 
@@ -185,6 +185,13 @@ public static class DependencyInjection
 
         // Singleton: ConversationLockRegistry must outlive hub instances (hubs are transient).
         services.AddSingleton<ConversationLockRegistry>();
+
+        // Singleton: ConnectionTracker replaces the static ConcurrentDictionary on the hub.
+        services.AddSingleton<IConnectionTracker, ConnectionTracker>();
+
+        // Scoped: ConversationOrchestrator owns conversation lifecycle, turn dispatch, and metrics.
+        // The hub delegates all business logic here and handles only SignalR transport.
+        services.AddScoped<IConversationOrchestrator, ConversationOrchestrator>();
 
         services.AddSingleton<IAgUiEventWriterAccessor, AgUiEventWriterAccessor>();
         services.AddSingleton<IEscalationNotificationChannel, AgUiEscalationNotifier>();

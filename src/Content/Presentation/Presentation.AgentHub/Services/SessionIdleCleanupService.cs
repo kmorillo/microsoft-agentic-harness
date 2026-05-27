@@ -4,7 +4,8 @@ using Application.AI.Common.OpenTelemetry.Metrics;
 using Domain.AI.Telemetry.Conventions;
 using Microsoft.Extensions.Options;
 using Presentation.AgentHub.Config;
-using Presentation.AgentHub.Hubs;
+using Presentation.AgentHub.DTOs;
+using Presentation.AgentHub.Interfaces;
 
 namespace Presentation.AgentHub.Services;
 
@@ -16,15 +17,18 @@ namespace Presentation.AgentHub.Services;
 internal sealed class SessionIdleCleanupService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IConnectionTracker _connectionTracker;
     private readonly IOptionsMonitor<AgentHubConfig> _config;
     private readonly ILogger<SessionIdleCleanupService> _logger;
 
     public SessionIdleCleanupService(
         IServiceScopeFactory scopeFactory,
+        IConnectionTracker connectionTracker,
         IOptionsMonitor<AgentHubConfig> config,
         ILogger<SessionIdleCleanupService> logger)
     {
         _scopeFactory = scopeFactory;
+        _connectionTracker = connectionTracker;
         _config = config;
         _logger = logger;
     }
@@ -49,9 +53,9 @@ internal sealed class SessionIdleCleanupService : BackgroundService
     {
         var timeout = TimeSpan.FromMinutes(_config.CurrentValue.SessionIdleTimeoutMinutes);
         var now = DateTimeOffset.UtcNow;
-        var expired = new List<(string ConnectionId, AgentTelemetryHub.ActiveConversationInfo Info)>();
+        var expired = new List<(string ConnectionId, ActiveConversationInfo Info)>();
 
-        foreach (var (connectionId, info) in AgentTelemetryHub.ConnectionConversations)
+        foreach (var (connectionId, info) in _connectionTracker.GetAll())
         {
             if (now - info.LastActivityAt > timeout)
                 expired.Add((connectionId, info));
@@ -64,7 +68,7 @@ internal sealed class SessionIdleCleanupService : BackgroundService
 
         foreach (var (connectionId, info) in expired)
         {
-            if (!AgentTelemetryHub.ConnectionConversations.TryRemove(connectionId, out _))
+            if (_connectionTracker.Untrack(connectionId) is null)
                 continue;
 
             SessionMetrics.ActiveSessions.Add(-1,
