@@ -283,7 +283,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         var userAgentTag = new KeyValuePair<string, object?>(AgentConventions.Name, agentName);
         UserActivityMetrics.Turns.Add(1, userTag, userAgentTag);
 
-        UpdateSessionMetrics(sessionKey, result);
+        await UpdateSessionMetricsAsync(sessionKey, result);
 
         if (onChunk is not null)
             await StreamChunksAsync(result.Response, onChunk, ct);
@@ -333,7 +333,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
             new KeyValuePair<string, object?>(UserConventions.UserId, callerId));
     }
 
-    private void UpdateSessionMetrics(string sessionKey, AgentTurnResult result)
+    private async Task UpdateSessionMetricsAsync(string sessionKey, AgentTurnResult result)
     {
         var convInfo = _connectionTracker.Get(sessionKey);
         if (convInfo is null) return;
@@ -353,7 +353,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
 
         try
         {
-            _observabilityStore.UpdateSessionMetricsAsync(
+            await _observabilityStore.UpdateSessionMetricsAsync(
                 updated.ObservabilitySessionId,
                 updated.TurnCount, updated.ToolCallCount, subagentCount: 0,
                 updated.TotalInputTokens, updated.TotalOutputTokens,
@@ -362,7 +362,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
                 updated.TotalInputTokens > 0
                     ? (decimal)updated.TotalCacheRead / updated.TotalInputTokens
                     : 0m,
-                result.Model).GetAwaiter().GetResult();
+                result.Model);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
