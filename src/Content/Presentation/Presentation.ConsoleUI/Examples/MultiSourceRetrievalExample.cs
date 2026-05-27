@@ -1,5 +1,5 @@
 using Application.AI.Common.Interfaces.RAG;
-using Domain.AI.RAG.Enums;
+using Domain.AI.Routing.Enums;
 using Domain.Common.Config;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -97,7 +97,7 @@ public class MultiSourceRetrievalExample
                     var results = await _orchestrator.RetrieveFromAllSourcesAsync(
                         simpleQuery,
                         topK: 5,
-                        QueryComplexity.Simple,
+                        TaskComplexity.Simple,
                         cancellationToken);
 
                     DisplayRetrievalResults(results, "Vector Store");
@@ -128,7 +128,7 @@ public class MultiSourceRetrievalExample
                     var results = await _orchestrator.RetrieveFromAllSourcesAsync(
                         complexQuery,
                         topK: 10,
-                        QueryComplexity.Complex,
+                        TaskComplexity.Complex,
                         cancellationToken);
 
                     DisplayRetrievalResults(results, "Vector + Graph + Web");
@@ -158,7 +158,7 @@ public class MultiSourceRetrievalExample
                     await _orchestrator.RetrieveFromAllSourcesAsync(
                         "What is Clean Architecture?",
                         topK: 5,
-                        QueryComplexity.Simple,
+                        TaskComplexity.Simple,
                         cancellationToken);
                 });
         }
@@ -181,7 +181,7 @@ public class MultiSourceRetrievalExample
                     await _orchestrator.RetrieveFromAllSourcesAsync(
                         "How does the MediatR pipeline integrate with governance?",
                         topK: 10,
-                        QueryComplexity.Complex,
+                        TaskComplexity.Complex,
                         cancellationToken);
                 });
         }
