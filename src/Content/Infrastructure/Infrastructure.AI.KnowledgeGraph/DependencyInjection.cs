@@ -92,6 +92,9 @@ public static class DependencyInjection
                 sp.GetRequiredService<IOptionsMonitor<AppConfig>>(),
                 sp.GetRequiredService<ILogger<KnowledgeMemoryService>>()));
 
+        // Conversation-to-Knowledge Bridge — LLM-based fact extraction from agent turns
+        services.AddTransient<IConversationFactExtractor, ConversationFactExtractor>();
+
         // Knowledge scope accessor (scoped per request)
         services.AddScoped<KnowledgeScopeAccessor>();
         services.AddScoped<IKnowledgeScope>(sp => sp.GetRequiredService<KnowledgeScopeAccessor>());
