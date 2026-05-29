@@ -77,7 +77,12 @@ public sealed class ToolPermissionBehavior<TRequest, TResponse>
 
         var agentId = _executionContext.AgentId;
         if (agentId is null)
+        {
+            _logger.LogWarning(
+                "Tool permission check skipped for {ToolName} — no AgentId in execution context",
+                toolRequest.ToolName);
             return await next();
+        }
 
         var decision = await _toolPermissionService.ResolvePermissionAsync(
             agentId, toolRequest.ToolName, cancellationToken: cancellationToken);

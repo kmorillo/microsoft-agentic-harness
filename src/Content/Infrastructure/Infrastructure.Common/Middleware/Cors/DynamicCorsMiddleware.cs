@@ -106,7 +106,7 @@ public sealed class DynamicCorsMiddleware
     {
         headers["Access-Control-Allow-Origin"] = origin;
         headers["Vary"] = "Origin";
-        headers["Access-Control-Allow-Headers"] = "*";
+        headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, Accept, X-Requested-With, X-Correlation-Id";
         headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS";
         headers["Access-Control-Expose-Headers"] = "Content-Type,Content-Length,Last-Modified";
     }

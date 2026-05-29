@@ -157,11 +157,15 @@ public sealed class McpConnectionManager : IAsyncDisposable
 
     private static HttpClientTransport CreateHttpTransport(string serverName, McpServerDefinition definition)
     {
+        var uri = new Uri(definition.Url ?? throw new McpConnectionException(
+            $"MCP server '{serverName}' is configured as {definition.Type} but has no URL."));
+
+        ValidateMcpServerUrl(uri, serverName);
+
         var options = new HttpClientTransportOptions
         {
             Name = serverName,
-            Endpoint = new Uri(definition.Url ?? throw new McpConnectionException(
-                $"MCP server '{serverName}' is configured as {definition.Type} but has no URL."))
+            Endpoint = uri
         };
 
         // Apply auth headers from configuration
@@ -182,6 +186,24 @@ public sealed class McpConnectionManager : IAsyncDisposable
         }
 
         return new HttpClientTransport(options);
+    }
+
+    private static readonly HashSet<string> BlockedHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "169.254.169.254",
+        "metadata.google.internal",
+        "metadata.goog"
+    };
+
+    private static void ValidateMcpServerUrl(Uri uri, string serverName)
+    {
+        if (uri.Scheme is not ("http" or "https"))
+            throw new McpConnectionException(
+                $"MCP server '{serverName}' uses unsupported scheme '{uri.Scheme}'. Only http/https are allowed.");
+
+        if (BlockedHosts.Contains(uri.Host))
+            throw new McpConnectionException(
+                $"MCP server '{serverName}' targets a cloud metadata endpoint ({uri.Host}), which is blocked.");
     }
 
     /// <inheritdoc />

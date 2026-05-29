@@ -63,6 +63,9 @@ public sealed class ProcessSandboxExecutor : ISandboxExecutor
     public async Task<SandboxExecutionResult> ExecuteAsync(
         SandboxExecutionRequest request, CancellationToken ct)
     {
+        if (!_sandboxConfig.CurrentValue.Enabled)
+            throw new InvalidOperationException("Sandbox execution is disabled by configuration (Sandbox:Enabled=false).");
+
         var workspaceDir = CreateWorkspaceDirectory();
         var startTimestamp = _timeProvider.GetTimestamp();
 

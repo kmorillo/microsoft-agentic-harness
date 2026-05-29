@@ -10,6 +10,13 @@ public sealed class SandboxConfig
     public const string SectionName = "Sandbox";
 
     /// <summary>
+    /// Gets or sets whether sandbox execution is enabled.
+    /// When disabled, both process and container executors refuse to run tools.
+    /// </summary>
+    /// <value>Default: true.</value>
+    public bool Enabled { get; init; } = true;
+
+    /// <summary>
     /// Capabilities granted to all sessions by default. Follows least-privilege: only
     /// FileRead and LlmInvocation are granted out of the box. Operators must explicitly
     /// grant FileWrite, NetworkAccess, Subprocess, DatabaseWrite, etc. in appsettings.

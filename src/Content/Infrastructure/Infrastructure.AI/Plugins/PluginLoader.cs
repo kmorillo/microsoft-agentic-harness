@@ -166,8 +166,12 @@ public sealed class PluginLoader : IPluginLoader
         var canonicalTarget = Path.GetFullPath(resolvedPath)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-        return canonicalTarget.StartsWith(canonicalBase + Path.DirectorySeparatorChar, StringComparison.Ordinal)
-            || string.Equals(canonicalTarget, canonicalBase, StringComparison.Ordinal);
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return canonicalTarget.StartsWith(canonicalBase + Path.DirectorySeparatorChar, comparison)
+            || string.Equals(canonicalTarget, canonicalBase, comparison);
     }
 
     private static McpServerDefinition BuildServerDefinition(
