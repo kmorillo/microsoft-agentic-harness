@@ -1,0 +1,8 @@
+name: bad-dataset
+version: 0.1.0
+cases:
+  - id: case-01
+    input: "test"
+    metrics:
+      - key: exact_match
+        threshold: not-a-number

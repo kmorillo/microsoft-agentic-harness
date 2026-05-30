@@ -58,6 +58,9 @@
     <PackageVersion Include="Microsoft.Agents.AI.OpenAI" Version="1.4.0" />
     <PackageVersion Include="Microsoft.Extensions.AI.AzureAIInference" Version="10.0.0-preview.1.25559.3" />
 
+    <!-- Infrastructure.AI.Evaluation -->
+    <PackageVersion Include="YamlDotNet" Version="16.3.0" />
+
     <!-- Infrastructure.AI.MCP -->
     <PackageVersion Include="ModelContextProtocol" Version="1.1.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
@@ -99,7 +102,7 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.15.1" />
 
-    <!-- Presentation.ConsoleUI / Presentation.LoggerUI -->
+    <!-- Presentation.ConsoleUI / Presentation.LoggerUI / Presentation.EvalRunner -->
     <PackageVersion Include="Spectre.Console" Version="0.55.2" />
 
     <!-- Structured file logging (Presentation.AgentHub) -->
@@ -120,7 +123,6 @@
     <PackageVersion Include="Testcontainers" Version="4.3.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.0" />
-    <PackageVersion Include="YamlDotNet" Version="16.3.0" />
 
   </ItemGroup>
 

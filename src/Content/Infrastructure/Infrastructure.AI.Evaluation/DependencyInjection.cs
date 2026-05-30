@@ -1,0 +1,79 @@
+using Application.AI.Common.Evaluation.Interfaces;
+using Application.AI.Common.Evaluation.Models;
+using Infrastructure.AI.Evaluation.Invokers;
+using Infrastructure.AI.Evaluation.Loaders;
+using Infrastructure.AI.Evaluation.Metrics;
+using Infrastructure.AI.Evaluation.Reporters;
+using Infrastructure.AI.Evaluation.Runners;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Infrastructure.AI.Evaluation;
+
+/// <summary>
+/// DI registrations for the offline evaluation framework.
+/// </summary>
+/// <remarks>
+/// Wires the loader, runner, invoker, all built-in metrics, and all built-in reporters.
+/// Consumers can override or extend any of these by registering a different
+/// <see cref="IEvalMetric"/>, <see cref="IEvalReporter"/>, or <see cref="IEvalDatasetLoader"/>
+/// implementation after calling <see cref="AddEvaluationDependencies"/>.
+/// </remarks>
+public static class DependencyInjection
+{
+    /// <summary>
+    /// Registers the eval framework: dataset loaders, metrics, reporters,
+    /// runner, MediatR-backed agent invoker, and the <see cref="JudgeCostOptions"/>
+    /// option block (defaults to zero rates).
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configureJudgeCost">
+    /// Optional callback to set <see cref="JudgeCostOptions"/> rates. When omitted,
+    /// cost reporting stays at <c>$0</c> until the consumer wires
+    /// <c>services.Configure&lt;JudgeCostOptions&gt;(...)</c> manually.
+    /// </param>
+    /// <returns>The service collection, for chaining.</returns>
+    public static IServiceCollection AddEvaluationDependencies(
+        this IServiceCollection services,
+        Action<JudgeCostOptions>? configureJudgeCost = null)
+    {
+        // Loaders
+        services.AddSingleton<IEvalDatasetLoader, YamlEvalDatasetLoader>();
+
+        // Metrics — register both as the concrete IEvalMetric set and as keyed services
+        // so future EvalRunner / handler can resolve a specific metric by Key without
+        // walking the whole enumeration.
+        AddMetric<ExactMatchMetric>(services, "exact_match");
+        AddMetric<RegexMatchMetric>(services, "regex_match");
+        AddMetric<ContainsAllMetric>(services, "contains_all");
+        AddMetric<DoesNotContainMetric>(services, "does_not_contain");
+        AddMetric<IsValidJsonMetric>(services, "is_valid_json");
+        AddMetric<LlmJudgeMetric>(services, "llm_judge");
+
+        // Reporters
+        services.AddSingleton<IEvalReporter, JsonEvalReporter>();
+        services.AddSingleton<IEvalReporter, JUnitXmlEvalReporter>();
+        services.AddSingleton<IEvalReporter, ConsoleEvalReporter>();
+
+        // Runner + invoker
+        services.AddSingleton<IEvalRunner, EvalRunner>();
+        services.AddSingleton<IAgentInvoker, HarnessAgentInvoker>();
+
+        // Cost rates — defaults to $0; consumers configure via the optional callback
+        // or by registering their own Configure<JudgeCostOptions>(...) after this call.
+        var optionsBuilder = services.AddOptions<JudgeCostOptions>();
+        if (configureJudgeCost is not null)
+        {
+            optionsBuilder.Configure(configureJudgeCost);
+        }
+
+        return services;
+    }
+
+    private static void AddMetric<TMetric>(IServiceCollection services, string key)
+        where TMetric : class, IEvalMetric
+    {
+        services.AddSingleton<TMetric>();
+        services.AddSingleton<IEvalMetric>(sp => sp.GetRequiredService<TMetric>());
+        services.AddKeyedSingleton<IEvalMetric>(key, (sp, _) => sp.GetRequiredService<TMetric>());
+    }
+}

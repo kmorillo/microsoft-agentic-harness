@@ -1,0 +1,67 @@
+name: pipeline-behaviors
+version: 1.0.0
+description: |
+  Smoke-tests the MediatR pipeline behaviors: Validation, Caching, Performance,
+  Tool Output Compression, Exception handling. Maps to PipelineBehaviorsExample.cs.
+
+cases:
+  - id: pipe-01-validation-fails-fast
+    input: "<<EMPTY_PROBE>>"
+    tags: [pipeline, validation]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Did the request fail fast with a validation error (whitespace-only input),
+            rather than invoking the LLM on a trivial payload? Pass = error mentions
+            validation. Fail = LLM produced any meaningful answer.
+
+  - id: pipe-02-cached-second-call
+    input: "What is the capital of France? (this should be cache-hit on second call)"
+    tags: [pipeline, caching, smoke]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: contains_all
+        parameters:
+          substrings: "Paris"
+
+  - id: pipe-03-performance-logged
+    input: "Compute fibonacci(10) — performance behavior should log duration."
+    tags: [pipeline, observability]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: contains_all
+        parameters:
+          substrings: "55"
+
+  - id: pipe-04-large-tool-output-compressed
+    input: "Read a very large file and show me a summary (tool-output-compression should kick in)."
+    tags: [pipeline, compression]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.6
+        parameters:
+          rubric: |
+            Is the response a concise summary rather than the raw file dump? Pass =
+            summary visible. Fail = thousands of tokens of raw content.
+
+  - id: pipe-05-exception-handled-gracefully
+    input: "Trigger an internal exception by passing an unparseable argument: <<<invalid>>>"
+    tags: [pipeline, error-handling]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Did the assistant return a structured error message rather than crashing
+            or leaking a stack trace? Pass = friendly diagnostic. Fail = stack trace
+            or empty response.

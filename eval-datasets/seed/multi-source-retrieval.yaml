@@ -1,0 +1,88 @@
+name: multi-source-retrieval
+version: 1.0.0
+description: |
+  Verifies parallel multi-source RAG: vector + BM25 + graph orchestrated in one query.
+  Maps to MultiSourceRetrievalExample.cs.
+
+cases:
+  - id: msr-01-vector-only-suffices
+    input: "What is the architecture of our retrieval pipeline?"
+    tags: [rag, vector]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: contains_all
+        parameters:
+          substrings: "vector|dense"
+
+  - id: msr-02-bm25-keyword-heavy
+    input: "Find the exact phrase 'reciprocal rank fusion' in our documentation."
+    tags: [rag, bm25]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: contains_all
+        parameters:
+          substrings: "reciprocal rank fusion"
+
+  - id: msr-03-graph-traversal
+    input: "Which services depend on the auth service indirectly (2+ hops)?"
+    tags: [rag, graph]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Did the assistant list at least one transitively-dependent service AND
+            explain the dependency path? Pass = clear path described.
+
+  - id: msr-04-fusion-merges-sources
+    input: "Summarize what we know about service latency: include performance docs AND incident reports."
+    tags: [rag, fusion, smoke]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Did the assistant cite from BOTH a documentation source AND an incident-report
+            source? Pass = two distinct sources visible. Fail = single-source answer.
+
+  - id: msr-05-no-source-honest-refusal
+    input: "What did Alice tell Bob on January 7th 2024 about the budget?"
+    tags: [rag, refusal]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.8
+        parameters:
+          rubric: |
+            Did the assistant explicitly say it could not find the information, rather
+            than hallucinating a plausible-sounding answer?
+
+  - id: msr-06-citation-tracked
+    input: "What is our SLO for p99 API latency?"
+    tags: [rag, citations]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: regex_match
+        parameters:
+          pattern: "\\[\\d+\\]|\\(source:|\\(ref:"
+
+  - id: msr-07-budget-enforcement
+    input: "Compose a 50-word answer using context from our docs about caching strategies."
+    tags: [rag, budget]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Is the answer roughly 50 words (40-65 acceptable), AND does it cite
+            caching-related context rather than freeform invention?

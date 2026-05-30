@@ -261,6 +261,11 @@ public static class IServiceCollectionExtensions
         services.AddMcpClientDependencies();
         services.AddInfrastructureApiAccessDependencies();
         services.AddInfrastructureObservabilityDependencies();
+        // Eval framework (Infrastructure.AI.Evaluation) is NOT registered here — it is
+        // opt-in for the EvalRunner CLI only. Web/console hosts that don't run evaluations
+        // should not carry HarnessAgentInvoker, six metric singletons, three reporters,
+        // and the YAML loader on every cold start. Call services.AddEvaluationDependencies()
+        // explicitly from the eval host when wanted.
 
         return services;
     }

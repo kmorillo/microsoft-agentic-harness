@@ -123,29 +123,12 @@ public sealed class LlmQueryClassifier : IQueryClassifier
     /// </summary>
     private QueryClassification ParseClassificationResponse(string responseText)
     {
-        // Strip markdown code fences if present
-        var json = responseText;
-        if (json.StartsWith("```"))
+        if (!Application.AI.Common.Json.LlmJsonResponseParser.TryParseObject<ClassificationDto>(responseText, JsonOptions, out var dto)
+            || dto is null)
         {
-            var firstNewline = json.IndexOf('\n');
-            var lastFence = json.LastIndexOf("```");
-            if (firstNewline >= 0 && lastFence > firstNewline)
-                json = json[(firstNewline + 1)..lastFence].Trim();
-        }
-
-        ClassificationDto? dto;
-        try
-        {
-            dto = JsonSerializer.Deserialize<ClassificationDto>(json, JsonOptions);
-        }
-        catch (JsonException ex)
-        {
-            _logger.LogWarning(ex, "Failed to parse classification JSON: {Response}", responseText);
+            _logger.LogWarning("Failed to parse classification JSON: {Response}", responseText);
             return CreateFallback("JSON parse failure");
         }
-
-        if (dto is null)
-            return CreateFallback("Null deserialization result");
 
         if (!Enum.TryParse<QueryType>(dto.Type, ignoreCase: true, out var queryType))
         {

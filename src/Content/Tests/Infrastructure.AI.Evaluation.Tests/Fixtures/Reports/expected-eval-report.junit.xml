@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites name="eval-run-run-fixture-001" tests="3" failures="1" errors="0" skipped="1" time="0.750">
+  <properties>
+    <property name="passed" value="1" />
+  </properties>
+  <testsuite name="demo-dataset" tests="3" failures="1" errors="0" skipped="1" time="0.120">
+    <properties>
+      <property name="passed" value="1" />
+    </properties>
+    <testcase name="case-pass" classname="demo-dataset" time="0.050" />
+    <testcase name="case-fail" classname="demo-dataset" time="0.040">
+      <failure message="exact_match=0.000(Fail)" />
+    </testcase>
+    <testcase name="case-warn" classname="demo-dataset" time="0.030">
+      <skipped message="llm_judge=0.000(Warn)" />
+    </testcase>
+  </testsuite>
+</testsuites>

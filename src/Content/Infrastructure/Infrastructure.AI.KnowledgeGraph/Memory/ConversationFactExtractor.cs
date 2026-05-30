@@ -103,34 +103,11 @@ public sealed class ConversationFactExtractor : IConversationFactExtractor
     private static IReadOnlyList<ConversationFact> ParseFacts(
         string json, string conversationId, int turnNumber)
     {
-        json = json.Trim();
-        if (json.StartsWith("```"))
-        {
-            var firstNewline = json.IndexOf('\n');
-            if (firstNewline >= 0) json = json[(firstNewline + 1)..];
-            if (json.EndsWith("```")) json = json[..^3];
-            json = json.Trim();
-        }
-
-        var startIndex = json.IndexOf('[');
-        var endIndex = json.LastIndexOf(']');
-        if (startIndex < 0 || endIndex <= startIndex)
-            return [];
-
-        json = json[startIndex..(endIndex + 1)];
-
-        List<RawFact>? rawFacts;
-        try
-        {
-            rawFacts = JsonSerializer.Deserialize<List<RawFact>>(json, JsonOptions);
-        }
-        catch (JsonException)
+        if (!Application.AI.Common.Json.LlmJsonResponseParser.TryParseArray<List<RawFact>>(json, JsonOptions, out var rawFacts)
+            || rawFacts is null or { Count: 0 })
         {
             return [];
         }
-
-        if (rawFacts is null or { Count: 0 })
-            return [];
 
         var factIndex = 0;
         return rawFacts

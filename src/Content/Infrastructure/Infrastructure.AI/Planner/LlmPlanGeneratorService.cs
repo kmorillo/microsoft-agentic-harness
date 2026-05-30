@@ -203,15 +203,5 @@ public sealed class LlmPlanGeneratorService : IPlanGenerator
     /// Strips markdown code fences that LLMs frequently add despite instructions not to.
     /// </summary>
     private static string SanitizeJsonResponse(string response)
-    {
-        var trimmed = response.Trim();
-        if (trimmed.StartsWith("```"))
-        {
-            var firstNewline = trimmed.IndexOf('\n');
-            var lastFence = trimmed.LastIndexOf("```");
-            if (firstNewline > 0 && lastFence > firstNewline)
-                return trimmed[(firstNewline + 1)..lastFence].Trim();
-        }
-        return trimmed;
-    }
+        => Application.AI.Common.Json.LlmJsonResponseParser.StripFences(response);
 }

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Infrastructure.AI.Evaluation</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Configurations>Debug;Release;Debug-AgentHub-All;Debug-AgentHub-WebUI;Debug-AgentHub-Dashboard</Configurations>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Infrastructure.AI.Evaluation.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MediatR" />
+    <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Spectre.Console" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Domain\Domain.AI\Domain.AI.csproj" />
+    <ProjectReference Include="..\..\Domain\Domain.Common\Domain.Common.csproj" />
+    <ProjectReference Include="..\..\Application\Application.AI.Common\Application.AI.Common.csproj" />
+    <ProjectReference Include="..\..\Application\Application.Common\Application.Common.csproj" />
+    <ProjectReference Include="..\..\Application\Application.Core\Application.Core.csproj" />
+  </ItemGroup>
+
+</Project>

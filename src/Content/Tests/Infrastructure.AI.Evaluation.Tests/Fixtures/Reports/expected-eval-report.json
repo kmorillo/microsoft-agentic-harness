@@ -1,0 +1,197 @@
+{
+  "run_id": "run-fixture-001",
+  "started_at_utc": "2026-05-29T12:00:00+00:00",
+  "completed_at_utc": "2026-05-29T12:00:00.75+00:00",
+  "duration": "00:00:00.7500000",
+  "datasets": [
+    {
+      "name": "demo-dataset",
+      "version": "1.0.0",
+      "description": "Deterministic fixture for reporter tests.",
+      "cases": [
+        {
+          "id": "case-pass",
+          "input": "Why is the sky blue?",
+          "expected_output": "Rayleigh scattering.",
+          "tags": [],
+          "invocation_overrides": {},
+          "metric_specs": [
+            {
+              "metric_key": "exact_match",
+              "threshold": 1,
+              "parameters": {}
+            }
+          ]
+        },
+        {
+          "id": "case-fail",
+          "input": "Hello",
+          "expected_output": "Hi",
+          "tags": [],
+          "invocation_overrides": {},
+          "metric_specs": [
+            {
+              "metric_key": "exact_match",
+              "threshold": 1,
+              "parameters": {}
+            }
+          ]
+        },
+        {
+          "id": "case-warn",
+          "input": "Judge me",
+          "tags": [],
+          "invocation_overrides": {},
+          "metric_specs": [
+            {
+              "metric_key": "llm_judge",
+              "threshold": 0.7,
+              "parameters": {}
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "results": [
+    {
+      "case": {
+        "id": "case-pass",
+        "input": "Why is the sky blue?",
+        "expected_output": "Rayleigh scattering.",
+        "tags": [],
+        "invocation_overrides": {},
+        "metric_specs": [
+          {
+            "metric_key": "exact_match",
+            "threshold": 1,
+            "parameters": {}
+          }
+        ]
+      },
+      "output_per_repeat": [
+        "Rayleigh scattering."
+      ],
+      "scores_per_repeat": [
+        [
+          {
+            "metric_key": "exact_match",
+            "score": 1,
+            "verdict": "pass",
+            "reasoning": "Output equals expected.",
+            "cost_usd": 0,
+            "duration": "00:00:00.0020000"
+          }
+        ]
+      ],
+      "aggregated_scores": {
+        "exact_match": {
+          "metric_key": "exact_match",
+          "score": 1,
+          "verdict": "pass",
+          "reasoning": "Output equals expected.",
+          "cost_usd": 0,
+          "duration": "00:00:00.0020000"
+        }
+      },
+      "verdict": "pass",
+      "cost_usd": 0,
+      "duration": "00:00:00.0500000"
+    },
+    {
+      "case": {
+        "id": "case-fail",
+        "input": "Hello",
+        "expected_output": "Hi",
+        "tags": [],
+        "invocation_overrides": {},
+        "metric_specs": [
+          {
+            "metric_key": "exact_match",
+            "threshold": 1,
+            "parameters": {}
+          }
+        ]
+      },
+      "output_per_repeat": [
+        "Hello back"
+      ],
+      "scores_per_repeat": [
+        [
+          {
+            "metric_key": "exact_match",
+            "score": 0,
+            "verdict": "fail",
+            "reasoning": "Output differs from expected.",
+            "cost_usd": 0,
+            "duration": "00:00:00.0030000"
+          }
+        ]
+      ],
+      "aggregated_scores": {
+        "exact_match": {
+          "metric_key": "exact_match",
+          "score": 0,
+          "verdict": "fail",
+          "reasoning": "Output differs from expected.",
+          "cost_usd": 0,
+          "duration": "00:00:00.0030000"
+        }
+      },
+      "verdict": "fail",
+      "cost_usd": 0,
+      "duration": "00:00:00.0400000"
+    },
+    {
+      "case": {
+        "id": "case-warn",
+        "input": "Judge me",
+        "tags": [],
+        "invocation_overrides": {},
+        "metric_specs": [
+          {
+            "metric_key": "llm_judge",
+            "threshold": 0.7,
+            "parameters": {}
+          }
+        ]
+      },
+      "output_per_repeat": [
+        "whatever"
+      ],
+      "scores_per_repeat": [
+        [
+          {
+            "metric_key": "llm_judge",
+            "score": 0,
+            "verdict": "warn",
+            "reasoning": "llm_judge requires a 'rubric' parameter.",
+            "cost_usd": 0,
+            "duration": "00:00:00.0010000"
+          }
+        ]
+      ],
+      "aggregated_scores": {
+        "llm_judge": {
+          "metric_key": "llm_judge",
+          "score": 0,
+          "verdict": "warn",
+          "reasoning": "llm_judge requires a 'rubric' parameter.",
+          "cost_usd": 0,
+          "duration": "00:00:00.0010000"
+        }
+      },
+      "verdict": "warn",
+      "cost_usd": 0,
+      "duration": "00:00:00.0300000"
+    }
+  ],
+  "passed_count": 1,
+  "failed_count": 1,
+  "warned_count": 1,
+  "errored_count": 0,
+  "total_cost_usd": 0,
+  "repeats": 1,
+  "overall_verdict": "fail",
+  "pass_rate": 0.3333333333333333
+}

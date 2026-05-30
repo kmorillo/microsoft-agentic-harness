@@ -1,0 +1,69 @@
+name: skills-discovery
+version: 1.0.0
+description: |
+  Verifies the multi-skill agent's discovery, prerequisite ordering, and dual-mode loading.
+  Maps to Presentation.ConsoleUI/Examples/SkillsDiscoveryExample.cs.
+  Replace `agent_name` overrides with your skill-enabled agent.
+
+cases:
+  - id: skills-01-lists-available-skills
+    input: "What skills do you have available?"
+    tags: [skills, smoke]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Did the assistant enumerate at least two named skills with a brief
+            one-line description each? Pass = clear list. Fail = vague answer.
+
+  - id: skills-02-prerequisite-ordering
+    input: "Use the 'review' skill on the latest PR."
+    tags: [skills, prerequisites]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Did the assistant invoke any declared prerequisite skill (e.g. 'fetch-pr')
+            BEFORE attempting 'review', OR explain that the prerequisite must run first?
+
+  - id: skills-03-no-skill-fallback
+    input: "Compute the SHA-512 hash of 'hello world' yourself, no skills needed."
+    tags: [skills, fallback]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: contains_all
+        parameters:
+          substrings: "309ecc489c12d6eb4cc40f50c902f2b4d0ed77ee511a7c7a9bcd3ca86d4cd86f989dd35bc5ff499670da34255b45b0cfd830e81f605dcf7dc5542e93ae9cd76f"
+
+  - id: skills-04-injected-mode-respects-instructions
+    input: "Use only the 'summarize' skill, even if 'translate' might help."
+    tags: [skills, injected-mode]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Did the assistant restrict itself to 'summarize' and not invoke 'translate',
+            even implicitly?
+
+  - id: skills-05-managed-mode-selection
+    input: "Please review and summarize this PR description: 'Adds null check to UserService'."
+    tags: [skills, managed-mode, smoke]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Did the assistant select the appropriate skill(s) (review, summarize) for the
+            task without being told explicitly which to use?

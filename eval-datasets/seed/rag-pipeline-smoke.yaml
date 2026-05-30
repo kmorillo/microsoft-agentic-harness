@@ -1,0 +1,146 @@
+name: rag-pipeline-smoke
+version: 1.0.0
+description: |
+  Broad RAG-pipeline smoke suite covering ingestion, retrieval, query transformation,
+  CRAG evaluation, complexity routing, multi-hop decomposition, and citation tracking.
+  Maps to RagPipelineExample.cs and RAG test fixtures.
+
+cases:
+  - id: rag-01-simple-lookup
+    input: "What is the default timeout for HTTP clients in this project?"
+    tags: [rag, smoke, simple]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: regex_match
+        parameters:
+          pattern: "\\b\\d+\\s*(s|sec|seconds?|ms|milliseconds?|minute|minutes)\\b"
+
+  - id: rag-02-citation-present
+    input: "Explain how RAG Fusion works in this codebase, with a citation."
+    tags: [rag, citations, smoke]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: regex_match
+        parameters:
+          pattern: "\\[\\d+\\]|\\(source:|\\(ref:|\\bsee\\s+[A-Z][^\\s]*\\.(cs|md)\\b"
+
+  - id: rag-03-faithful-to-context
+    input: "What does the README say about contribution licenses?"
+    tags: [rag, faithfulness]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Did the assistant ground the answer in retrieved README content (visible
+            via quoted phrases or citations) rather than guessing from general knowledge?
+
+  - id: rag-04-hyde-improves-recall
+    input: "Find documents about 'temporal degradation of vector embeddings over time'."
+    tags: [rag, hyde]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.6
+        parameters:
+          rubric: |
+            Did the assistant return at least one relevant document despite the
+            wordy phrasing? HyDE / query expansion is expected to help here.
+
+  - id: rag-05-crag-low-confidence-refines
+    input: "What is the exact CO2 footprint of one inference call to Phi-3-mini?"
+    tags: [rag, crag, refinement]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Did the assistant either (a) cite a specific source with a number, or
+            (b) clearly state the information is not in scope? Fail = hallucinated
+            number with no source.
+
+  - id: rag-06-complexity-router-simple
+    input: "What year was this project initialized?"
+    tags: [rag, routing, simple]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: regex_match
+        parameters:
+          pattern: "20\\d{2}"
+
+  - id: rag-07-complexity-router-multi-hop
+    input: "Which services use a cache backend whose author also contributed to RAG infrastructure?"
+    tags: [rag, routing, multi-hop]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.6
+        parameters:
+          rubric: |
+            Did the assistant perform multi-hop reasoning (identify cache backend → its
+            author → that author's RAG contributions → services using the cache) and
+            arrive at a defensible answer with reasoning?
+
+  - id: rag-08-bm25-exact-phrase
+    input: "Find files containing the exact identifier 'ITokenBudgetTracker'."
+    tags: [rag, bm25]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: contains_all
+        parameters:
+          substrings: "ITokenBudgetTracker"
+
+  - id: rag-09-graph-hop
+    input: "Trace which agent skills depend on tools provided by Infrastructure.AI.MCP."
+    tags: [rag, graph]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.6
+        parameters:
+          rubric: |
+            Did the assistant produce a dependency trace mentioning at least one
+            specific skill and one specific MCP-provided tool?
+
+  - id: rag-10-token-budget-enforced
+    input: "Give me a single-sentence summary of the agent harness."
+    tags: [rag, budget]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: regex_match
+        parameters:
+          pattern: "^[^.!?]+[.!?]\\s*$"
+
+  - id: rag-11-json-output-shape
+    input: "Return JSON with one field: { \"summary\": \"<one sentence about RAG>\" }."
+    tags: [rag, json]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: is_valid_json
+
+  - id: rag-12-stale-result-rejected
+    input: "What is the latest commit hash on main?"
+    tags: [rag, freshness]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - key: llm_judge
+        threshold: 0.7
+        parameters:
+          rubric: |
+            Did the assistant either return a current-looking commit hash OR clearly
+            state that this requires a live git tool the eval can't satisfy? Fail =
+            fabricated hash that looks plausible but is invented.

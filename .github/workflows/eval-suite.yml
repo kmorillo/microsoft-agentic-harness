@@ -1,0 +1,117 @@
+name: Eval Suite
+
+# Runs the offline evaluation harness against the seed datasets in eval-datasets/seed.
+#
+# Cost: every llm_judge metric call hits the configured judge model. Off by default.
+# Enable per-repo: Settings → Secrets and variables → Actions → Variables tab
+#                   → New repository variable → EVAL_ENABLED = true
+#
+# Always-available trigger: workflow_dispatch (manual "Run workflow" button).
+# Scheduled / push triggers fire only when EVAL_ENABLED == "true".
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_glob:
+        description: 'Glob of dataset paths to run (default: eval-datasets/seed/*.yaml)'
+        required: false
+        default: 'eval-datasets/seed/*.yaml'
+      repeats:
+        description: 'Repeats per case for stability (CI default 3)'
+        required: false
+        default: '3'
+      fail_rate:
+        description: 'Max acceptable failure fraction for overall Pass (0.0–1.0)'
+        required: false
+        default: '0.10'
+
+  schedule:
+    # Daily at 06:00 UTC. Only runs if EVAL_ENABLED repo variable is "true".
+    - cron: '0 6 * * *'
+
+permissions:
+  contents: read
+  checks: write
+  actions: read
+
+concurrency:
+  group: eval-suite-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  eval:
+    name: Run evaluation suite
+    runs-on: ubuntu-latest
+
+    # Skip non-dispatch runs unless the repo opts in via EVAL_ENABLED == "true".
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.EVAL_ENABLED == 'true' }}
+
+    env:
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore src/AgenticHarness.slnx
+
+      - name: Build (Release)
+        run: dotnet build src/AgenticHarness.slnx -c Release --no-restore
+
+      - name: Run eval suite (JUnit output)
+        env:
+          # Map secrets the harness needs into env so appsettings/User-Secrets
+          # binding picks them up. Define these in repo or org secrets.
+          AppConfig__AI__AgentFramework__ApiKey: ${{ secrets.EVAL_LLM_API_KEY }}
+          # Route untrusted workflow_dispatch inputs through env to prevent
+          # shell injection via crafted `dataset_glob` / `repeats` / `fail_rate`.
+          DATASET_GLOB: ${{ github.event.inputs.dataset_glob || 'eval-datasets/seed/*.yaml' }}
+          REPEATS_INPUT: ${{ github.event.inputs.repeats || '3' }}
+          FAIL_RATE_INPUT: ${{ github.event.inputs.fail_rate || '0.10' }}
+        run: |
+          set -euo pipefail
+
+          # Validate inputs before passing to shell or the CLI.
+          if ! [[ "$REPEATS_INPUT" =~ ^[0-9]+$ ]]; then
+            echo "Invalid repeats input: $REPEATS_INPUT" >&2; exit 2
+          fi
+          if ! [[ "$FAIL_RATE_INPUT" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "Invalid fail-rate input: $FAIL_RATE_INPUT" >&2; exit 2
+          fi
+
+          # Expand the glob safely without word-splitting attacker-controlled input.
+          mapfile -t DATASETS < <(compgen -G "$DATASET_GLOB" || true)
+          if [ "${#DATASETS[@]}" -eq 0 ]; then
+            echo "No datasets matched glob: $DATASET_GLOB" >&2; exit 2
+          fi
+
+          dotnet run --no-build -c Release \
+            --project src/Content/Presentation/Presentation.EvalRunner -- \
+            "${DATASETS[@]}" \
+            --out junit \
+            --out-file eval-results.junit.xml \
+            --repeats "$REPEATS_INPUT" \
+            --parallel 4 \
+            --fail-rate "$FAIL_RATE_INPUT" \
+            --deterministic
+
+      - name: Publish JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-junit
+          path: eval-results.junit.xml
+          retention-days: 30
+
+      # NOTE: The dashboard JSON artifact is intentionally NOT emitted here. Running the
+      # CLI a second time with --out json doubles LLM-judge cost AND uses different
+      # --repeats (1 vs 3), producing aggregates that disagree with the JUnit gate above.
+      # Sub-phase 5.4 will add multi-format emit support to the CLI; until then, the
+      # JUnit XML serves both the build gate and downstream consumption.

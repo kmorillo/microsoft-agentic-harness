@@ -67,6 +67,11 @@
       <BuildType Solution="Debug-AgentHub-Dashboard|*" Project="Debug" />
       <BuildType Solution="Debug-AgentHub-WebUI|*" Project="Debug" />
     </Project>
+    <Project Path="Content/Infrastructure/Infrastructure.AI.Evaluation/Infrastructure.AI.Evaluation.csproj">
+      <BuildType Solution="Debug-AgentHub-All|*" Project="Debug" />
+      <BuildType Solution="Debug-AgentHub-Dashboard|*" Project="Debug" />
+      <BuildType Solution="Debug-AgentHub-WebUI|*" Project="Debug" />
+    </Project>
     <Project Path="Content/Infrastructure/Infrastructure.AI.KnowledgeGraph/Infrastructure.AI.KnowledgeGraph.csproj">
       <BuildType Solution="Debug-AgentHub-All|*" Project="Debug" />
       <BuildType Solution="Debug-AgentHub-Dashboard|*" Project="Debug" />
@@ -119,6 +124,11 @@
       <BuildType Solution="Debug-AgentHub-WebUI|*" Project="Debug" />
     </Project>
     <Project Path="Content/Presentation/Presentation.ConsoleUI/Presentation.ConsoleUI.csproj">
+      <BuildType Solution="Debug-AgentHub-All|*" Project="Debug" />
+      <BuildType Solution="Debug-AgentHub-Dashboard|*" Project="Debug" />
+      <BuildType Solution="Debug-AgentHub-WebUI|*" Project="Debug" />
+    </Project>
+    <Project Path="Content/Presentation/Presentation.EvalRunner/Presentation.EvalRunner.csproj">
       <BuildType Solution="Debug-AgentHub-All|*" Project="Debug" />
       <BuildType Solution="Debug-AgentHub-Dashboard|*" Project="Debug" />
       <BuildType Solution="Debug-AgentHub-WebUI|*" Project="Debug" />
@@ -181,6 +191,11 @@
       <BuildType Solution="Debug-AgentHub-WebUI|*" Project="Debug" />
     </Project>
     <Project Path="Content/Tests/Infrastructure.AI.Connectors.Tests/Infrastructure.AI.Connectors.Tests.csproj">
+      <BuildType Solution="Debug-AgentHub-All|*" Project="Debug" />
+      <BuildType Solution="Debug-AgentHub-Dashboard|*" Project="Debug" />
+      <BuildType Solution="Debug-AgentHub-WebUI|*" Project="Debug" />
+    </Project>
+    <Project Path="Content/Tests/Infrastructure.AI.Evaluation.Tests/Infrastructure.AI.Evaluation.Tests.csproj">
       <BuildType Solution="Debug-AgentHub-All|*" Project="Debug" />
       <BuildType Solution="Debug-AgentHub-Dashboard|*" Project="Debug" />
       <BuildType Solution="Debug-AgentHub-WebUI|*" Project="Debug" />

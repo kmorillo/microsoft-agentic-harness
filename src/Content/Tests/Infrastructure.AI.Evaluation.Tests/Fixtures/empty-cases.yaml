@@ -1,0 +1,4 @@
+name: empty-dataset
+version: 0.1.0
+description: A dataset with zero cases (valid but degenerate)
+cases: []
