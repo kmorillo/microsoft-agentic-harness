@@ -1,8 +1,11 @@
 using Application.AI.Common.Evaluation.Interfaces;
 using Application.AI.Common.Evaluation.Models;
 using Infrastructure.AI.Evaluation.Invokers;
+using Infrastructure.AI.Evaluation.Judges;
 using Infrastructure.AI.Evaluation.Loaders;
 using Infrastructure.AI.Evaluation.Metrics;
+using Infrastructure.AI.Evaluation.Metrics.Rag;
+using Infrastructure.AI.Evaluation.Prompts;
 using Infrastructure.AI.Evaluation.Reporters;
 using Infrastructure.AI.Evaluation.Runners;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,6 +52,14 @@ public static class DependencyInjection
         AddMetric<IsValidJsonMetric>(services, "is_valid_json");
         AddMetric<LlmJudgeMetric>(services, "llm_judge");
 
+        // RAG metric pack (Sub-phase 5.2): faithfulness, context precision/recall,
+        // answer relevance/correctness. All share ILlmJudge + IPromptTemplateLoader.
+        AddMetric<FaithfulnessMetric>(services, "faithfulness");
+        AddMetric<ContextPrecisionMetric>(services, "context_precision");
+        AddMetric<ContextRecallMetric>(services, "context_recall");
+        AddMetric<AnswerRelevanceMetric>(services, "answer_relevance");
+        AddMetric<AnswerCorrectnessMetric>(services, "answer_correctness");
+
         // Reporters
         services.AddSingleton<IEvalReporter, JsonEvalReporter>();
         services.AddSingleton<IEvalReporter, JUnitXmlEvalReporter>();
@@ -57,6 +68,16 @@ public static class DependencyInjection
         // Runner + invoker
         services.AddSingleton<IEvalRunner, EvalRunner>();
         services.AddSingleton<IAgentInvoker, HarnessAgentInvoker>();
+
+        // Fixed judge chat client (NOT model-router) — preserves cross-run reproducibility.
+        services.AddSingleton<IJudgeChatClientProvider, DefaultJudgeChatClientProvider>();
+        services.AddOptions<JudgeOptions>();
+
+        // Shared judge call mechanics used by LlmJudgeMetric and the RAG metric pack.
+        services.AddSingleton<ILlmJudge, DefaultLlmJudge>();
+
+        // Embedded prompt templates (Evaluation/Prompts/*.md in Application.AI.Common).
+        services.AddSingleton<IPromptTemplateLoader, EmbeddedPromptTemplateLoader>();
 
         // Cost rates — defaults to $0; consumers configure via the optional callback
         // or by registering their own Configure<JudgeCostOptions>(...) after this call.

@@ -137,6 +137,53 @@ public sealed class RunEvalSuiteCommandHandlerTests : IDisposable
     }
 
     [Fact]
+    public async Task Attaches_cost_warning_to_report_when_repeats_exceeds_threshold()
+    {
+        var path = CreateFile("a.yaml");
+        var loader = Loader("yaml");
+        var runner = new Mock<IEvalRunner>();
+        runner.Setup(r => r.RunAsync(It.IsAny<IReadOnlyList<EvalDataset>>(), It.IsAny<EvalRunOptions>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(MakeReport());
+
+        var sut = MakeSut([loader.Object], runner.Object);
+
+        var result = await sut.Handle(
+            new RunEvalSuiteCommand
+            {
+                DatasetPaths = [path],
+                Options = new EvalRunOptions { Repeats = 25 }
+            },
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Warnings.Should().ContainSingle()
+            .Which.Should().Contain("Repeats=25");
+    }
+
+    [Fact]
+    public async Task Does_not_attach_warning_when_repeats_at_or_below_threshold()
+    {
+        var path = CreateFile("a.yaml");
+        var loader = Loader("yaml");
+        var runner = new Mock<IEvalRunner>();
+        runner.Setup(r => r.RunAsync(It.IsAny<IReadOnlyList<EvalDataset>>(), It.IsAny<EvalRunOptions>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(MakeReport());
+
+        var sut = MakeSut([loader.Object], runner.Object);
+
+        var result = await sut.Handle(
+            new RunEvalSuiteCommand
+            {
+                DatasetPaths = [path],
+                Options = new EvalRunOptions { Repeats = 10 }
+            },
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Warnings.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Returns_validation_failure_when_dataset_paths_empty()
     {
         var loader = Loader("yaml");

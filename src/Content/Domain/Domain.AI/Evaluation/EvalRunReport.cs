@@ -59,4 +59,17 @@ public sealed record EvalRunReport
     public double PassRate => (PassedCount + FailedCount + WarnedCount) == 0
         ? 0.0
         : (double)PassedCount / (PassedCount + FailedCount + WarnedCount);
+
+    /// <summary>
+    /// Non-failure warnings the handler surfaced during the run (e.g. cost-related
+    /// caveats like "repeats above 10 may inflate spend"). Distinct from
+    /// <see cref="WarnedCount"/>, which counts per-case <see cref="Verdict.Warn"/> outcomes.
+    /// </summary>
+    /// <remarks>
+    /// Lives on the report (not just in <see cref="Microsoft.Extensions.Logging.ILogger"/>)
+    /// so every dispatcher — CLI, dashboard, scheduled job, REST endpoint — surfaces
+    /// the same advisory text via the report contract instead of relying on each host's
+    /// logging-pipeline filter rules.
+    /// </remarks>
+    public IReadOnlyList<string> Warnings { get; init; } = [];
 }

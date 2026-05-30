@@ -14,11 +14,12 @@ dotnet run --project src/Content/Presentation/Presentation.EvalRunner -- \
 ```
 
 ```bash
-# Multiple datasets, JUnit output for CI, 3 repeats per case for stability.
+# Multiple datasets, both JUnit (CI gate) and JSON (dashboard) from one run,
+# 3 repeats per case for stability, 10% acceptable failure rate.
 dotnet run --project src/Content/Presentation/Presentation.EvalRunner -- \
   eval-datasets/seed/*.yaml \
-  --out junit \
-  --out-file eval.junit.xml \
+  --out junit:eval.junit.xml \
+  --out json:eval.json \
   --repeats 3 \
   --parallel 4 \
   --fail-rate 0.10 \
@@ -30,15 +31,19 @@ dotnet run --project src/Content/Presentation/Presentation.EvalRunner -- \
 | Flag | Default | Meaning |
 |---|---|---|
 | _positional_ | — | One or more dataset YAML paths. Required. |
-| `--out FORMAT` | `console` | Reporter: `console` (Spectre table), `json` (snake_case System.Text.Json), `junit` (XSD-legal JUnit XML). |
-| `--out-file PATH` | stdout | Write report to file instead of stdout. |
+| `--out FORMAT[:PATH]` | `console` | Output sink, **repeatable**. `FORMAT` must match a registered `IEvalReporter` (built-ins: `console`, `json`, `junit`). Omit `:PATH` to write to stdout (at most one such sink). |
 | `--repeats N` | `1` (CLI), `3` (CI) | 1–50. Median-across-repeats aggregation smooths LLM-judge noise. |
 | `--parallel N` | `1` | Concurrent cases. Tune to your provider's rate limits. |
 | `--tags tag1,tag2` | — | Run only cases whose tags intersect this set. Case-insensitive. |
 | `--fail-rate F` | `0.0` | Max acceptable failure fraction for overall `Pass`. |
 | `--deterministic` | off | Force `temperature=0` on every invocation. Used for trace replay. |
 
-**Exit codes:** `0` overall verdict Pass · `1` Fail / Warn · `2` argument or load error.
+Multi-emit example — one run, two artifacts, no double cost:
+```bash
+evalrun ds.yaml --out junit:eval.xml --out json:eval.json --deterministic
+```
+
+**Exit codes:** `0` overall verdict Pass · `1` Fail / Warn · `2` argument or load error · `130` cancelled (SIGINT).
 
 ## Dataset YAML schema
 
@@ -107,9 +112,9 @@ Defaults are `$0` so `MetricScore.CostUsd` and `EvalRunReport.TotalCostUsd` stay
 
 `.github/workflows/eval-suite.yml` runs this CLI against the seed datasets. **Off by default** — enable by setting repo variable `EVAL_ENABLED=true`. The `workflow_dispatch` manual trigger is always available.
 
-The workflow uploads the `eval-results-junit` artifact (JUnit XML for the Tests tab and
-downstream report parsers). A second JSON-for-dashboard artifact was intentionally NOT
-added: running the CLI twice would double LLM-judge cost AND emit aggregates that
-disagree with the gate (different `--repeats`). Sub-phase 5.4 will extend the CLI to
-accept multiple `--out FORMAT:PATH` pairs so one invocation emits both reports from a
-single in-memory `EvalRunReport`.
+The workflow uploads two artifacts from a single `dotnet run` invocation:
+- `eval-results-junit` — JUnit XML for the Tests tab and downstream report parsers.
+- `eval-results-json` — full JSON for dashboard ingestion (Sub-phase 5.4).
+
+Both come from the same in-memory `EvalRunReport`, so the JSON dashboard view always
+agrees with the JUnit gate verdict — no double cost, no aggregate drift.

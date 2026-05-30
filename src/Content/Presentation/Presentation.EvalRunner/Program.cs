@@ -18,8 +18,7 @@ namespace Presentation.EvalRunner;
 /// <para><b>Usage:</b></para>
 /// <code>
 /// evalrun &lt;dataset.yaml&gt; [&lt;dataset2.yaml&gt; ...]
-///         [--out console|json|junit]   # output format (default: console)
-///         [--out-file &lt;path&gt;]     # write to file instead of stdout
+///         [--out FORMAT[:PATH]]        # output sink; repeatable; FORMAT must match a registered reporter
 ///         [--repeats N]                # 1..50 (default 1; CI default 3)
 ///         [--parallel N]               # cases run concurrently (default 1)
 ///         [--tags tag1,tag2]           # only run cases with at least one matching tag
@@ -27,17 +26,21 @@ namespace Presentation.EvalRunner;
 ///         [--deterministic]            # force temperature=0 on every invocation
 /// </code>
 /// <para>
+/// <b>--out form:</b>
+/// <list type="bullet">
+///   <item><description><c>--out console</c> writes to stdout.</description></item>
+///   <item><description><c>--out json:report.json</c> writes to <c>report.json</c>.</description></item>
+///   <item><description>Multiple <c>--out</c> flags allowed; at most one may omit <c>:PATH</c> (the stdout one).</description></item>
+///   <item><description>No <c>--out</c> at all defaults to <c>--out console</c>.</description></item>
+/// </list>
+/// </para>
+/// <para>
 /// Exit code 0 when the overall verdict is <see cref="Verdict.Pass"/>, 1 otherwise.
 /// Validation failures (bad args, missing files) exit 2.
 /// </para>
 /// </remarks>
 public static class Program
 {
-    private static readonly IReadOnlySet<string> KnownOutputFormats =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "console", "json", "junit" };
-
-    private const int RepeatsCostWarningThreshold = 10;
-
     /// <summary>Entry point.</summary>
     public static async Task<int> Main(string[] args)
     {
@@ -66,12 +69,11 @@ public static class Program
             return 2;
         }
 
-        if (parsed.Repeats > RepeatsCostWarningThreshold)
-        {
-            Console.Error.WriteLine(
-                $"Warning: --repeats {parsed.Repeats} multiplies LLM-judge cost by {parsed.Repeats}x per case. " +
-                $"Consider {RepeatsCostWarningThreshold} or below unless stability variance demands more.");
-        }
+        // Cost/usage warnings are collected by RunEvalSuiteCommandHandler and surfaced
+        // via EvalRunReport.Warnings — printed below after the run completes. The CLI
+        // does not emit a duplicate pre-run warning; the report-attached warnings reach
+        // every dispatcher (CLI, dashboard, scheduled job, REST endpoint) uniformly
+        // without depending on logger filter routing.
 
         // Wire up SIGINT / Ctrl+C → cancellation across the whole run so a stuck judge
         // or long-running case can be aborted cleanly without truncating output files.
@@ -98,6 +100,21 @@ public static class Program
         services.AddEvaluationDependencies();
 
         await using var provider = services.BuildServiceProvider();
+
+        // Validate --out formats against actually-registered reporter format keys (not a
+        // hardcoded list) so consumers who register custom IEvalReporter implementations
+        // have their FormatKey accepted by the CLI automatically.
+        var reportersByFormat = provider.GetServices<IEvalReporter>()
+            .ToDictionary(r => r.FormatKey, StringComparer.OrdinalIgnoreCase);
+        foreach (var sink in parsed.OutputSinks)
+        {
+            if (!reportersByFormat.ContainsKey(sink.Format))
+            {
+                Console.Error.WriteLine(
+                    $"Unknown --out format '{sink.Format}'. Registered: {string.Join(", ", reportersByFormat.Keys.OrderBy(s => s))}.");
+                return 2;
+            }
+        }
 
         // Hosted services tracked for orderly shutdown. We keep a SEPARATE list of services
         // that we successfully started so a mid-startup failure on service N doesn't leak
@@ -144,25 +161,37 @@ public static class Program
             }
 
             var report = result.Value!;
-            var reporter = SelectReporter(provider, parsed.OutputFormat);
 
-            if (parsed.OutputFilePath is { } outFile)
+            // Surface handler-attached advisories (cost warnings, etc.) on stderr so the
+            // user sees them regardless of logging-pipeline filter config. These are the
+            // canonical surface for non-fatal warnings — see EvalRunReport.Warnings.
+            foreach (var warning in report.Warnings)
             {
-                var dir = Path.GetDirectoryName(outFile);
-                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-
-                if (File.Exists(outFile))
-                {
-                    Console.Error.WriteLine($"Overwriting existing file: {outFile}");
-                }
-
-                await using var fs = File.Create(outFile);
-                await reporter.WriteAsync(report, fs, cts.Token);
+                Console.Error.WriteLine($"Warning: {warning}");
             }
-            else
+
+            // Single run, multiple emits — no double LLM cost.
+            foreach (var sink in parsed.OutputSinks)
             {
-                await using var stdout = Console.OpenStandardOutput();
-                await reporter.WriteAsync(report, stdout, cts.Token);
+                var reporter = reportersByFormat[sink.Format];
+                if (sink.Path is { } outFile)
+                {
+                    var dir = Path.GetDirectoryName(outFile);
+                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+
+                    if (File.Exists(outFile))
+                    {
+                        Console.Error.WriteLine($"Overwriting existing file: {outFile}");
+                    }
+
+                    await using var fs = File.Create(outFile);
+                    await reporter.WriteAsync(report, fs, cts.Token);
+                }
+                else
+                {
+                    await using var stdout = Console.OpenStandardOutput();
+                    await reporter.WriteAsync(report, stdout, cts.Token);
+                }
             }
 
             return report.OverallVerdict == Verdict.Pass ? 0 : 1;
@@ -190,22 +219,10 @@ public static class Program
         }
     }
 
-    private static IEvalReporter SelectReporter(IServiceProvider provider, string formatKey)
-    {
-        var reporters = provider.GetServices<IEvalReporter>().ToList();
-        var match = reporters.FirstOrDefault(r =>
-            string.Equals(r.FormatKey, formatKey, StringComparison.OrdinalIgnoreCase));
-        return match
-            ?? throw new InvalidOperationException(
-                $"No IEvalReporter registered for format '{formatKey}'. " +
-                $"Available: {string.Join(", ", reporters.Select(r => r.FormatKey))}");
-    }
-
     private static CliArgs ParseArgs(string[] args)
     {
         var datasets = new List<string>();
-        string outFormat = "console";
-        string? outFile = null;
+        var sinks = new List<OutputSink>();
         int repeats = 1;
         int parallelism = 1;
         double failRate = 0.0;
@@ -218,10 +235,7 @@ public static class Program
             switch (a)
             {
                 case "--out":
-                    outFormat = RequireValue(args, ref i, "--out");
-                    break;
-                case "--out-file":
-                    outFile = RequireValue(args, ref i, "--out-file");
+                    sinks.Add(ParseSink(RequireValue(args, ref i, "--out")));
                     break;
                 case "--repeats":
                     repeats = ParsePositiveInt(RequireValue(args, ref i, "--repeats"), 1, 50, "--repeats");
@@ -247,13 +261,87 @@ public static class Program
             }
         }
 
-        if (!KnownOutputFormats.Contains(outFormat))
+        if (sinks.Count == 0)
         {
-            throw new ArgumentException(
-                $"Unknown --out format '{outFormat}'. Known: {string.Join(", ", KnownOutputFormats)}.");
+            sinks.Add(new OutputSink("console", null));
         }
 
-        return new CliArgs(datasets, outFormat, outFile, repeats, parallelism, failRate, deterministic, tags);
+        // At most one --out can omit :PATH (the stdout sink) — multiple stdout writers
+        // would interleave incoherently.
+        var stdoutSinks = sinks.Count(s => s.Path is null);
+        if (stdoutSinks > 1)
+        {
+            throw new ArgumentException(
+                "At most one --out may omit :PATH (the stdout sink). Specify file paths for the others.");
+        }
+
+        // Same-target collision detection. Two distinct concerns:
+        //   1. EXACT-PATH collision (any format) — two sinks open File.Create on the same
+        //      file; the second silently clobbers the first. Reject regardless of format.
+        //   2. FORMAT+PATH duplicate — purely redundant; reject.
+        // Path comparison is OS-aware: Windows AND macOS default filesystems are
+        // case-insensitive (NTFS, APFS, HFS+); Linux (ext4/xfs/btrfs) is case-sensitive.
+        // Path.GetFullPath normalizes relative segments + separators.
+        var pathComparer = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
+        var resolvedPaths = sinks
+            .Where(s => s.Path is not null)
+            .Select(s => Path.GetFullPath(s.Path!))
+            .ToList();
+
+        var pathCollisions = resolvedPaths
+            .GroupBy(p => p, pathComparer)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        if (pathCollisions.Count > 0)
+        {
+            throw new ArgumentException(
+                $"Multiple --out sinks target the same file (would silently overwrite each other): " +
+                $"{string.Join(", ", pathCollisions)}.");
+        }
+
+        // Duplicate (format, path) pairs are caught implicitly by the path-collision check
+        // above for file sinks. The remaining case is duplicate stdout-format sinks
+        // (e.g. --out console --out console), guarded by the stdoutSinks > 1 check earlier
+        // when paired with non-stdout sinks, but identical-format stdout-only is still a
+        // user error worth surfacing explicitly.
+        var stdoutFormats = sinks
+            .Where(s => s.Path is null)
+            .GroupBy(s => s.Format, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToList();
+        if (stdoutFormats.Count > 0)
+        {
+            throw new ArgumentException(
+                $"Duplicate stdout --out sinks: {string.Join(", ", stdoutFormats)}.");
+        }
+
+        return new CliArgs(datasets, sinks, repeats, parallelism, failRate, deterministic, tags);
+    }
+
+    private static OutputSink ParseSink(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            throw new ArgumentException("'--out' requires a non-empty FORMAT[:PATH] value.");
+
+        var colon = raw.IndexOf(':');
+        if (colon < 0)
+        {
+            return new OutputSink(raw.Trim(), null);
+        }
+
+        var format = raw[..colon].Trim();
+        var path = raw[(colon + 1)..].Trim();
+        if (format.Length == 0)
+            throw new ArgumentException($"'--out' FORMAT is empty in '{raw}'.");
+        if (path.Length == 0)
+            throw new ArgumentException($"'--out' PATH is empty in '{raw}' — drop the colon to write to stdout.");
+
+        return new OutputSink(format, path);
     }
 
     private static string RequireValue(string[] args, ref int i, string flag)
@@ -283,8 +371,13 @@ public static class Program
             Usage: evalrun <dataset.yaml> [...] [options]
 
             Options:
-              --out FORMAT          console (default) | json | junit
-              --out-file PATH       write report to file instead of stdout
+              --out FORMAT[:PATH]   output sink; repeatable. FORMAT must match a
+                                    registered IEvalReporter (default: console, json, junit).
+                                    Omit :PATH to write to stdout (at most one such sink).
+                                    Examples:
+                                      --out console
+                                      --out json:report.json
+                                      --out junit:eval.xml --out json:eval.json
               --repeats N           1..50 (default 1; CI default 3); warns above 10 due to cost
               --parallel N          concurrent cases (default 1)
               --tags tag1,tag2      only run cases matching at least one tag
@@ -301,11 +394,12 @@ public static class Program
 
     private sealed record CliArgs(
         IReadOnlyList<string> DatasetPaths,
-        string OutputFormat,
-        string? OutputFilePath,
+        IReadOnlyList<OutputSink> OutputSinks,
         int Repeats,
         int Parallelism,
         double FailRateThreshold,
         bool Deterministic,
         IReadOnlyList<string>? Tags);
+
+    private sealed record OutputSink(string Format, string? Path);
 }

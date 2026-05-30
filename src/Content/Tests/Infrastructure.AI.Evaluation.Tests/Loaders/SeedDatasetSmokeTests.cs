@@ -14,7 +14,7 @@ public sealed class SeedDatasetSmokeTests
     private readonly YamlEvalDatasetLoader _sut = new();
 
     /// <summary>Minimum number of seed datasets expected — guards against silent zero-runs.</summary>
-    private const int ExpectedSeedFileCount = 7;
+    private const int ExpectedSeedFileCount = 8;
 
     public static IEnumerable<object[]> SeedFiles()
     {

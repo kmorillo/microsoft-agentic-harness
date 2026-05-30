@@ -193,5 +193,6 @@
   "total_cost_usd": 0,
   "repeats": 1,
   "overall_verdict": "fail",
-  "pass_rate": 0.3333333333333333
+  "pass_rate": 0.3333333333333333,
+  "warnings": []
 }

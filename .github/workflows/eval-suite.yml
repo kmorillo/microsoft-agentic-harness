@@ -58,6 +58,8 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/*.csproj'
 
       - name: Restore
         run: dotnet restore src/AgenticHarness.slnx
@@ -92,11 +94,13 @@ jobs:
             echo "No datasets matched glob: $DATASET_GLOB" >&2; exit 2
           fi
 
+          # Multi-emit: one run, both JUnit (gate) and JSON (dashboard) — same in-memory
+          # EvalRunReport, no double LLM cost, no aggregate disagreement.
           dotnet run --no-build -c Release \
             --project src/Content/Presentation/Presentation.EvalRunner -- \
             "${DATASETS[@]}" \
-            --out junit \
-            --out-file eval-results.junit.xml \
+            --out junit:eval-results.junit.xml \
+            --out json:eval-results.json \
             --repeats "$REPEATS_INPUT" \
             --parallel 4 \
             --fail-rate "$FAIL_RATE_INPUT" \
@@ -110,8 +114,11 @@ jobs:
           path: eval-results.junit.xml
           retention-days: 30
 
-      # NOTE: The dashboard JSON artifact is intentionally NOT emitted here. Running the
-      # CLI a second time with --out json doubles LLM-judge cost AND uses different
-      # --repeats (1 vs 3), producing aggregates that disagree with the JUnit gate above.
-      # Sub-phase 5.4 will add multi-format emit support to the CLI; until then, the
-      # JUnit XML serves both the build gate and downstream consumption.
+      - name: Publish JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-json
+          path: eval-results.json
+          retention-days: 30
+          if-no-files-found: ignore

@@ -1,0 +1,125 @@
+name: rag-quality
+version: 1.0.0
+description: |
+  RAG quality regression suite exercising the 5 metric pack: faithfulness, context
+  precision, context recall, answer relevance, answer correctness. Each case
+  declares the inputs the relevant metrics need (input, expected_output,
+  retrieved_context) so consumers can mix-and-match.
+
+  Replace `agent_name: default` with your RAG agent before running. The expected_output
+  is the reference answer for correctness/recall; retrieved_context is what your
+  retrieval pipeline produced for the case (hand-curated for templates, captured
+  from real runs for regression tracking).
+
+cases:
+  - id: ragq-01-simple-factual
+    input: "What is the capital of France?"
+    expected_output: "Paris is the capital of France."
+    retrieved_context: |
+      France is a country in Western Europe. Its capital and largest city is Paris,
+      located on the Seine River. Paris has been France's capital since 987 AD.
+    tags: [rag, simple, smoke]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - { key: faithfulness, threshold: 0.8 }
+      - { key: context_precision, threshold: 0.7 }
+      - { key: context_recall, threshold: 0.8 }
+      - { key: answer_relevance, threshold: 0.8 }
+      - { key: answer_correctness, threshold: 0.8 }
+
+  - id: ragq-02-multi-fact-completeness
+    input: "Summarize the key features of Python's asyncio module."
+    expected_output: |
+      asyncio is Python's standard-library framework for writing concurrent code
+      using async/await syntax. Key features: an event loop (asyncio.run, get_event_loop),
+      coroutines (async def), Tasks for scheduling, futures, synchronization primitives
+      (Lock, Semaphore, Queue), and high-level APIs for streams, subprocesses, and
+      networking.
+    retrieved_context: |
+      asyncio is a library to write concurrent code using async/await. It provides
+      an event loop accessible via asyncio.run() and the lower-level get_event_loop.
+      Coroutines defined with async def are scheduled as Tasks. Synchronization
+      primitives include Lock, Event, Semaphore, and Queue. asyncio.gather and
+      asyncio.wait coordinate multiple awaitables.
+    tags: [rag, completeness]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - { key: faithfulness, threshold: 0.85 }
+      - { key: context_recall, threshold: 0.7 }
+      - { key: answer_correctness, threshold: 0.7 }
+
+  - id: ragq-03-noisy-retrieval
+    input: "When was the Treaty of Westphalia signed?"
+    expected_output: "The Treaty of Westphalia was signed in 1648."
+    retrieved_context: |
+      The Treaty of Versailles ended World War I in 1919. The Eiffel Tower opened
+      in 1889. The Peace of Westphalia comprises two treaties signed in 1648
+      that ended the Thirty Years' War. The Magna Carta was signed in 1215.
+    tags: [rag, noisy-retrieval, precision]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      # Context-precision should be LOW (most retrieved chunks are noise);
+      # Faithfulness can still be high if the agent uses only the relevant chunk.
+      - { key: context_precision, threshold: 0.4 }
+      - { key: faithfulness, threshold: 0.8 }
+      - { key: answer_correctness, threshold: 0.8 }
+
+  - id: ragq-04-missing-context
+    input: "What is the boiling point of water at sea level?"
+    expected_output: "Water boils at 100°C (212°F) at sea level."
+    retrieved_context: |
+      Water is essential for life. The chemical formula is H2O. It freezes at 0°C.
+      The Pacific Ocean is the largest body of water on Earth.
+    tags: [rag, missing-context, recall]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      # Context-recall should be LOW — the boiling-point fact is not in the context.
+      - { key: context_recall, threshold: 0.3 }
+      # Faithfulness should be LOW if the agent answers anyway (hallucination);
+      # high if the agent refuses to answer without grounding.
+      - { key: faithfulness, threshold: 0.6 }
+
+  - id: ragq-05-off-topic-answer
+    input: "How do I configure logging in Python?"
+    expected_output: |
+      Import the logging module, then call logging.basicConfig(level=logging.INFO)
+      to configure the root logger. Use logging.getLogger(__name__) to get a
+      module-specific logger.
+    retrieved_context: |
+      Python's logging module supports multiple handlers and formatters. Use
+      logging.basicConfig to set the root logger level. For module-specific loggers,
+      call logging.getLogger(__name__) at the top of your module.
+    tags: [rag, off-topic, relevance]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      - { key: answer_relevance, threshold: 0.8 }
+      - { key: answer_correctness, threshold: 0.8 }
+      - { key: faithfulness, threshold: 0.8 }
+
+  - id: ragq-06-paraphrased-correctness
+    input: "Why does HTTPS use both symmetric and asymmetric encryption?"
+    expected_output: |
+      HTTPS uses asymmetric encryption (typically RSA or ECDHE) only during the
+      handshake to exchange a shared secret. Once the secret is established, it
+      switches to symmetric encryption (AES) for bulk data because symmetric
+      algorithms are far faster and more efficient for streaming data.
+    retrieved_context: |
+      The TLS handshake establishes a session via asymmetric key exchange. After
+      the handshake, both parties hold a shared session key used with symmetric
+      AES-GCM or ChaCha20-Poly1305. This hybrid design trades off the cost of
+      asymmetric crypto (slow) against its trust model (no pre-shared secret)
+      and the speed of symmetric crypto (fast) for the bulk payload.
+    tags: [rag, paraphrase]
+    invocation_overrides:
+      agent_name: default
+    metrics:
+      # Answer can be paraphrased without losing correctness; threshold tuned
+      # so a semantically-equivalent rewording still passes.
+      - { key: answer_correctness, threshold: 0.75 }
+      - { key: faithfulness, threshold: 0.85 }
+      - { key: context_recall, threshold: 0.8 }

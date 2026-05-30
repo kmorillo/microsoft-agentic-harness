@@ -151,13 +151,14 @@ cases:
                         <code>EVAL_ENABLED=true</code> repository variable. The <code>workflow_dispatch</code>
                         manual trigger is always available regardless.
                     </p>
+                    <p>The workflow uploads two artifacts from a single CLI invocation:</p>
+                    <ul>
+                        <li><code>eval-results-junit</code> — JUnit XML for the Tests tab and report parsers.</li>
+                        <li><code>eval-results-json</code> — full JSON for dashboard ingestion (Sub-phase 5.4).</li>
+                    </ul>
                     <p>
-                        The workflow uploads the <code>eval-results-junit</code> artifact (JUnit XML for the
-                        Tests tab and downstream report parsers). A second JSON-for-dashboard artifact was
-                        intentionally NOT added — emitting it requires a second CLI invocation that doubles
-                        LLM-judge cost and produces aggregates that disagree with the gate. Sub-phase 5.4 will
-                        extend the CLI to accept multiple <code>--out FORMAT:PATH</code> pairs so one
-                        invocation emits both reports from a single in-memory <code>EvalRunReport</code>.
+                        Both come from the same in-memory <code>EvalRunReport</code>, so the dashboard JSON
+                        always agrees with the JUnit gate verdict — no double LLM cost, no aggregate drift.
                     </p>
 
                     <h2>Where to go next</h2>

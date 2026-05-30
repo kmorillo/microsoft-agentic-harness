@@ -17,6 +17,9 @@ namespace Application.Core.CQRS.Evaluation.RunEvalSuite;
 /// </remarks>
 public sealed class RunEvalSuiteCommandHandler : IRequestHandler<RunEvalSuiteCommand, Result<EvalRunReport>>
 {
+    /// <summary>Threshold above which the handler logs a cost warning. Locked at 10 per the eval framework plan.</summary>
+    public const int RepeatsCostWarningThreshold = 10;
+
     private readonly IReadOnlyDictionary<string, IEvalDatasetLoader> _loadersByExtension;
     private readonly IEvalRunner _runner;
     private readonly ILogger<RunEvalSuiteCommandHandler> _logger;
@@ -71,6 +74,21 @@ public sealed class RunEvalSuiteCommandHandler : IRequestHandler<RunEvalSuiteCom
             return Result<EvalRunReport>.ValidationFailure(["At least one dataset path is required."]);
         }
 
+        // Collected during handling and attached to the returned EvalRunReport so every
+        // dispatcher (CLI, dashboard, scheduled job, REST endpoint, MCP tool) surfaces the
+        // same advisory text via the report contract — no reliance on each host's logger
+        // filter routing Warning to a visible sink.
+        var warnings = new List<string>();
+
+        if (request.Options.Repeats > RepeatsCostWarningThreshold)
+        {
+            var warning =
+                $"Eval run requested with Repeats={request.Options.Repeats} (> {RepeatsCostWarningThreshold}). " +
+                "LLM-judge cost scales linearly with repeats; consider reducing unless variance demands more.";
+            warnings.Add(warning);
+            _logger.LogWarning("{Warning}", warning);
+        }
+
         var datasets = new List<EvalDataset>(request.DatasetPaths.Count);
 
         foreach (var path in request.DatasetPaths)
@@ -118,6 +136,14 @@ public sealed class RunEvalSuiteCommandHandler : IRequestHandler<RunEvalSuiteCom
         }
 
         var report = await _runner.RunAsync(datasets, request.Options, cancellationToken).ConfigureAwait(false);
+
+        // Attach handler-collected warnings to the report so they survive the dispatch
+        // boundary; runner-emitted reports may not carry their own Warnings list.
+        if (warnings.Count > 0)
+        {
+            report = report with { Warnings = warnings };
+        }
+
         return Result<EvalRunReport>.Success(report);
     }
 }
