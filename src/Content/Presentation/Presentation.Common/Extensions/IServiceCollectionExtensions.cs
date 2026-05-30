@@ -16,6 +16,7 @@ using Infrastructure.AI;
 using Infrastructure.AI.Connectors;
 using Infrastructure.AI.Governance;
 using Infrastructure.AI.KnowledgeGraph;
+using Infrastructure.AI.Prompts;
 using Infrastructure.AI.RAG;
 using Infrastructure.AI.MCP;
 using Infrastructure.APIAccess;
@@ -261,6 +262,13 @@ public static class IServiceCollectionExtensions
         services.AddMcpClientDependencies();
         services.AddInfrastructureApiAccessDependencies();
         services.AddInfrastructureObservabilityDependencies();
+
+        // Prompt registry (Sub-phase 5.3) — locates the repo's top-level `prompts/`
+        // folder by walking up from the process base directory. When not found, the
+        // registry returns empty lookups (no exception) so hosts with no prompts boot
+        // cleanly.
+        services.AddPromptRegistry(promptsRootPath: LocatePromptsRoot());
+
         // Eval framework (Infrastructure.AI.Evaluation) is NOT registered here — it is
         // opt-in for the EvalRunner CLI only. Web/console hosts that don't run evaluations
         // should not carry HarnessAgentInvoker, six metric singletons, three reporters,
@@ -268,6 +276,31 @@ public static class IServiceCollectionExtensions
         // explicitly from the eval host when wanted.
 
         return services;
+    }
+
+    /// <summary>
+    /// Walks up from <see cref="AppContext.BaseDirectory"/> looking for a top-level
+    /// <c>prompts/</c> folder (the repo-root convention). Returns the discovered path
+    /// when found, or a sentinel path that the registry treats as "no prompts" when
+    /// not — supports both repo-checkout layouts and trimmed published binaries.
+    /// </summary>
+    private static string LocatePromptsRoot()
+    {
+        // Anchor on a `.prompts-root` marker file so the walk-up doesn't match unrelated
+        // `Prompts/` source directories on case-insensitive filesystems (Windows/macOS).
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, "prompts");
+            if (Directory.Exists(candidate) && File.Exists(Path.Combine(candidate, ".prompts-root")))
+            {
+                return candidate;
+            }
+            dir = dir.Parent;
+        }
+        // Fallback: deterministic path that doesn't exist; FilePromptRegistry handles
+        // missing roots by returning empty lookups.
+        return Path.Combine(AppContext.BaseDirectory, "prompts");
     }
 
     /// <summary>

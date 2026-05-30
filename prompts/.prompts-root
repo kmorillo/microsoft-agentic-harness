@@ -1,0 +1,5 @@
+# Marker file identifying this directory as the repo-root prompt registry.
+# FilePromptRegistry locators walk up from the process base directory looking
+# for `prompts/.prompts-root` so they don't accidentally match unrelated
+# `Prompts/` directories (e.g. test source folders) on case-insensitive
+# filesystems (Windows / macOS).

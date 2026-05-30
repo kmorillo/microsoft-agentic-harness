@@ -61,6 +61,9 @@
     <!-- Infrastructure.AI.Evaluation -->
     <PackageVersion Include="YamlDotNet" Version="16.3.0" />
 
+    <!-- Infrastructure.AI Prompt Registry (Sub-phase 5.3) -->
+    <PackageVersion Include="Scriban" Version="5.12.0" />
+
     <!-- Infrastructure.AI.MCP -->
     <PackageVersion Include="ModelContextProtocol" Version="1.1.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
