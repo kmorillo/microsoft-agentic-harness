@@ -5,7 +5,6 @@ using Infrastructure.AI.Evaluation.Judges;
 using Infrastructure.AI.Evaluation.Loaders;
 using Infrastructure.AI.Evaluation.Metrics;
 using Infrastructure.AI.Evaluation.Metrics.Rag;
-using Infrastructure.AI.Evaluation.Prompts;
 using Infrastructure.AI.Evaluation.Reporters;
 using Infrastructure.AI.Evaluation.Runners;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,8 +51,9 @@ public static class DependencyInjection
         AddMetric<IsValidJsonMetric>(services, "is_valid_json");
         AddMetric<LlmJudgeMetric>(services, "llm_judge");
 
-        // RAG metric pack (Sub-phase 5.2): faithfulness, context precision/recall,
-        // answer relevance/correctness. All share ILlmJudge + IPromptTemplateLoader.
+        // RAG metric pack: faithfulness, context precision/recall, answer relevance/correctness.
+        // All share ILlmJudge + IPromptRegistry (registry registered separately via
+        // AddPromptRegistry — the eval framework consumes it, does not own it).
         AddMetric<FaithfulnessMetric>(services, "faithfulness");
         AddMetric<ContextPrecisionMetric>(services, "context_precision");
         AddMetric<ContextRecallMetric>(services, "context_recall");
@@ -76,8 +76,9 @@ public static class DependencyInjection
         // Shared judge call mechanics used by LlmJudgeMetric and the RAG metric pack.
         services.AddSingleton<ILlmJudge, DefaultLlmJudge>();
 
-        // Embedded prompt templates (Evaluation/Prompts/*.md in Application.AI.Common).
-        services.AddSingleton<IPromptTemplateLoader, EmbeddedPromptTemplateLoader>();
+        // NOTE: RAG metrics resolve their prompts via IPromptRegistry; the registry is
+        // wired by the composition root through AddPromptRegistry(...) so the eval
+        // framework stays decoupled from the prompts root path.
 
         // Cost rates — defaults to $0; consumers configure via the optional callback
         // or by registering their own Configure<JudgeCostOptions>(...) after this call.

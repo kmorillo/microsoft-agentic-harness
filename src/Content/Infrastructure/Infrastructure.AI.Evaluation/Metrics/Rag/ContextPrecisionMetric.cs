@@ -1,5 +1,6 @@
 using Application.AI.Common.Evaluation.Interfaces;
 using Application.AI.Common.Evaluation.Models;
+using Application.AI.Common.Prompts.Interfaces;
 using Domain.AI.Evaluation;
 using Microsoft.Extensions.Logging;
 
@@ -14,15 +15,13 @@ public sealed class ContextPrecisionMetric : RagJudgeMetricBase
     /// <inheritdoc />
     public ContextPrecisionMetric(
         ILlmJudge judge,
-        IPromptTemplateLoader templateLoader,
+        IPromptRegistry promptRegistry,
+        IPromptUsageRecorder usageRecorder,
         ILogger<ContextPrecisionMetric> logger)
-        : base(judge, templateLoader, logger) { }
+        : base(judge, promptRegistry, usageRecorder, logger) { }
 
     /// <inheritdoc />
     public override string Key => "context_precision";
-
-    /// <inheritdoc />
-    protected override string TemplateName => "context-precision";
 
     /// <inheritdoc />
     protected override RagInputs RequiredFields => RagInputs.Input | RagInputs.RetrievedContext;

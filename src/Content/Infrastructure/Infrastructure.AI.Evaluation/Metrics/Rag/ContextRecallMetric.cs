@@ -1,5 +1,6 @@
 using Application.AI.Common.Evaluation.Interfaces;
 using Application.AI.Common.Evaluation.Models;
+using Application.AI.Common.Prompts.Interfaces;
 using Domain.AI.Evaluation;
 using Microsoft.Extensions.Logging;
 
@@ -15,15 +16,13 @@ public sealed class ContextRecallMetric : RagJudgeMetricBase
     /// <inheritdoc />
     public ContextRecallMetric(
         ILlmJudge judge,
-        IPromptTemplateLoader templateLoader,
+        IPromptRegistry promptRegistry,
+        IPromptUsageRecorder usageRecorder,
         ILogger<ContextRecallMetric> logger)
-        : base(judge, templateLoader, logger) { }
+        : base(judge, promptRegistry, usageRecorder, logger) { }
 
     /// <inheritdoc />
     public override string Key => "context_recall";
-
-    /// <inheritdoc />
-    protected override string TemplateName => "context-recall";
 
     /// <inheritdoc />
     protected override RagInputs RequiredFields => RagInputs.ExpectedOutput | RagInputs.RetrievedContext;

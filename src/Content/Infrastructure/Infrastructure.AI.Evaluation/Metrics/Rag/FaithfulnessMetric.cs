@@ -1,5 +1,6 @@
 using Application.AI.Common.Evaluation.Interfaces;
 using Application.AI.Common.Evaluation.Models;
+using Application.AI.Common.Prompts.Interfaces;
 using Domain.AI.Evaluation;
 using Microsoft.Extensions.Logging;
 
@@ -15,15 +16,13 @@ public sealed class FaithfulnessMetric : RagJudgeMetricBase
     /// <inheritdoc />
     public FaithfulnessMetric(
         ILlmJudge judge,
-        IPromptTemplateLoader templateLoader,
+        IPromptRegistry promptRegistry,
+        IPromptUsageRecorder usageRecorder,
         ILogger<FaithfulnessMetric> logger)
-        : base(judge, templateLoader, logger) { }
+        : base(judge, promptRegistry, usageRecorder, logger) { }
 
     /// <inheritdoc />
     public override string Key => "faithfulness";
-
-    /// <inheritdoc />
-    protected override string TemplateName => "faithfulness";
 
     /// <inheritdoc />
     protected override RagInputs RequiredFields => RagInputs.RetrievedContext | RagInputs.Output;

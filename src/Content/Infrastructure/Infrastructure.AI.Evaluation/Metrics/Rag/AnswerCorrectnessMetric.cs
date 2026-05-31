@@ -1,5 +1,6 @@
 using Application.AI.Common.Evaluation.Interfaces;
 using Application.AI.Common.Evaluation.Models;
+using Application.AI.Common.Prompts.Interfaces;
 using Domain.AI.Evaluation;
 using Microsoft.Extensions.Logging;
 
@@ -15,15 +16,13 @@ public sealed class AnswerCorrectnessMetric : RagJudgeMetricBase
     /// <inheritdoc />
     public AnswerCorrectnessMetric(
         ILlmJudge judge,
-        IPromptTemplateLoader templateLoader,
+        IPromptRegistry promptRegistry,
+        IPromptUsageRecorder usageRecorder,
         ILogger<AnswerCorrectnessMetric> logger)
-        : base(judge, templateLoader, logger) { }
+        : base(judge, promptRegistry, usageRecorder, logger) { }
 
     /// <inheritdoc />
     public override string Key => "answer_correctness";
-
-    /// <inheritdoc />
-    protected override string TemplateName => "answer-correctness";
 
     /// <inheritdoc />
     protected override RagInputs RequiredFields => RagInputs.ExpectedOutput | RagInputs.Output;

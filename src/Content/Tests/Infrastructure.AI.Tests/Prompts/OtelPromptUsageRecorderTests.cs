@@ -22,16 +22,29 @@ public sealed class OtelPromptUsageRecorderTests
     [Fact]
     public async Task Records_descriptor_and_returns_usage_with_timestamp_when_no_activity_current()
     {
-        var record = await _sut.RecordAsync(Desc(), CancellationToken.None);
+        var record = await _sut.RecordAsync(Desc(), PromptUsageContext.Empty, CancellationToken.None);
 
         record.Descriptor.Identifier.Should().Be("faithfulness-judge@v1.0");
         record.TraceId.Should().BeNull();
         record.SpanId.Should().BeNull();
+        record.CaseId.Should().BeNull();
+        record.MetricKey.Should().BeNull();
         record.RecordedAtUtc.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
     }
 
     [Fact]
-    public async Task Stamps_current_activity_with_name_version_hash_tags()
+    public async Task Records_capture_context_case_id_and_metric_key()
+    {
+        var context = new PromptUsageContext { CaseId = "case-7", MetricKey = "faithfulness" };
+
+        var record = await _sut.RecordAsync(Desc(), context, CancellationToken.None);
+
+        record.CaseId.Should().Be("case-7");
+        record.MetricKey.Should().Be("faithfulness");
+    }
+
+    [Fact]
+    public async Task Stamps_current_activity_with_descriptor_and_context_tags()
     {
         using var listener = new ActivityListener
         {
@@ -44,11 +57,20 @@ public sealed class OtelPromptUsageRecorderTests
         using var activity = src.StartActivity("test-span");
         activity.Should().NotBeNull();
 
-        await _sut.RecordAsync(Desc(), CancellationToken.None);
+        var context = new PromptUsageContext
+        {
+            CaseId = "case-7",
+            MetricKey = "faithfulness",
+            Tags = new Dictionary<string, string> { ["custom.tag"] = "value" }
+        };
+        await _sut.RecordAsync(Desc(), context, CancellationToken.None);
 
         activity!.GetTagItem(OtelPromptUsageRecorder.TagName).Should().Be("faithfulness-judge");
         activity.GetTagItem(OtelPromptUsageRecorder.TagVersion).Should().Be("v1.0");
         activity.GetTagItem(OtelPromptUsageRecorder.TagHash).Should().Be("abc123");
+        activity.GetTagItem(OtelPromptUsageRecorder.TagCaseId).Should().Be("case-7");
+        activity.GetTagItem(OtelPromptUsageRecorder.TagMetric).Should().Be("faithfulness");
+        activity.GetTagItem("custom.tag").Should().Be("value");
     }
 
     [Fact]
@@ -64,7 +86,7 @@ public sealed class OtelPromptUsageRecorderTests
         var src = new ActivitySource("OtelPromptUsageRecorderTests");
         using var activity = src.StartActivity("test-span");
 
-        var record = await _sut.RecordAsync(Desc(), CancellationToken.None);
+        var record = await _sut.RecordAsync(Desc(), PromptUsageContext.Empty, CancellationToken.None);
 
         record.TraceId.Should().Be(activity!.TraceId.ToString());
         record.SpanId.Should().Be(activity.SpanId.ToString());

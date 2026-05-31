@@ -19,10 +19,4 @@
     <ProjectReference Include="..\..\Domain\Domain.AI\Domain.AI.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Eval judge prompt templates shipped as embedded resources so the metric pack
-         resolves them via the assembly manifest, independent of working-directory. -->
-    <EmbeddedResource Include="Evaluation/Prompts/*.md" />
-  </ItemGroup>
-
 </Project>

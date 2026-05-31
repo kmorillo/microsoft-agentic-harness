@@ -1,7 +1,10 @@
 using Application.AI.Common.Evaluation.Interfaces;
 using Application.AI.Common.Evaluation.Models;
 using Application.AI.Common.Evaluation.Outcomes;
+using Application.AI.Common.Prompts.Interfaces;
+using Application.AI.Common.Prompts.Models;
 using Domain.AI.Evaluation;
+using Domain.AI.Prompts;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -40,7 +43,7 @@ internal static class RagMetricTestHarness
         Threshold = threshold
     };
 
-    public static (Mock<ILlmJudge> judge, Mock<IPromptTemplateLoader> templates) Plumbing(
+    public static (Mock<ILlmJudge> judge, Mock<IPromptRegistry> registry, Mock<IPromptUsageRecorder> recorder) Plumbing(
         LlmJudgeResult judgeResult,
         string templateBody = "Score: {{output}}")
     {
@@ -48,10 +51,30 @@ internal static class RagMetricTestHarness
         judge.Setup(j => j.JudgeAsync(It.IsAny<LlmJudgeRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(judgeResult);
 
-        var templates = new Mock<IPromptTemplateLoader>();
-        templates.Setup(t => t.Load(It.IsAny<string>())).Returns(templateBody);
+        var registry = new Mock<IPromptRegistry>();
+        registry.Setup(r => r.GetLatestAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string name, CancellationToken _) => new PromptDescriptor
+            {
+                Name = name,
+                Version = new PromptVersion(1, 0),
+                ContentHash = "deadbeef",
+                Body = templateBody,
+            });
 
-        return (judge, templates);
+        var recorder = new Mock<IPromptUsageRecorder>();
+        recorder.Setup(r => r.RecordAsync(
+                It.IsAny<PromptDescriptor>(),
+                It.IsAny<PromptUsageContext>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PromptDescriptor d, PromptUsageContext ctx, CancellationToken _) => new PromptUsageRecord
+            {
+                Descriptor = d,
+                CaseId = ctx.CaseId,
+                MetricKey = ctx.MetricKey,
+                RecordedAtUtc = DateTimeOffset.UtcNow,
+            });
+
+        return (judge, registry, recorder);
     }
 
     public static LlmJudgeResult Parsed(double score, string reasoning = "ok") => new()
