@@ -2,6 +2,9 @@ using System.Diagnostics;
 using System.Text.Json;
 using Application.AI.Common.Interfaces.RAG;
 using Application.AI.Common.Interfaces.Routing;
+using Application.AI.Common.Prompts.Exceptions;
+using Application.AI.Common.Prompts.Interfaces;
+using Domain.AI.Prompts;
 using Domain.AI.RAG.Enums;
 using Domain.AI.RAG.Models;
 using Domain.AI.Telemetry.Conventions;
@@ -12,7 +15,10 @@ namespace Infrastructure.AI.RAG.QueryTransform;
 
 /// <summary>
 /// Classifies incoming queries using few-shot LLM prompting to determine the
-/// optimal retrieval strategy. Sends a structured prompt with examples of each
+/// optimal retrieval strategy. Resolves its classification prompt from the versioned
+/// <see cref="IPromptRegistry"/> (<c>query-classifier</c>), renders via
+/// <see cref="IPromptRenderer"/>, and stamps usage telemetry via
+/// <see cref="IPromptUsageRecorder"/>. Sends a structured prompt with examples of each
 /// <see cref="QueryType"/> and parses the JSON response into a
 /// <see cref="QueryClassification"/> record. Uses an economy-tier model via
 /// <see cref="IModelRouter"/> since classification is latency-sensitive
@@ -20,35 +26,23 @@ namespace Infrastructure.AI.RAG.QueryTransform;
 /// </summary>
 /// <remarks>
 /// <para>
-/// When the LLM response cannot be parsed or confidence falls below 0.5,
-/// the classifier returns a conservative default of
+/// When the prompt cannot be resolved, the LLM response cannot be parsed, or confidence
+/// falls below 0.5, the classifier returns a conservative default of
 /// <see cref="QueryType.SimpleLookup"/> with
 /// <see cref="RetrievalStrategy.HybridVectorBm25"/>.
 /// </para>
 /// </remarks>
 public sealed class LlmQueryClassifier : IQueryClassifier
 {
+    private const string PromptName = "query-classifier";
+    private const string MetricKey = "query_classification";
+
     private static readonly ActivitySource ActivitySource = new("Infrastructure.AI.RAG.QueryTransform");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
-
-    private const string ClassificationPrompt = """
-        Classify this search query into one of: SimpleLookup, MultiHop, GlobalThematic, Comparative, Adversarial
-
-        Examples:
-        - "What was AMD's Q4 revenue?" → SimpleLookup
-        - "Compare Intel and AMD's R&D spending trends" → Comparative
-        - "What are the main themes across these filings?" → GlobalThematic
-        - "What was the revenue in 2022 and how did it affect 2023 margins?" → MultiHop
-        - "Why did the CEO resign?" (when no resignation occurred) → Adversarial
-
-        Query: {0}
-
-        Respond with JSON only: {{"type": "...", "strategy": "...", "confidence": 0.0-1.0, "reasoning": "..."}}
-        """;
 
     private static readonly IReadOnlyDictionary<QueryType, RetrievalStrategy> DefaultStrategyMap =
         new Dictionary<QueryType, RetrievalStrategy>
@@ -61,18 +55,36 @@ public sealed class LlmQueryClassifier : IQueryClassifier
         };
 
     private readonly IModelRouter _modelRouter;
+    private readonly IPromptRegistry _promptRegistry;
+    private readonly IPromptRenderer _promptRenderer;
+    private readonly IPromptUsageRecorder _usageRecorder;
     private readonly ILogger<LlmQueryClassifier> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LlmQueryClassifier"/> class.
     /// </summary>
     /// <param name="modelRouter">Model router for selecting an economy-tier chat client.</param>
+    /// <param name="promptRegistry">Versioned prompt registry; resolves the classifier template.</param>
+    /// <param name="promptRenderer">Renders the resolved template with variable substitution (Scriban).</param>
+    /// <param name="usageRecorder">Stamps OTel / persists which prompt version was used per query.</param>
     /// <param name="logger">Logger for recording classification outcomes and failures.</param>
     public LlmQueryClassifier(
         IModelRouter modelRouter,
+        IPromptRegistry promptRegistry,
+        IPromptRenderer promptRenderer,
+        IPromptUsageRecorder usageRecorder,
         ILogger<LlmQueryClassifier> logger)
     {
+        ArgumentNullException.ThrowIfNull(modelRouter);
+        ArgumentNullException.ThrowIfNull(promptRegistry);
+        ArgumentNullException.ThrowIfNull(promptRenderer);
+        ArgumentNullException.ThrowIfNull(usageRecorder);
+        ArgumentNullException.ThrowIfNull(logger);
+
         _modelRouter = modelRouter;
+        _promptRegistry = promptRegistry;
+        _promptRenderer = promptRenderer;
+        _usageRecorder = usageRecorder;
         _logger = logger;
     }
 
@@ -85,14 +97,40 @@ public sealed class LlmQueryClassifier : IQueryClassifier
 
         activity?.SetTag(RagConventions.ModelOperation, "query_classification");
 
+        PromptDescriptor descriptor;
+        try
+        {
+            descriptor = await _promptRegistry.GetLatestAsync(PromptName, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is KeyNotFoundException or PromptRegistryUnavailableException)
+        {
+            _logger.LogWarning(ex,
+                "Could not resolve prompt '{Prompt}'; falling back to SimpleLookup/HybridVectorBm25",
+                PromptName);
+            return TagFallback(activity, "Prompt unavailable: " + ex.Message);
+        }
+
         try
         {
             var classifyDecision = await _modelRouter.RouteOperationAsync("query_classification", cancellationToken);
             var chatClient = classifyDecision.Client;
             activity?.SetTag(RagConventions.ModelTier, classifyDecision.SelectedTier.ToString().ToLowerInvariant());
-            var prompt = string.Format(ClassificationPrompt, query);
 
-            var response = await chatClient.GetResponseAsync(prompt, cancellationToken: cancellationToken);
+            var rendered = await _promptRenderer.RenderAsync(
+                descriptor,
+                new Dictionary<string, object?> { ["query"] = query },
+                cancellationToken).ConfigureAwait(false);
+
+            await _usageRecorder.RecordAsync(
+                descriptor,
+                new PromptUsageContext { MetricKey = MetricKey },
+                cancellationToken).ConfigureAwait(false);
+
+            var response = await chatClient.GetResponseAsync(rendered.Body, cancellationToken: cancellationToken);
             var responseText = response.Text?.Trim() ?? string.Empty;
 
             var classification = ParseClassificationResponse(responseText);
@@ -106,15 +144,22 @@ public sealed class LlmQueryClassifier : IQueryClassifier
 
             return classification;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Query classification failed; falling back to SimpleLookup/HybridVectorBm25");
-
-            var fallback = CreateFallback("Classification failed: " + ex.Message);
-            activity?.SetTag(RagConventions.QueryType, RagConventions.QueryTypeValues.SimpleLookup);
-            activity?.SetTag(RagConventions.RetrievalStrategy, RagConventions.StrategyValues.HybridVectorBm25);
-            return fallback;
+            return TagFallback(activity, "Classification failed: " + ex.Message);
         }
+    }
+
+    private static QueryClassification TagFallback(Activity? activity, string reasoning)
+    {
+        activity?.SetTag(RagConventions.QueryType, RagConventions.QueryTypeValues.SimpleLookup);
+        activity?.SetTag(RagConventions.RetrievalStrategy, RagConventions.StrategyValues.HybridVectorBm25);
+        return CreateFallback(reasoning);
     }
 
     /// <summary>

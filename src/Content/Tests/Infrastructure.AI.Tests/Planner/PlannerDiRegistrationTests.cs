@@ -3,6 +3,7 @@ using Application.AI.Common.Interfaces.Attestation;
 using Application.AI.Common.Interfaces.Governance;
 using Application.AI.Common.Interfaces.Planner;
 using Application.AI.Common.Interfaces.Sandbox;
+using Application.AI.Common.Prompts.Interfaces;
 using Docker.DotNet;
 using Domain.AI.Planner;
 using Domain.AI.Sandbox;
@@ -144,6 +145,12 @@ public sealed class PlannerDiRegistrationTests : IDisposable
         services.AddSingleton<ICapabilityEnforcer>(new Mock<ICapabilityEnforcer>().Object);
         services.AddSingleton<ICompositeResponseSanitizer>(new Mock<ICompositeResponseSanitizer>().Object);
         services.AddSingleton<IDockerClient>(new Mock<IDockerClient>().Object);
+
+        // Prompt registry services — registered by Presentation.Common.AddGlobalProjectDependencies
+        // in production; supplied as mocks here since this DI test doesn't include that layer.
+        services.AddSingleton<IPromptRegistry>(new Mock<IPromptRegistry>().Object);
+        services.AddSingleton<IPromptRenderer>(new Mock<IPromptRenderer>().Object);
+        services.AddSingleton<IPromptUsageRecorder>(new Mock<IPromptUsageRecorder>().Object);
 
         // Knowledge graph (required by drift/learnings already in AddInfrastructureAIDependencies)
         services.AddKnowledgeGraphDependencies(appConfig);

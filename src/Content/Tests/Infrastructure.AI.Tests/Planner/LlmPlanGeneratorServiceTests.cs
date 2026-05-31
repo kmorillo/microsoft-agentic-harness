@@ -1,6 +1,9 @@
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Planner;
+using Application.AI.Common.Prompts.Interfaces;
+using Application.AI.Common.Prompts.Models;
 using Domain.AI.Planner;
+using Domain.AI.Prompts;
 using Domain.Common;
 using Domain.Common.Config.AI;
 using Infrastructure.AI.Planner;
@@ -17,6 +20,9 @@ public sealed class LlmPlanGeneratorServiceTests
     private readonly Mock<IChatClientFactory> _chatClientFactory = new();
     private readonly Mock<IPlanValidator> _validator = new();
     private readonly Mock<IChatClient> _chatClient = new();
+    private readonly Mock<IPromptRegistry> _promptRegistry = new();
+    private readonly Mock<IPromptRenderer> _promptRenderer = new();
+    private readonly Mock<IPromptUsageRecorder> _usageRecorder = new();
     private readonly PlannerOptions _options = new()
     {
         GenerationModel = "gpt-4o",
@@ -36,11 +42,44 @@ public sealed class LlmPlanGeneratorServiceTests
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(_chatClient.Object);
 
+        var descriptor = new PromptDescriptor
+        {
+            Name = "plan-generator-system",
+            Version = new PromptVersion(1, 0),
+            ContentHash = "deadbeef",
+            Body = "system prompt body {{ constraints_block }}",
+        };
+        _promptRegistry
+            .Setup(r => r.GetLatestAsync("plan-generator-system", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(descriptor);
+        _promptRenderer
+            .Setup(r => r.RenderAsync(
+                It.IsAny<PromptDescriptor>(),
+                It.IsAny<IReadOnlyDictionary<string, object?>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PromptDescriptor d, IReadOnlyDictionary<string, object?> _, CancellationToken __)
+                => new RenderedPrompt { Source = d, Body = "rendered-system-prompt" });
+        _usageRecorder
+            .Setup(r => r.RecordAsync(
+                It.IsAny<PromptDescriptor>(),
+                It.IsAny<PromptUsageContext>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PromptDescriptor d, PromptUsageContext c, CancellationToken _) => new PromptUsageRecord
+            {
+                Descriptor = d,
+                CaseId = c.CaseId,
+                MetricKey = c.MetricKey,
+                RecordedAtUtc = DateTimeOffset.UtcNow,
+            });
+
         var optionsMonitor = Mock.Of<IOptionsMonitor<PlannerOptions>>(
             o => o.CurrentValue == _options);
 
         _sut = new LlmPlanGeneratorService(
             _chatClientFactory.Object,
+            _promptRegistry.Object,
+            _promptRenderer.Object,
+            _usageRecorder.Object,
             _validator.Object,
             optionsMonitor,
             NullLogger<LlmPlanGeneratorService>.Instance);
@@ -108,16 +147,27 @@ public sealed class LlmPlanGeneratorServiceTests
     }
 
     [Fact]
-    public async Task GenerateAsync_WithConstraints_IncludesConstraintsInPrompt()
+    public async Task GenerateAsync_WithConstraints_PassesConstraintsBlockToRenderer()
     {
-        IEnumerable<ChatMessage>? capturedMessages = null;
+        // The renderer is mocked, so we can't verify the rendered body literally —
+        // instead we capture the variables passed to RenderAsync and assert the
+        // constraints_block string contains the requested values.
+        string? capturedConstraintsBlock = null;
+        _promptRenderer
+            .Setup(r => r.RenderAsync(
+                It.IsAny<PromptDescriptor>(),
+                It.IsAny<IReadOnlyDictionary<string, object?>>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<PromptDescriptor, IReadOnlyDictionary<string, object?>, CancellationToken>(
+                (d, vars, _) => capturedConstraintsBlock = vars["constraints_block"]?.ToString())
+            .ReturnsAsync((PromptDescriptor d, IReadOnlyDictionary<string, object?> _, CancellationToken __)
+                => new RenderedPrompt { Source = d, Body = "rendered" });
+
         _chatClient
             .Setup(c => c.GetResponseAsync(
                 It.IsAny<IList<ChatMessage>>(),
                 It.IsAny<ChatOptions?>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<IEnumerable<ChatMessage>, ChatOptions?, CancellationToken>(
-                (msgs, _, _) => capturedMessages = msgs)
             .ReturnsAsync(CreateChatResponse(ValidThreeStepPlanJson));
         SetupValidatorSuccess();
 
@@ -129,11 +179,10 @@ public sealed class LlmPlanGeneratorServiceTests
 
         await _sut.GenerateAsync("Build API", constraints);
 
-        Assert.NotNull(capturedMessages);
-        var allText = string.Join(" ", capturedMessages!.SelectMany(m => m.Contents.OfType<TextContent>().Select(t => t.Text)));
-        Assert.Contains("5", allText);
-        Assert.Contains("LlmCall", allText);
-        Assert.Contains("ToolUse", allText);
+        Assert.NotNull(capturedConstraintsBlock);
+        Assert.Contains("5", capturedConstraintsBlock);
+        Assert.Contains("LlmCall", capturedConstraintsBlock);
+        Assert.Contains("ToolUse", capturedConstraintsBlock);
     }
 
     [Fact]

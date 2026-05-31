@@ -1,5 +1,9 @@
 using Application.AI.Common.Interfaces.Routing;
+using Application.AI.Common.Prompts.Exceptions;
+using Application.AI.Common.Prompts.Interfaces;
+using Application.AI.Common.Prompts.Models;
 using Domain.AI.KnowledgeGraph.Models;
+using Domain.AI.Prompts;
 using Domain.AI.Routing.Models;
 using Infrastructure.AI.KnowledgeGraph.Memory;
 using Microsoft.Extensions.AI;
@@ -14,6 +18,9 @@ public class ConversationFactExtractorTests
 {
     private readonly Mock<IModelRouter> _mockRouter = new();
     private readonly Mock<IChatClient> _mockClient = new();
+    private readonly Mock<IPromptRegistry> _mockRegistry = new();
+    private readonly Mock<IPromptRenderer> _mockRenderer = new();
+    private readonly Mock<IPromptUsageRecorder> _mockRecorder = new();
     private readonly ConversationFactExtractor _sut;
 
     public ConversationFactExtractorTests()
@@ -37,9 +44,79 @@ public class ConversationFactExtractorTests
             .Setup(r => r.RouteOperationAsync("fact_extraction", It.IsAny<CancellationToken>()))
             .ReturnsAsync(routingDecision);
 
+        var descriptor = new PromptDescriptor
+        {
+            Name = "conversation-fact-extractor",
+            Version = new PromptVersion(1, 0),
+            ContentHash = "deadbeef",
+            Body = "Extract facts from <user_message>{{user_message}}</user_message><assistant_message>{{assistant_message}}</assistant_message>",
+        };
+
+        _mockRegistry
+            .Setup(r => r.GetLatestAsync("conversation-fact-extractor", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(descriptor);
+
+        _mockRenderer
+            .Setup(r => r.RenderAsync(
+                It.IsAny<PromptDescriptor>(),
+                It.IsAny<IReadOnlyDictionary<string, object?>>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PromptDescriptor d, IReadOnlyDictionary<string, object?> _, CancellationToken __)
+                => new RenderedPrompt { Source = d, Body = "rendered-prompt-body" });
+
+        _mockRecorder
+            .Setup(r => r.RecordAsync(
+                It.IsAny<PromptDescriptor>(),
+                It.IsAny<PromptUsageContext>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PromptDescriptor d, PromptUsageContext c, CancellationToken _) => new PromptUsageRecord
+            {
+                Descriptor = d,
+                CaseId = c.CaseId,
+                MetricKey = c.MetricKey,
+                RecordedAtUtc = DateTimeOffset.UtcNow,
+            });
+
         _sut = new ConversationFactExtractor(
             _mockRouter.Object,
+            _mockRegistry.Object,
+            _mockRenderer.Object,
+            _mockRecorder.Object,
             NullLogger<ConversationFactExtractor>.Instance);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_PromptUnavailable_ReturnsEmptyAndSkipsLlm()
+    {
+        _mockRegistry
+            .Setup(r => r.GetLatestAsync("conversation-fact-extractor", It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new PromptRegistryUnavailableException(
+                "conversation-fact-extractor",
+                "backend offline",
+                new IOException("blip")));
+
+        var result = await _sut.ExtractAsync("u", "a", "conv-1", 1);
+
+        result.Should().BeEmpty();
+        _mockClient.VerifyNoOtherCalls();
+        _mockRecorder.Verify(
+            r => r.RecordAsync(It.IsAny<PromptDescriptor>(), It.IsAny<PromptUsageContext>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task ExtractAsync_Successful_RecordsPromptUsageWithConversationAndTurn()
+    {
+        SetupLlmResponse("[]");
+
+        await _sut.ExtractAsync("u", "a", "conv-42", 7);
+
+        _mockRecorder.Verify(
+            r => r.RecordAsync(
+                It.Is<PromptDescriptor>(d => d.Name == "conversation-fact-extractor"),
+                It.Is<PromptUsageContext>(c => c.CaseId == "conv-42:7" && c.MetricKey == "fact_extraction"),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
     }
 
     [Fact]

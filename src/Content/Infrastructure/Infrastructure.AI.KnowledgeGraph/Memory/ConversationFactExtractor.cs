@@ -1,8 +1,12 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Application.AI.Common.Interfaces.KnowledgeGraph;
 using Application.AI.Common.Interfaces.Routing;
+using Application.AI.Common.Prompts.Exceptions;
+using Application.AI.Common.Prompts.Interfaces;
 using Domain.AI.KnowledgeGraph.Models;
+using Domain.AI.Prompts;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 
@@ -10,10 +14,18 @@ namespace Infrastructure.AI.KnowledgeGraph.Memory;
 
 /// <summary>
 /// Extracts structured facts from conversation turns using an economy-tier LLM.
-/// Catches all exceptions internally — callers always receive a valid (possibly empty) list.
+/// The fact-extraction prompt is resolved from the versioned <see cref="IPromptRegistry"/>
+/// (<c>conversation-fact-extractor</c>) and rendered with <see cref="IPromptRenderer"/>
+/// so trace-replay can recover which prompt version produced each fact set. Catches
+/// all expected failures internally — callers always receive a valid (possibly empty)
+/// list.
 /// </summary>
 public sealed class ConversationFactExtractor : IConversationFactExtractor
 {
+    private const string PromptName = "conversation-fact-extractor";
+    private const string MetricKey = "fact_extraction";
+    private const int AssistantResponseTruncationLimit = 2000;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -23,21 +35,36 @@ public sealed class ConversationFactExtractor : IConversationFactExtractor
     private const double DefaultMinConfidence = 0.7;
 
     private readonly IModelRouter _modelRouter;
+    private readonly IPromptRegistry _promptRegistry;
+    private readonly IPromptRenderer _promptRenderer;
+    private readonly IPromptUsageRecorder _usageRecorder;
     private readonly ILogger<ConversationFactExtractor> _logger;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ConversationFactExtractor"/> class.
     /// </summary>
     /// <param name="modelRouter">Routes LLM calls to the appropriate model tier.</param>
+    /// <param name="promptRegistry">Versioned prompt registry; resolves the fact-extractor template.</param>
+    /// <param name="promptRenderer">Renders the resolved template with variable substitution (Scriban).</param>
+    /// <param name="usageRecorder">Stamps OTel / persists which prompt version was used per turn.</param>
     /// <param name="logger">Logger for recording extraction results and failures.</param>
     public ConversationFactExtractor(
         IModelRouter modelRouter,
+        IPromptRegistry promptRegistry,
+        IPromptRenderer promptRenderer,
+        IPromptUsageRecorder usageRecorder,
         ILogger<ConversationFactExtractor> logger)
     {
         ArgumentNullException.ThrowIfNull(modelRouter);
+        ArgumentNullException.ThrowIfNull(promptRegistry);
+        ArgumentNullException.ThrowIfNull(promptRenderer);
+        ArgumentNullException.ThrowIfNull(usageRecorder);
         ArgumentNullException.ThrowIfNull(logger);
 
         _modelRouter = modelRouter;
+        _promptRegistry = promptRegistry;
+        _promptRenderer = promptRenderer;
+        _usageRecorder = usageRecorder;
         _logger = logger;
     }
 
@@ -49,12 +76,44 @@ public sealed class ConversationFactExtractor : IConversationFactExtractor
         int turnNumber,
         CancellationToken cancellationToken = default)
     {
+        PromptDescriptor descriptor;
         try
         {
-            var client = (await _modelRouter.RouteOperationAsync("fact_extraction", cancellationToken)).Client;
+            descriptor = await _promptRegistry.GetLatestAsync(PromptName, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is KeyNotFoundException or PromptRegistryUnavailableException)
+        {
+            _logger.LogWarning(ex,
+                "Could not resolve prompt '{Prompt}' for conversation {ConversationId} turn {Turn}; returning no facts.",
+                PromptName, conversationId, turnNumber);
+            return [];
+        }
 
-            var prompt = BuildPrompt(userMessage, assistantResponse);
-            var response = await client.GetResponseAsync(prompt, cancellationToken: cancellationToken);
+        try
+        {
+            var truncatedResponse = assistantResponse[..Math.Min(assistantResponse.Length, AssistantResponseTruncationLimit)];
+            var variables = new Dictionary<string, object?>
+            {
+                ["user_message"] = userMessage,
+                ["assistant_message"] = truncatedResponse,
+            };
+            var rendered = await _promptRenderer.RenderAsync(descriptor, variables, cancellationToken).ConfigureAwait(false);
+
+            await _usageRecorder.RecordAsync(
+                descriptor,
+                new PromptUsageContext
+                {
+                    CaseId = string.Create(CultureInfo.InvariantCulture, $"{conversationId}:{turnNumber}"),
+                    MetricKey = MetricKey,
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            var client = (await _modelRouter.RouteOperationAsync("fact_extraction", cancellationToken)).Client;
+            var response = await client.GetResponseAsync(rendered.Body, cancellationToken: cancellationToken);
 
             var json = response.Text ?? "[]";
             var facts = ParseFacts(json, conversationId, turnNumber);
@@ -73,32 +132,6 @@ public sealed class ConversationFactExtractor : IConversationFactExtractor
             return [];
         }
     }
-
-    private static string BuildPrompt(string userMessage, string assistantResponse) =>
-        $$"""
-        You are a fact extraction system. Analyze the following conversation turn and extract notable facts that would be valuable in a future conversation with a different agent.
-
-        Only extract facts that represent:
-        - **Preference**: User likes/dislikes, workflow choices
-        - **Decision**: Architectural or design decisions made
-        - **Fact**: Stated facts about the project, team, or domain
-        - **Correction**: User corrected the assistant
-
-        Routine instructions, greetings, acknowledgments, and tool invocations should return an empty array.
-
-        Return a JSON array (no markdown fencing). Each element:
-        {"key": "snake_case_short_key", "content": "Human-readable fact description", "entity_type": "Preference|Decision|Fact|Correction", "confidence": 0.0-1.0}
-
-        Return [] if no notable facts are present.
-
-        <user_message>
-        {{userMessage}}
-        </user_message>
-
-        <assistant_message>
-        {{assistantResponse[..Math.Min(assistantResponse.Length, 2000)]}}
-        </assistant_message>
-        """;
 
     private static IReadOnlyList<ConversationFact> ParseFacts(
         string json, string conversationId, int turnNumber)
