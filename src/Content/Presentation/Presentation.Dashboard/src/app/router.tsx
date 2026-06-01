@@ -18,6 +18,13 @@ const GovernancePage = lazy(() => import('@/routes/Governance/GovernancePage'));
 const EvalsListPage = lazy(() => import('@/routes/Evals/EvalsListPage'));
 const EvalRunDetailPage = lazy(() => import('@/routes/Evals/EvalRunDetailPage'));
 
+// Dev-only sandbox. `import.meta.env.DEV` is statically replaced by Vite, so in
+// prod the ternary resolves to `null` at build time and the dynamic import() is
+// dropped from the bundle entirely — no DesignSystemPage chunk ships to users.
+const DesignSystemPage = import.meta.env.DEV
+  ? lazy(() => import('@/routes/DesignSystem/DesignSystemPage'))
+  : null;
+
 function LazyWrapper({ children }: { children: React.ReactNode }) {
   return (
     <Suspense fallback={<div className="flex items-center justify-center h-full text-muted-foreground">Loading...</div>}>
@@ -59,6 +66,12 @@ export const router = createBrowserRouter([
 
       // Registry
       { path: 'catalog', element: <LazyWrapper><CatalogPage /></LazyWrapper> },
+
+      // Dev-only: Foresight design-system sandbox. Spread is empty in prod, so
+      // the route does not exist and React Router falls through to the parent.
+      ...(DesignSystemPage
+        ? [{ path: 'design-system', element: <LazyWrapper><DesignSystemPage /></LazyWrapper> }]
+        : []),
 
       // Legacy redirects
       { path: 'overview', element: <Navigate to="/pulse" replace /> },
