@@ -61,6 +61,9 @@ public sealed class AgentTelemetryHub : Hub
     internal const string GlobalTracesGroup = "global-traces";
     private const string GlobalTracesRole = "AgentHub.Traces.ReadAll";
 
+    /// <summary>App role required to subscribe to <see cref="EventEvalRunCompleted"/> broadcasts.</summary>
+    internal const string EvalDashboardRole = "AgentHub.EvalDashboard.Read";
+
     // -------------------------------------------------------------------------
     // Dependencies
     // -------------------------------------------------------------------------
@@ -293,11 +296,19 @@ public sealed class AgentTelemetryHub : Hub
 
     /// <summary>
     /// Subscribes this connection to <see cref="EventEvalRunCompleted"/> broadcasts.
-    /// Any authenticated user can subscribe — the eval dashboard exposes already-
-    /// authorised metric data and the EvalController gates the underlying reads.
+    /// Requires the <see cref="EvalDashboardRole"/> app role — broadcasts carry run
+    /// metadata (RunId, TotalCostUsd, pass/fail counts) for every ingested run, so
+    /// access is gated explicitly rather than implied by hub auth. Mirrors the
+    /// <see cref="JoinGlobalTraces"/> role-gate pattern.
     /// </summary>
-    public Task JoinEvalDashboard() =>
-        Groups.AddToGroupAsync(Context.ConnectionId, EvalDashboardGroup, Context.ConnectionAborted);
+    public async Task JoinEvalDashboard()
+    {
+        if (!Context.User!.IsInRole(EvalDashboardRole))
+            throw new HubException($"The {EvalDashboardRole} role is required to subscribe to eval-dashboard broadcasts.");
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, EvalDashboardGroup, Context.ConnectionAborted);
+        _logger.LogInformation("Connection {ConnectionId} joined eval-dashboard.", Context.ConnectionId);
+    }
 
     /// <summary>Unsubscribes this connection from eval-dashboard broadcasts.</summary>
     public Task LeaveEvalDashboard() =>

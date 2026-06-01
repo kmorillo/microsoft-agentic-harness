@@ -256,6 +256,13 @@ public sealed class EfCoreEvalRunStore : IEvalRunStore
         };
     }
 
+    /// <summary>
+    /// Maximum number of case ids per chunk in the IN-expansion. SQLite's default
+    /// <c>SQLITE_MAX_VARIABLE_NUMBER</c> is 32766 on modern builds and 999 on older
+    /// builds; 500 stays safely below both with headroom for EF's other parameters.
+    /// </summary>
+    private const int InClauseChunkSize = 500;
+
     /// <inheritdoc />
     public async Task<IReadOnlyDictionary<string, double>> GetLatestAggregatedScoresAsync(
         IReadOnlyCollection<string> caseIds,
@@ -278,33 +285,49 @@ public sealed class EfCoreEvalRunStore : IEvalRunStore
         // when the caller derives the list from multiple prompt-usage rows.
         var distinctIds = caseIds.Distinct(StringComparer.Ordinal).ToList();
 
-        // Join metric scores against runs so we can pick the score from the most
-        // recent run per case id. SQLite handles the join efficiently because
-        // eval_runs is small (one row per run) and the (RunId, MetricKey) composite
-        // index on metric_scores serves the metric filter.
-        var rows = await context.EvalMetricScores
-            .AsNoTracking()
-            .Where(m => m.MetricKey == metricKey && distinctIds.Contains(m.CaseId))
-            .Join(
-                context.EvalRuns.AsNoTracking(),
-                m => m.RunId,
-                r => r.RunId,
-                (m, r) => new { m.CaseId, m.Score, r.StartedAtUtc })
-            .ToListAsync(cancellationToken)
-            .ConfigureAwait(false);
-
-        // Latest-per-case in memory: the joined row count is bounded by the
+        // Latest-per-case in memory: the joined row count per chunk is bounded by the
         // number of (case_id × runs-that-saw-it) pairs which is small for
         // dashboard-scale data. Avoids a window function that SQLite supports
         // but would couple the implementation to provider syntax.
         var latestByCase = new Dictionary<string, (DateTimeOffset At, double Score)>(
             StringComparer.Ordinal);
-        foreach (var row in rows)
+
+        // Chunk the IN expansion. Without this a prompt with >32k distinct case ids
+        // would blow past SQLITE_MAX_VARIABLE_NUMBER and throw at execute time. The
+        // chunk size is intentionally well below both modern (32766) and older (999)
+        // SQLite parameter limits so this code stays correct across builds without
+        // probing the runtime limit. Chunks are processed sequentially — the merge
+        // logic is associative, parallelism would not change the result.
+        for (var offset = 0; offset < distinctIds.Count; offset += InClauseChunkSize)
         {
-            if (!latestByCase.TryGetValue(row.CaseId, out var existing)
-                || row.StartedAtUtc > existing.At)
+            cancellationToken.ThrowIfCancellationRequested();
+            var chunk = distinctIds
+                .Skip(offset)
+                .Take(InClauseChunkSize)
+                .ToList();
+
+            // Join metric scores against runs so we can pick the score from the most
+            // recent run per case id. SQLite handles the join efficiently because
+            // eval_runs is small (one row per run) and the (RunId, MetricKey) composite
+            // index on metric_scores serves the metric filter.
+            var rows = await context.EvalMetricScores
+                .AsNoTracking()
+                .Where(m => m.MetricKey == metricKey && chunk.Contains(m.CaseId))
+                .Join(
+                    context.EvalRuns.AsNoTracking(),
+                    m => m.RunId,
+                    r => r.RunId,
+                    (m, r) => new { m.CaseId, m.Score, r.StartedAtUtc })
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var row in rows)
             {
-                latestByCase[row.CaseId] = (row.StartedAtUtc, row.Score);
+                if (!latestByCase.TryGetValue(row.CaseId, out var existing)
+                    || row.StartedAtUtc > existing.At)
+                {
+                    latestByCase[row.CaseId] = (row.StartedAtUtc, row.Score);
+                }
             }
         }
 

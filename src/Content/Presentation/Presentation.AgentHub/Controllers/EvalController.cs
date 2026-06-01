@@ -135,14 +135,28 @@ public sealed class EvalController : ControllerBase
 
     /// <summary>
     /// Maps a <see cref="Result{T}"/> outcome to an MVC <see cref="IActionResult"/>:
-    /// Success → 200; NotFound → 404; Validation → 400; everything else → 500 with
-    /// the failure messages in a ProblemDetails-compatible payload.
+    /// Success → 200; NotFound → 404; Validation → 400; everything else → 500.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>Error message exposure rules.</b> Validation and NotFound messages are
+    /// safe to surface verbatim — they originate from validator strings and "not
+    /// found" lookups, never from internal exceptions. Auth failures expose the
+    /// declared reason. General (500) failures DO NOT pass <c>result.Errors</c>
+    /// through to the client — handler code path is
+    /// <c>catch (Exception ex) { Result.Fail($"...: {ex.Message}") }</c>, so the
+    /// errors list contains raw <see cref="Exception.Message"/> which on SQLite/EF
+    /// leaks SQL fragments, schema info, and file paths. Per the harness security
+    /// rules: "Error responses: never leak stack traces, internal paths, or
+    /// sensitive data." Handlers have already logged the original failure with
+    /// structured detail; the client gets only a generic correlation message.
+    /// </para>
+    /// <para>
     /// Kept inline rather than in a shared helper because no other controller
     /// currently consumes <see cref="Result{T}"/> directly. Promote to a shared
     /// extension when a second consumer appears (matches the Phase 5.4.1
     /// "no extraction until N=3" precedent for the ValueConverter).
+    /// </para>
     /// </remarks>
     private IActionResult ToActionResult<T>(Result<T> result)
     {
@@ -171,7 +185,7 @@ public sealed class EvalController : ControllerBase
                 statusCode: StatusCodes.Status403Forbidden),
             _ => Problem(
                 title: "Eval operation failed",
-                detail: string.Join(" / ", result.Errors),
+                detail: "An error occurred processing the request. See server logs for details.",
                 statusCode: StatusCodes.Status500InternalServerError),
         };
     }

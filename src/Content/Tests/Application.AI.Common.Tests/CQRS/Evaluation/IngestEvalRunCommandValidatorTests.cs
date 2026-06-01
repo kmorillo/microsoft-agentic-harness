@@ -60,4 +60,33 @@ public sealed class IngestEvalRunCommandValidatorTests
         var result = _sut.TestValidate(new IngestEvalRunCommand { Report = report });
         result.ShouldNotHaveValidationErrorFor("Report.Results");
     }
+
+    [Fact]
+    public void Oversized_Results_list_fails()
+    {
+        // Authed DoS guard: caller can't POST a report with millions of result rows.
+        var oversized = new EvalResult[IngestEvalRunCommandValidator.MaxResults + 1];
+        for (var i = 0; i < oversized.Length; i++)
+        {
+            oversized[i] = new EvalResult
+            {
+                Case = new EvalCase { Id = $"c{i}", Input = "x", MetricSpecs = [] },
+                OutputPerRepeat = [],
+                ScoresPerRepeat = [],
+                AggregatedScores = new Dictionary<string, MetricScore>(),
+                Verdict = Verdict.Pass,
+            };
+        }
+        var report = ValidReport() with { Results = oversized };
+        var result = _sut.TestValidate(new IngestEvalRunCommand { Report = report });
+        result.ShouldHaveValidationErrorFor("Report.Results");
+    }
+
+    [Fact]
+    public void Oversized_RunId_fails()
+    {
+        var report = ValidReport() with { RunId = new string('x', IngestEvalRunCommandValidator.MaxRunIdLength + 1) };
+        var result = _sut.TestValidate(new IngestEvalRunCommand { Report = report });
+        result.ShouldHaveValidationErrorFor("Report.RunId");
+    }
 }

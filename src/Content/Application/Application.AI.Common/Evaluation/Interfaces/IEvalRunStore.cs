@@ -20,6 +20,16 @@ namespace Application.AI.Common.Evaluation.Interfaces;
 /// ingest one run while another is mid-write. Query methods need not be
 /// transactional but must return a consistent snapshot of any single run.
 /// </para>
+/// <para>
+/// <b>Multi-tenancy: NOT enforced by this interface.</b> The current store
+/// surfaces every ingested run to every caller. The harness has analogous
+/// isolation patterns (e.g. <c>TenantIsolatedGraphStore</c> +
+/// <c>IKnowledgeScopeValidator</c>) that future work should layer on top of
+/// this contract — typically by wrapping <see cref="IEvalRunStore"/> with a
+/// scope-validating decorator and threading the caller's tenant/user claim
+/// into the query methods. Until then, deployments that expose the eval
+/// dashboard to multiple tenants must rely on network/host-level isolation.
+/// </para>
 /// </remarks>
 public interface IEvalRunStore
 {

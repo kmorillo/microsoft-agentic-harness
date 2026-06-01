@@ -87,6 +87,28 @@ public sealed class EvalControllerTests
     }
 
     [Fact]
+    public async Task Ingest_500_response_does_NOT_leak_internal_error_messages()
+    {
+        // Security guard: handler-side ex.Message can contain SQL fragments / file paths
+        // / schema info on EF/SQLite failures. The controller must NOT pass that through
+        // to clients. Per the harness security rules: "Error responses: never leak stack
+        // traces, internal paths, or sensitive data."
+        const string sensitive = "SQLite Error 14: 'unable to open database file': /var/data/secrets.db";
+        _mediator.Setup(m => m.Send(It.IsAny<IngestEvalRunCommand>(), It.IsAny<CancellationToken>()))
+                 .ReturnsAsync(Result<IngestEvalRunResult>.Fail(sensitive));
+
+        var result = await _sut.Ingest(
+            new IngestEvalRunCommand { Report = NewReport("r1") },
+            CancellationToken.None);
+
+        var problem = result.Should().BeOfType<ObjectResult>().Subject;
+        var details = problem.Value as Microsoft.AspNetCore.Mvc.ProblemDetails;
+        details.Should().NotBeNull();
+        details!.Detail.Should().NotContain("SQLite", "raw exception messages must not leak through ToActionResult on General failures");
+        details.Detail.Should().NotContain("secrets.db", "file paths must not leak through ToActionResult on General failures");
+    }
+
+    [Fact]
     public async Task Ingest_returns_400_on_validation_failure()
     {
         _mediator.Setup(m => m.Send(It.IsAny<IngestEvalRunCommand>(), It.IsAny<CancellationToken>()))
