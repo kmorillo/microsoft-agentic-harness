@@ -1,3 +1,4 @@
+using System.Reflection;
 using Application.AI.Common.Factories;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Agent;
@@ -14,6 +15,7 @@ using Application.AI.Common.Services.Skills;
 using Application.AI.Common.Services.Tools;
 using Application.Common.Interfaces.Telemetry;
 using Domain.Common.Config.AI.Sandbox;
+using FluentValidation;
 using MediatR;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -60,6 +62,15 @@ public static class DependencyInjection
     public static IServiceCollection AddApplicationAIDependencies(
         this IServiceCollection services)
     {
+        var assembly = Assembly.GetExecutingAssembly();
+
+        // Auto-discover MediatR handlers + FluentValidation validators defined in
+        // Application.AI.Common (e.g. ReplayTraceWithPromptVersion, IngestEvalRun).
+        // Application.Common scans its own assembly; this scan covers the AI-layer
+        // CQRS surface so handlers actually wire into the pipeline at runtime.
+        services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(assembly));
+        services.AddValidatorsFromAssembly(assembly);
+
         // Agent-specific pipeline behaviors — registered before Application.Common
         // behaviors so they wrap as the outermost layer
         services
