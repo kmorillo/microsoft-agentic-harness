@@ -1,6 +1,9 @@
+using Application.AI.Common.Categorization;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Agent;
+using Application.AI.Common.Interfaces.Context;
 using Application.AI.Common.MediatRBehaviors;
+using Application.AI.Common.Notifications;
 using Application.AI.Common.Services.Agent;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using Application.Core.CQRS.Agents.RunConversation;
@@ -63,6 +66,12 @@ public class AgentPipelineIntegrationTests
         usageCaptureMock.Setup(c => c.TakeSnapshot())
             .Returns(new LlmUsageSnapshot(0, 0, 0, 0, null, 0m, 0m, Array.Empty<string>()));
         services.AddScoped<ILlmUsageCapture>(_ => usageCaptureMock.Object);
+
+        // Foresight context-snapshot pipeline — pure computer + no-op notifier
+        // so the handler's snapshot hook resolves cleanly in this integration test.
+        services.AddSingleton<IContextSnapshotComputer, DefaultContextSnapshotComputer>();
+        services.AddSingleton<IContextSnapshotNotifier, NullContextSnapshotNotifier>();
+        services.AddSingleton(TimeProvider.System);
 
         return services.BuildServiceProvider();
     }

@@ -1,4 +1,7 @@
+using Application.AI.Common.Categorization;
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Interfaces.Context;
+using Application.AI.Common.Notifications;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using Application.Core.Tests.Helpers;
 using Domain.AI.Skills;
@@ -34,6 +37,9 @@ public class ExecuteAgentTurnCommandHandlerTests
             _agentRegistry.Object,
             new Mock<IObservabilityStore>().Object,
             usageCapture.Object,
+            new DefaultContextSnapshotComputer(),
+            new NullContextSnapshotNotifier(),
+            TimeProvider.System,
             NullLogger<ExecuteAgentTurnCommandHandler>.Instance);
     }
 

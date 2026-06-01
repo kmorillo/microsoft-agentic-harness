@@ -1,8 +1,11 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Application.AI.Common.Helpers;
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Interfaces.Context;
 using Application.AI.Common.OpenTelemetry.Metrics;
 using Application.AI.Common.Services;
+using Domain.AI.Context;
 using Domain.AI.Skills;
 using Domain.AI.Telemetry.Conventions;
 using Domain.Common.Extensions;
@@ -23,6 +26,9 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 	private readonly IAgentMetadataRegistry _agentRegistry;
 	private readonly IObservabilityStore _observabilityStore;
 	private readonly ILlmUsageCapture _usageCapture;
+	private readonly IContextSnapshotComputer _snapshotComputer;
+	private readonly IContextSnapshotNotifier _snapshotNotifier;
+	private readonly TimeProvider _timeProvider;
 	private readonly ILogger<ExecuteAgentTurnCommandHandler> _logger;
 
 	public ExecuteAgentTurnCommandHandler(
@@ -30,12 +36,18 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 		IAgentMetadataRegistry agentRegistry,
 		IObservabilityStore observabilityStore,
 		ILlmUsageCapture usageCapture,
+		IContextSnapshotComputer snapshotComputer,
+		IContextSnapshotNotifier snapshotNotifier,
+		TimeProvider timeProvider,
 		ILogger<ExecuteAgentTurnCommandHandler> logger)
 	{
 		_agentCache = agentCache;
 		_agentRegistry = agentRegistry;
 		_observabilityStore = observabilityStore;
 		_usageCapture = usageCapture;
+		_snapshotComputer = snapshotComputer;
+		_snapshotNotifier = snapshotNotifier;
+		_timeProvider = timeProvider;
 		_logger = logger;
 	}
 
@@ -138,6 +150,31 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 				new(ChatRole.Assistant, responseText)
 			};
 
+			// Foresight: compute + notify the per-turn context snapshot.
+			// Failures inside the notifier are swallowed per IContextSnapshotNotifier's
+			// contract, but the wrapping try/catch is belt-and-braces so a bug in the
+			// computer (e.g. arg validation) can never fail the turn either.
+			try
+			{
+				var turnLoaded = BuildTurnLoadedItems(request.UserMessage, responseText, toolsInvoked);
+				var snapshot = _snapshotComputer.Compute(
+					conversationId: request.ConversationId,
+					turnIndex: request.TurnNumber,
+					turnId: $"t-{request.TurnNumber:D2}",
+					inputTokens: usage.InputTokens,
+					history: updatedHistory,
+					turnLoaded: turnLoaded,
+					capturedAtUtc: _timeProvider.GetUtcNow());
+
+				await _snapshotNotifier.NotifyAsync(snapshot, cancellationToken).ConfigureAwait(false);
+			}
+			catch (Exception snapshotEx)
+			{
+				_logger.LogWarning(snapshotEx,
+					"Context snapshot for agent {AgentName} turn {TurnNumber} skipped — handler continues",
+					request.AgentName, request.TurnNumber);
+			}
+
 			var agentTag = new TagList { { AgentConventions.Name, request.AgentName } };
 			OrchestrationMetrics.TurnDuration.Record(turnSw.Elapsed.TotalMilliseconds, agentTag);
 			OrchestrationMetrics.TurnsTotal.Add(1, agentTag);
@@ -177,6 +214,50 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 		}
 	}
 
+
+	/// <summary>
+	/// Builds the per-turn <see cref="LoadedItem"/> delta — the artifacts that
+	/// arrived in the model's context window this turn (user message, assistant
+	/// response, tool invocations).
+	/// </summary>
+	/// <remarks>
+	/// User and assistant messages are sized via
+	/// <see cref="TokenEstimationHelper.EstimateTokens(string)"/>.
+	/// Tool entries currently carry 0 tokens — the LLM SDK's tool-call surface
+	/// does not expose result payloads to the handler, so per-tool sizing
+	/// is recorded as 0 and tools register as items only. A follow-up that
+	/// captures tool result text can populate the token field.
+	/// </remarks>
+	private static IReadOnlyList<LoadedItem> BuildTurnLoadedItems(
+		string userMessage,
+		string assistantResponse,
+		IReadOnlyList<string> toolsInvoked)
+	{
+		var items = new List<LoadedItem>(2 + toolsInvoked.Count)
+		{
+			new(
+				What: "User message",
+				Tokens: TokenEstimationHelper.EstimateTokens(userMessage),
+				Category: ContextCategory.Messages,
+				Reference: null),
+			new(
+				What: "Assistant message",
+				Tokens: TokenEstimationHelper.EstimateTokens(assistantResponse),
+				Category: ContextCategory.Messages,
+				Reference: null),
+		};
+
+		foreach (var toolName in toolsInvoked)
+		{
+			items.Add(new LoadedItem(
+				What: $"Tool: {toolName}",
+				Tokens: 0,
+				Category: ContextCategory.Messages,
+				Reference: toolName));
+		}
+
+		return items;
+	}
 
 	/// <summary>
 	/// Extracts text content from the agent RunAsync response.

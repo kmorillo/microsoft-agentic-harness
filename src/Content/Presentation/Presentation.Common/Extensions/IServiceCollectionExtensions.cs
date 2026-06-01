@@ -291,6 +291,17 @@ public static class IServiceCollectionExtensions
             Application.AI.Common.Evaluation.Interfaces.IEvalRunNotifier,
             Application.AI.Common.Evaluation.Notifications.NullEvalRunNotifier>();
 
+        // Foresight context-snapshot pipeline (PR 3). DefaultContextSnapshotComputer
+        // is a pure function — singleton fine. Null notifier same last-write-wins
+        // pattern as IEvalRunNotifier above; AgentHub host overrides with the
+        // SignalR + observability-store-backed implementation.
+        services.AddSingleton<
+            Application.AI.Common.Interfaces.Context.IContextSnapshotComputer,
+            Application.AI.Common.Categorization.DefaultContextSnapshotComputer>();
+        services.AddSingleton<
+            Application.AI.Common.Interfaces.Context.IContextSnapshotNotifier,
+            Application.AI.Common.Notifications.NullContextSnapshotNotifier>();
+
         return services;
     }
 
