@@ -44,6 +44,13 @@
     <PackageReference Include="AspNetCore.HealthChecks.Redis" />
     <PackageReference Include="AspNetCore.HealthChecks.Publisher.ApplicationInsights" />
 
+    <!-- EF Core InMemory: explicit reference forces the CPM-pinned 10.0.x version.
+         HealthChecks.UI.InMemory.Storage transitively asks for 8.0, but its 8.0 InMemory
+         calls into Abstractions in a way that 10.0 dropped — every WebApplicationFactory
+         test that boots the HealthChecks UI hosted service hits a MissingMethodException
+         without this pin. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" />
+
     <!-- Caching -->
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" />
 
