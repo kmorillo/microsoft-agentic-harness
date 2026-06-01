@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Activity, Users, TrendingUp, Coins, DollarSign, Wallet,
-  Wrench, ShieldCheck, Database, LayoutGrid, ChevronDown, Shield,
+  Wrench, ShieldCheck, Database, LayoutGrid, ChevronDown, Shield, FlaskConical,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -45,6 +45,7 @@ const navGroups: NavGroup[] = [
       { to: '/quality/tools', label: 'Tools', icon: Wrench },
       { to: '/quality/safety', label: 'Safety', icon: ShieldCheck },
       { to: '/quality/rag', label: 'RAG', icon: Database },
+      { to: '/evals', label: 'Evals', icon: FlaskConical },
     ],
   },
   {

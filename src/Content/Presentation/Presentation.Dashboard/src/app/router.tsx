@@ -15,6 +15,8 @@ const SafetyPage = lazy(() => import('@/routes/Safety/SafetyPage'));
 const RagPage = lazy(() => import('@/routes/Rag/RagPage'));
 const CatalogPage = lazy(() => import('@/routes/Catalog/CatalogPage'));
 const GovernancePage = lazy(() => import('@/routes/Governance/GovernancePage'));
+const EvalsListPage = lazy(() => import('@/routes/Evals/EvalsListPage'));
+const EvalRunDetailPage = lazy(() => import('@/routes/Evals/EvalRunDetailPage'));
 
 function LazyWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -50,6 +52,10 @@ export const router = createBrowserRouter([
 
       // Governance
       { path: 'governance', element: <LazyWrapper><GovernancePage /></LazyWrapper> },
+
+      // Evals (Sub-phase 5.4)
+      { path: 'evals', element: <LazyWrapper><EvalsListPage /></LazyWrapper> },
+      { path: 'evals/:runId', element: <LazyWrapper><EvalRunDetailPage /></LazyWrapper> },
 
       // Registry
       { path: 'catalog', element: <LazyWrapper><CatalogPage /></LazyWrapper> },

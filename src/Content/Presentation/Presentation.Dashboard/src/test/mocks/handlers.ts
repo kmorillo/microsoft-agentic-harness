@@ -289,4 +289,55 @@ export const handlers = [
       { ...mockSessionDetail, session: { ...mockSessionDetail.session, id } },
     );
   }),
+
+  // --- Evals (Sub-phase 5.4) ---
+  http.get('/api/evals/runs', () => {
+    return HttpResponse.json([
+      {
+        runId: 'run-001',
+        startedAtUtc: '2026-06-01T12:00:00Z',
+        completedAtUtc: '2026-06-01T12:01:30Z',
+        duration: '00:01:30',
+        passedCount: 8,
+        failedCount: 1,
+        warnedCount: 1,
+        erroredCount: 0,
+        totalCostUsd: 0.42,
+        repeats: 1,
+        overallVerdict: 'Fail',
+        receivedAtUtc: '2026-06-01T12:02:00Z',
+        passRate: 0.8,
+      },
+    ]);
+  }),
+
+  http.get('/api/evals/runs/:runId', ({ params }) => {
+    const runId = params['runId'] as string;
+    if (runId === 'unknown') {
+      return new HttpResponse(null, { status: 404 });
+    }
+    return HttpResponse.json({
+      runId,
+      startedAtUtc: '2026-06-01T12:00:00Z',
+      completedAtUtc: '2026-06-01T12:01:30Z',
+      duration: '00:01:30',
+      datasets: [{ name: 'demo', version: '1.0', cases: [] }],
+      results: [],
+      passedCount: 0,
+      failedCount: 0,
+      warnedCount: 0,
+      erroredCount: 0,
+      totalCostUsd: 0,
+      repeats: 1,
+      overallVerdict: 'Pass',
+      warnings: [],
+    });
+  }),
+
+  http.get('/api/evals/prompts/:name/compare', () => {
+    return HttpResponse.json([
+      { version: { major: 2, minor: 0 }, metricKey: 'faithfulness', averageScore: 0.8, sampleSize: 3 },
+      { version: { major: 1, minor: 0 }, metricKey: 'faithfulness', averageScore: 0.6, sampleSize: 3 },
+    ]);
+  }),
 ];
