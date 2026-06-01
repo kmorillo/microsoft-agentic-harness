@@ -61,6 +61,12 @@ public class MetricsIntegrationFactory : TestWebApplicationFactory
             });
 
             // Mock IAgentFactory: returns a canned AIAgent that produces a fixed response.
+            // CRITICAL: mock BOTH the singular CreateAgentFromSkillAsync (used by
+            // direct skill-id callers) AND the plural CreateAgentFromSkillsAsync (used
+            // by AgentConversationCache.GetOrCreateAsync — the path that the
+            // ExecuteAgentTurnCommandHandler actually drives). Moq returns null for
+            // unmocked overloads, which gets cached as a null AIAgent and NREs at
+            // agent.RunAsync downstream.
             var mockAgentFactory = new Mock<IAgentFactory>();
             mockAgentFactory
                 .Setup(f => f.CreateAgentFromSkillAsync(
@@ -71,6 +77,12 @@ public class MetricsIntegrationFactory : TestWebApplicationFactory
             mockAgentFactory
                 .Setup(f => f.CreateAgentFromSkillAsync(
                     It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new StubAIAgent("Integration test response."));
+            mockAgentFactory
+                .Setup(f => f.CreateAgentFromSkillsAsync(
+                    It.IsAny<IReadOnlyList<string>>(),
+                    It.IsAny<SkillAgentOptions>(),
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new StubAIAgent("Integration test response."));
             services.RemoveAll<IAgentFactory>();
