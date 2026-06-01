@@ -4,6 +4,7 @@ using Application.AI.Common.Interfaces.Compression;
 using Application.AI.Common.Interfaces.Agents;
 using Application.AI.Common.Interfaces.Compaction;
 using Application.AI.Common.Interfaces.Config;
+using Application.AI.Common.Interfaces.Context;
 using Application.AI.Common.Interfaces.Hooks;
 using Application.AI.Common.Interfaces.MetaHarness;
 using Application.AI.Common.Interfaces.Plugins;
@@ -94,6 +95,11 @@ public static partial class DependencyInjection
 
         // Execution trace store — filesystem-backed per-run trace artifact persistence
         services.AddSingleton<IExecutionTraceStore, FileSystemExecutionTraceStore>();
+
+        // Tool result store — used by ToolOutputCompressionBehavior to off-load large
+        // tool results so they don't dominate the context window. Filesystem-backed by
+        // default; consumers can override with a different IToolResultStore after this call.
+        services.AddSingleton<IToolResultStore, Context.FileSystemToolResultStore>();
 
         // --- Tools and AI clients ---
 

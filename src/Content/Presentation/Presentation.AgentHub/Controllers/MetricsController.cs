@@ -123,12 +123,17 @@ public sealed class MetricsController : ControllerBase
 
     /// <summary>
     /// PromQL allowlist validation — only permits characters valid in PromQL expressions.
-    /// Shell metacharacters (<c>;</c>, <c>$</c>, <c>`</c>, <c>&amp;</c>) are implicitly
-    /// blocked by the allowlist. Length-capped to limit query complexity.
-    /// Prometheus itself validates query syntax; this is defense-in-depth.
+    /// Shell metacharacters (<c>;</c>, <c>$</c>, <c>`</c>, <c>&amp;</c>, <c>|</c>) are
+    /// implicitly blocked by the allowlist. PromQL itself does not use <c>|</c> as an
+    /// operator (vector matches use <c>or</c>); regex alternation lives inside double-
+    /// quoted string literals which Prometheus tokenises before any shell sees it,
+    /// but the per-character allowlist can't distinguish in-string from out-of-string
+    /// context — so any user query containing <c>|</c> is rejected.
+    /// Length-capped to limit query complexity. Prometheus itself validates query
+    /// syntax; this is defense-in-depth.
     /// </summary>
     private const int MaxPromQlLength = 300;
-    private const string AllowedPromQlSymbols = "_:.-+*/%^(){}[],\"'=!~<>@ |";
+    private const string AllowedPromQlSymbols = "_:.-+*/%^(){}[],\"'=!~<>@ ";
 
     private static bool IsValidPromQl(string query)
     {
