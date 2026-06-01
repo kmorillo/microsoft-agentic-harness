@@ -19,6 +19,7 @@ namespace Presentation.EvalRunner;
 /// <code>
 /// evalrun &lt;dataset.yaml&gt; [&lt;dataset2.yaml&gt; ...]
 ///         [--out FORMAT[:PATH]]        # output sink; repeatable; FORMAT must match a registered reporter
+///         [--ingest-url URL]           # POST EvalRunReport to a dashboard ingest endpoint after the run; non-fatal on failure
 ///         [--repeats N]                # 1..50 (default 1; CI default 3)
 ///         [--parallel N]               # cases run concurrently (default 1)
 ///         [--tags tag1,tag2]           # only run cases with at least one matching tag
@@ -194,6 +195,24 @@ public static class Program
                 }
             }
 
+            // Optional dashboard ingest. Best-effort: a network blip should not turn a
+            // green run red. PostReportAsync writes its own failure messages to stderr;
+            // we don't propagate them into the exit code.
+            if (parsed.IngestUrl is { } ingestUrl)
+            {
+                var bearer = Environment.GetEnvironmentVariable("EVAL_INGEST_TOKEN");
+                var ingested = await EvalRunIngestClient.PostReportAsync(
+                    ingestUrl,
+                    report,
+                    bearer,
+                    TimeSpan.FromSeconds(30),
+                    cts.Token).ConfigureAwait(false);
+                if (ingested)
+                {
+                    Console.Error.WriteLine($"Ingested run {report.RunId} to {ingestUrl}.");
+                }
+            }
+
             return report.OverallVerdict == Verdict.Pass ? 0 : 1;
         }
         catch (OperationCanceledException)
@@ -228,6 +247,7 @@ public static class Program
         double failRate = 0.0;
         bool deterministic = false;
         IReadOnlyList<string>? tags = null;
+        string? ingestUrlRaw = null;
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -252,6 +272,9 @@ public static class Program
                 case "--tags":
                     tags = RequireValue(args, ref i, "--tags")
                         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    break;
+                case "--ingest-url":
+                    ingestUrlRaw = RequireValue(args, ref i, "--ingest-url");
                     break;
                 default:
                     if (a.StartsWith("--", StringComparison.Ordinal))
@@ -320,7 +343,22 @@ public static class Program
                 $"Duplicate stdout --out sinks: {string.Join(", ", stdoutFormats)}.");
         }
 
-        return new CliArgs(datasets, sinks, repeats, parallelism, failRate, deterministic, tags);
+        // Resolve ingest URL: CLI flag wins; otherwise EVAL_INGEST_URL env var. Both opt-in;
+        // when neither is set the report is emitted to reporters only and the dashboard
+        // sees nothing. Validate parseability early so a typo doesn't surface only at HTTP time.
+        var ingestRaw = ingestUrlRaw ?? Environment.GetEnvironmentVariable("EVAL_INGEST_URL");
+        Uri? ingestUrl = null;
+        if (!string.IsNullOrWhiteSpace(ingestRaw))
+        {
+            if (!Uri.TryCreate(ingestRaw, UriKind.Absolute, out ingestUrl)
+                || (ingestUrl.Scheme != Uri.UriSchemeHttp && ingestUrl.Scheme != Uri.UriSchemeHttps))
+            {
+                throw new ArgumentException(
+                    $"--ingest-url / EVAL_INGEST_URL must be an absolute http(s) URL. Got: '{ingestRaw}'.");
+            }
+        }
+
+        return new CliArgs(datasets, sinks, repeats, parallelism, failRate, deterministic, tags, ingestUrl);
     }
 
     private static OutputSink ParseSink(string raw)
@@ -383,6 +421,11 @@ public static class Program
               --tags tag1,tag2      only run cases matching at least one tag
               --fail-rate F         max failed-case fraction for overall Pass (default 0.0)
               --deterministic       force temperature=0 on every invocation
+              --ingest-url URL      POST the run report to a dashboard ingest endpoint
+                                    after the reporters emit. Bearer token via
+                                    EVAL_INGEST_TOKEN env var. Non-fatal on failure —
+                                    a network error never changes the exit code.
+                                    Alternative: set EVAL_INGEST_URL env var instead.
 
             Exit codes:
               0   — overall verdict Pass
@@ -399,7 +442,8 @@ public static class Program
         int Parallelism,
         double FailRateThreshold,
         bool Deterministic,
-        IReadOnlyList<string>? Tags);
+        IReadOnlyList<string>? Tags,
+        Uri? IngestUrl);
 
     private sealed record OutputSink(string Format, string? Path);
 }
