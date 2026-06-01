@@ -14,6 +14,7 @@ using Domain.Common.Config.Infrastructure;
 using Domain.Common.Config.Observability;
 using Infrastructure.AI;
 using Infrastructure.AI.Connectors;
+using Infrastructure.AI.Evaluation;
 using Infrastructure.AI.Governance;
 using Infrastructure.AI.KnowledgeGraph;
 using Infrastructure.AI.Prompts;
@@ -269,11 +270,18 @@ public static class IServiceCollectionExtensions
         // cleanly.
         services.AddPromptRegistry(promptsRootPath: LocatePromptsRoot());
 
-        // Eval framework (Infrastructure.AI.Evaluation) is NOT registered here — it is
-        // opt-in for the EvalRunner CLI only. Web/console hosts that don't run evaluations
-        // should not carry HarnessAgentInvoker, six metric singletons, three reporters,
-        // and the YAML loader on every cold start. Call services.AddEvaluationDependencies()
-        // explicitly from the eval host when wanted.
+        // Eval framework (Infrastructure.AI.Evaluation runners + metrics + reporters)
+        // is NOT registered here — it is opt-in for the EvalRunner CLI only. Web/console
+        // hosts that don't run evaluations should not carry HarnessAgentInvoker, the six
+        // metric singletons, three reporters, and the YAML loader on every cold start.
+        // Call services.AddEvaluationDependencies() explicitly from the eval host.
+
+        // Eval dashboard persistence (Sub-phase 5.4) IS registered here so the dashboard
+        // host can resolve IEvalRunStore for ingest + history queries. When
+        // PersistenceEnabled is false (default), AddEvalDashboardPersistence wires the
+        // NullEvalRunStore so handlers resolve cleanly without an opt-in flag elsewhere.
+        services.AddEvalDashboardPersistence(
+            appConfig.AI?.EvalDashboard ?? new EvalDashboardOptions());
 
         return services;
     }

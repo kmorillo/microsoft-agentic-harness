@@ -170,4 +170,10 @@ public class AIConfig
     /// and MCP server discovery from external directories.
     /// </summary>
     public PluginsConfig Plugins { get; set; } = new();
+
+    /// <summary>
+    /// Eval dashboard persistence configuration (Sub-phase 5.4). Off by default;
+    /// host opts in to durable ingest by setting <see cref="EvalDashboardOptions.PersistenceEnabled"/>.
+    /// </summary>
+    public EvalDashboardOptions EvalDashboard { get; set; } = new();
 }
