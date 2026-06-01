@@ -81,6 +81,20 @@ public sealed class PostgresFixture : IAsyncLifetime
             await ExecuteAsync(
                 "DELETE FROM sessions WHERE conversation_id LIKE $1",
                 new NpgsqlParameter { Value = $"{RunTag}%" });
+
+            // context_snapshots holds conversation_id by value (no FK) so it is
+            // not cascade-cleaned by the sessions delete above. Best-effort —
+            // table may not exist on older test databases.
+            try
+            {
+                await ExecuteAsync(
+                    "DELETE FROM context_snapshots WHERE conversation_id LIKE $1",
+                    new NpgsqlParameter { Value = $"{RunTag}%" });
+            }
+            catch
+            {
+                // Table doesn't exist on this database — skip.
+            }
         }
         catch
         {
