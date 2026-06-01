@@ -1,4 +1,6 @@
 using Application.AI.Common.Evaluation.Interfaces;
+using Application.AI.Common.Evaluation.Models;
+using Domain.AI.Evaluation;
 using Domain.Common;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -29,20 +31,24 @@ public sealed class IngestEvalRunCommandHandler
     : IRequestHandler<IngestEvalRunCommand, Result<IngestEvalRunResult>>
 {
     private readonly IEvalRunStore _store;
+    private readonly IEvalRunNotifier _notifier;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<IngestEvalRunCommandHandler> _logger;
 
     /// <summary>Initializes a new instance.</summary>
     public IngestEvalRunCommandHandler(
         IEvalRunStore store,
+        IEvalRunNotifier notifier,
         TimeProvider timeProvider,
         ILogger<IngestEvalRunCommandHandler> logger)
     {
         ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(notifier);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
 
         _store = store;
+        _notifier = notifier;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -85,6 +91,8 @@ public sealed class IngestEvalRunCommandHandler
                 request.Report.StartedAtUtc,
                 request.Report.OverallVerdict,
                 request.Report.Results.Count);
+
+            await NotifyAsync(request.Report, receivedAtUtc, cancellationToken).ConfigureAwait(false);
         }
         else
         {
@@ -99,5 +107,46 @@ public sealed class IngestEvalRunCommandHandler
             Inserted = inserted,
             ReceivedAtUtc = receivedAtUtc,
         });
+    }
+
+    private async Task NotifyAsync(
+        EvalRunReport report,
+        DateTimeOffset receivedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        // Best-effort fan-out. Notifier-failure must not corrupt the success outcome
+        // that the store has already committed; log + swallow per the IEvalRunNotifier
+        // contract. OCE still propagates so genuine cancellation isn't masked.
+        var summary = new EvalRunSummary
+        {
+            RunId = report.RunId,
+            StartedAtUtc = report.StartedAtUtc,
+            CompletedAtUtc = report.CompletedAtUtc,
+            Duration = report.Duration,
+            PassedCount = report.PassedCount,
+            FailedCount = report.FailedCount,
+            WarnedCount = report.WarnedCount,
+            ErroredCount = report.ErroredCount,
+            TotalCostUsd = report.TotalCostUsd,
+            Repeats = report.Repeats,
+            OverallVerdict = report.OverallVerdict,
+            ReceivedAtUtc = receivedAtUtc,
+        };
+
+        try
+        {
+            await _notifier.NotifyRunCompletedAsync(summary, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to notify subscribers of eval run {RunId}; ingest succeeded regardless.",
+                report.RunId);
+        }
     }
 }

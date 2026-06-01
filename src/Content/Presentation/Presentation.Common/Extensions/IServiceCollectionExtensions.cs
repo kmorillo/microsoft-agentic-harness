@@ -283,6 +283,14 @@ public static class IServiceCollectionExtensions
         services.AddEvalDashboardPersistence(
             appConfig.AI?.EvalDashboard ?? new EvalDashboardOptions());
 
+        // Default IEvalRunNotifier is the no-op for hosts without a real-time transport
+        // (CLI, worker). The dashboard host overrides via AddSingleton<IEvalRunNotifier,
+        // SignalREvalRunNotifier>() after this call — TryAddSingleton would prevent the
+        // override, AddSingleton-last-wins is the intended semantic here.
+        services.AddSingleton<
+            Application.AI.Common.Evaluation.Interfaces.IEvalRunNotifier,
+            Application.AI.Common.Evaluation.Notifications.NullEvalRunNotifier>();
+
         return services;
     }
 

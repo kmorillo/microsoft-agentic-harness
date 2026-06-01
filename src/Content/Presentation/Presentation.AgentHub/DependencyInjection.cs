@@ -202,6 +202,13 @@ public static class DependencyInjection
         services.AddSingleton<ILearningNotificationChannel, AgUiLearningNotifier>();
         services.AddSingleton<IPlanProgressNotifier, AgUiPlanProgressNotifier>();
 
+        // Override the no-op IEvalRunNotifier wired by GetServices() with the SignalR-backed
+        // implementation. Last-registration-wins: this AddSingleton replaces the prior
+        // NullEvalRunNotifier registration when the host wires both extension methods.
+        services.AddSingleton<
+            Application.AI.Common.Evaluation.Interfaces.IEvalRunNotifier,
+            Notifications.SignalREvalRunNotifier>();
+
         // Scoped: AgUiRunHandler takes per-request dependencies (ClaimsPrincipal, CancellationToken).
         services.AddScoped<AgUi.AgUiRunHandler>();
 

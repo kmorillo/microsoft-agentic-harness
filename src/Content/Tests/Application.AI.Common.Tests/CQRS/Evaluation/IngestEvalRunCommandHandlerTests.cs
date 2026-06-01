@@ -1,5 +1,7 @@
 using Application.AI.Common.CQRS.Evaluation.IngestEvalRun;
 using Application.AI.Common.Evaluation.Interfaces;
+using Application.AI.Common.Evaluation.Models;
+using Application.AI.Common.Evaluation.Notifications;
 using Domain.AI.Evaluation;
 using Domain.Common;
 using FluentAssertions;
@@ -17,6 +19,7 @@ namespace Application.AI.Common.Tests.CQRS.Evaluation;
 public sealed class IngestEvalRunCommandHandlerTests
 {
     private readonly Mock<IEvalRunStore> _store = new();
+    private readonly Mock<IEvalRunNotifier> _notifier = new();
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
     private readonly IngestEvalRunCommandHandler _sut;
 
@@ -24,6 +27,7 @@ public sealed class IngestEvalRunCommandHandlerTests
     {
         _sut = new IngestEvalRunCommandHandler(
             _store.Object,
+            _notifier.Object,
             _time,
             NullLogger<IngestEvalRunCommandHandler>.Instance);
     }
@@ -117,13 +121,72 @@ public sealed class IngestEvalRunCommandHandlerTests
     [Fact]
     public void Constructor_rejects_null_dependencies()
     {
-        var act1 = () => new IngestEvalRunCommandHandler(null!, _time, NullLogger<IngestEvalRunCommandHandler>.Instance);
-        var act2 = () => new IngestEvalRunCommandHandler(_store.Object, null!, NullLogger<IngestEvalRunCommandHandler>.Instance);
-        var act3 = () => new IngestEvalRunCommandHandler(_store.Object, _time, null!);
+        var act1 = () => new IngestEvalRunCommandHandler(null!, _notifier.Object, _time, NullLogger<IngestEvalRunCommandHandler>.Instance);
+        var act2 = () => new IngestEvalRunCommandHandler(_store.Object, null!, _time, NullLogger<IngestEvalRunCommandHandler>.Instance);
+        var act3 = () => new IngestEvalRunCommandHandler(_store.Object, _notifier.Object, null!, NullLogger<IngestEvalRunCommandHandler>.Instance);
+        var act4 = () => new IngestEvalRunCommandHandler(_store.Object, _notifier.Object, _time, null!);
 
         act1.Should().Throw<ArgumentNullException>();
         act2.Should().Throw<ArgumentNullException>();
         act3.Should().Throw<ArgumentNullException>();
+        act4.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public async Task Notifier_invoked_only_when_a_new_row_was_written()
+    {
+        var report = NewReport();
+        _store.Setup(s => s.AppendAsync(report, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(true);
+
+        await _sut.Handle(new IngestEvalRunCommand { Report = report }, CancellationToken.None);
+
+        _notifier.Verify(
+            n => n.NotifyRunCompletedAsync(It.IsAny<EvalRunSummary>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Notifier_skipped_on_idempotent_reingest()
+    {
+        var report = NewReport();
+        _store.Setup(s => s.AppendAsync(report, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(false);
+
+        await _sut.Handle(new IngestEvalRunCommand { Report = report }, CancellationToken.None);
+
+        _notifier.Verify(
+            n => n.NotifyRunCompletedAsync(It.IsAny<EvalRunSummary>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task Notifier_failure_does_not_corrupt_success_outcome()
+    {
+        var report = NewReport();
+        _store.Setup(s => s.AppendAsync(report, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(true);
+        _notifier.Setup(n => n.NotifyRunCompletedAsync(It.IsAny<EvalRunSummary>(), It.IsAny<CancellationToken>()))
+                 .ThrowsAsync(new InvalidOperationException("transport down"));
+
+        var result = await _sut.Handle(new IngestEvalRunCommand { Report = report }, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Inserted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Notifier_cancellation_propagates()
+    {
+        var report = NewReport();
+        _store.Setup(s => s.AppendAsync(report, It.IsAny<DateTimeOffset>(), It.IsAny<CancellationToken>()))
+              .ReturnsAsync(true);
+        _notifier.Setup(n => n.NotifyRunCompletedAsync(It.IsAny<EvalRunSummary>(), It.IsAny<CancellationToken>()))
+                 .ThrowsAsync(new OperationCanceledException());
+
+        var act = () => _sut.Handle(new IngestEvalRunCommand { Report = report }, CancellationToken.None);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
     /// <summary>

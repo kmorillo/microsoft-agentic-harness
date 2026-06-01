@@ -42,6 +42,17 @@ public sealed class AgentTelemetryHub : Hub
     /// </summary>
     public const string EventHistoryTruncated = "HistoryTruncated";
 
+    /// <summary>
+    /// Emitted after the dashboard ingests a new <c>EvalRunReport</c> (Sub-phase 5.4.6).
+    /// Payload is a flat object — see <c>EvalRunCompletedPayload</c> in the dashboard
+    /// SDK for the contract. Clients use this to refresh the run-history list without
+    /// polling.
+    /// </summary>
+    public const string EventEvalRunCompleted = "EvalRunCompleted";
+
+    /// <summary>SignalR group that receives <see cref="EventEvalRunCompleted"/> broadcasts.</summary>
+    public const string EvalDashboardGroup = "eval-dashboard";
+
     // -------------------------------------------------------------------------
     // Group name helpers
     // -------------------------------------------------------------------------
@@ -275,6 +286,22 @@ public sealed class AgentTelemetryHub : Hub
     /// <summary>Unsubscribes this connection from the global trace firehose.</summary>
     public Task LeaveGlobalTraces() =>
         Groups.RemoveFromGroupAsync(Context.ConnectionId, GlobalTracesGroup, Context.ConnectionAborted);
+
+    // -------------------------------------------------------------------------
+    // Hub methods — eval dashboard subscription
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Subscribes this connection to <see cref="EventEvalRunCompleted"/> broadcasts.
+    /// Any authenticated user can subscribe — the eval dashboard exposes already-
+    /// authorised metric data and the EvalController gates the underlying reads.
+    /// </summary>
+    public Task JoinEvalDashboard() =>
+        Groups.AddToGroupAsync(Context.ConnectionId, EvalDashboardGroup, Context.ConnectionAborted);
+
+    /// <summary>Unsubscribes this connection from eval-dashboard broadcasts.</summary>
+    public Task LeaveEvalDashboard() =>
+        Groups.RemoveFromGroupAsync(Context.ConnectionId, EvalDashboardGroup, Context.ConnectionAborted);
 
     // -------------------------------------------------------------------------
     // Private helpers
