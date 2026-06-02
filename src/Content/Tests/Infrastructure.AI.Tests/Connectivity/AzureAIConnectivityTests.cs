@@ -7,9 +7,15 @@ namespace Infrastructure.AI.Tests.Connectivity;
 
 /// <summary>
 /// Integration tests that verify live connectivity to Azure AI Foundry.
-/// Requires user secrets configured for the agentic-harness-console-ui project.
-/// Run with: dotnet test --filter "Category=Integration"
-/// Skip in CI with: dotnet test --filter "Category!=Integration"
+/// Opt-in via user secrets for the agentic-harness-console-ui project:
+/// <code>
+/// dotnet user-secrets set "AppConfig:AI:AgentFramework:Endpoint" "https://&lt;your-resource&gt;.cognitiveservices.azure.com/" --project src/Content/Presentation/Presentation.ConsoleUI
+/// dotnet user-secrets set "AppConfig:AI:AgentFramework:ApiKey" "&lt;key&gt;"                                              --project src/Content/Presentation/Presentation.ConsoleUI
+/// dotnet user-secrets set "AppConfig:AI:AgentFramework:DefaultDeployment" "claude-sonnet-4-6"                            --project src/Content/Presentation/Presentation.ConsoleUI
+/// </code>
+/// When any of these secrets are missing, the tests are reported as
+/// <c>Skipped</c> rather than <c>Failed</c> — so a fresh clone running
+/// <c>dotnet test</c> never sees red without good cause.
 /// </summary>
 [Trait("Category", "Integration")]
 public class AzureAIConnectivityTests
@@ -33,10 +39,10 @@ public class AzureAIConnectivityTests
     /// Raw HTTP call to verify the endpoint and key work end-to-end.
     /// Azure AI Foundry Anthropic endpoint uses x-api-key (Anthropic convention, not Azure api-key).
     /// </summary>
-    [Fact]
+    [SkippableFact]
     public async Task Anthropic_RawHttp_SendSimpleMessage_ReturnsResponse()
     {
-        EnsureCredentials();
+        SkipIfCredentialsMissing();
 
         using var http = new HttpClient();
         http.DefaultRequestHeaders.Add("x-api-key", _apiKey);
@@ -60,10 +66,10 @@ public class AzureAIConnectivityTests
         responseBody.Should().Contain("content");
     }
 
-    [Fact]
+    [SkippableFact]
     public void AzureAIInference_EndpointNormalization_ProducesCorrectUrl()
     {
-        EnsureCredentials();
+        SkipIfCredentialsMissing();
 
         var raw = new Uri(_endpoint!);
         var normalized = ChatClientFactory.NormalizeAzureAIInferenceEndpoint(raw);
@@ -75,16 +81,17 @@ public class AzureAIConnectivityTests
             normalized.Should().Be(raw);
     }
 
-    private void EnsureCredentials()
+    /// <summary>
+    /// Marks the test as Skipped when any of Endpoint/ApiKey/DefaultDeployment
+    /// secrets are missing, rather than failing the run.
+    /// </summary>
+    private void SkipIfCredentialsMissing()
     {
-        if (string.IsNullOrWhiteSpace(_endpoint) ||
+        Skip.If(
+            string.IsNullOrWhiteSpace(_endpoint) ||
             string.IsNullOrWhiteSpace(_apiKey) ||
-            string.IsNullOrWhiteSpace(_deployment))
-        {
-            throw new InvalidOperationException(
-                "Azure AI credentials not found in user secrets. " +
-                "Set them with: dotnet user-secrets set \"AppConfig:AI:AgentFramework:Endpoint\" \"...\" " +
-                "--project src/Content/Presentation/Presentation.ConsoleUI");
-        }
+            string.IsNullOrWhiteSpace(_deployment),
+            "Azure AI credentials not configured in user secrets for agentic-harness-console-ui. " +
+            "Set AppConfig:AI:AgentFramework:Endpoint, ApiKey, and DefaultDeployment to enable.");
     }
 }
