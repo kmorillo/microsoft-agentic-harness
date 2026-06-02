@@ -1,18 +1,19 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { fetchSessionDetail } from '@/api/sessions';
-import type {
-  SessionRecord,
-  SessionMessageRecord,
-  ToolExecutionRecord,
-} from '@/api/types';
+import type { SessionRecord } from '@/api/types';
+import {
+  subscribeToConversationSnapshots,
+  unsubscribeFromConversationSnapshots,
+} from '@/realtime/useTelemetryStream';
+import { useSessionSnapshots } from '@/stores/sessionSnapshotsStore';
 import { PanelCard } from '@/components/panels/PanelCard';
-import { PanelGrid } from '@/components/panels/PanelGrid';
 import { LoadingSkeleton } from '@/components/panels/LoadingSkeleton';
 import { EmptyState } from '@/components/panels/EmptyState';
+import { ContextDrawer } from '@/components/context/ContextDrawer';
+import { DEFAULT_CONTEXT_BUDGET } from '@/lib/categories';
 import { StatusBadge } from './StatusBadge';
-import { ConversationTimeline } from './ConversationTimeline';
 import { ToolsTable } from './ToolsTable';
 import { SafetyTable } from './SafetyTable';
 import {
@@ -22,6 +23,9 @@ import {
   formatTimestampFull,
   formatPercent,
 } from './format';
+import { SessionHero } from './gem/SessionHero';
+import { SessionTimeline } from './gem/SessionTimeline';
+import { useSessionGemState } from './gem/useSessionGemState';
 
 /* ------------------------------------------------------------------ */
 /*  Main page                                                         */
@@ -37,15 +41,35 @@ export default function SessionDetailPage() {
     enabled: !!sessionId,
   });
 
+  const conversationId = data?.session.conversationId;
+
+  // Subscribe to live ContextSnapshot broadcasts for this conversation. The
+  // realtime helpers track desired subscriptions independently of the SignalR
+  // connection state — calling subscribe before the hub finishes connecting
+  // queues the intent; calling unsubscribe drops it before any server-side
+  // join lands. Either path keeps the page in hydrate-only mode safely.
+  useEffect(() => {
+    if (!conversationId) return;
+    void subscribeToConversationSnapshots(conversationId);
+    return () => {
+      void unsubscribeFromConversationSnapshots(conversationId);
+    };
+  }, [conversationId]);
+
+  const snapshots = useSessionSnapshots(conversationId);
+
+  const gem = useSessionGemState({
+    snapshots,
+    fallbackBreakdown: data?.breakdown ?? null,
+    messages: data?.messages ?? [],
+    tools: data?.tools ?? [],
+  });
+
   if (isLoading) {
     return (
       <div className="space-y-6">
         <BackButton onClick={() => navigate('/sessions')} />
-        <PanelGrid columns={4}>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <LoadingSkeleton key={i} />
-          ))}
-        </PanelGrid>
+        <LoadingSkeleton />
         <LoadingSkeleton />
       </div>
     );
@@ -65,55 +89,75 @@ export default function SessionDetailPage() {
     );
   }
 
-  const { session, messages, tools, safetyEvents } = data;
+  const { session, tools, safetyEvents } = data;
 
   return (
     <div className="space-y-6">
       <BackButton onClick={() => navigate('/sessions')} />
       <SessionHeader session={session} />
 
-      {/* Two-column body */}
-      <div className="flex gap-6 items-start">
-        {/* Left column */}
-        <div className="flex-1 min-w-0 space-y-6">
-          <CostWaterfall messages={messages} />
+      {session.errorMessage && <SessionVerdict message={session.errorMessage} />}
 
-          <PanelCard
-            title="Conversation Timeline"
-            description={`${messages.length} messages across ${session.turnCount} turns`}
-          >
-            {messages.length > 0 ? (
-              <ConversationTimeline
-                messages={messages}
-                toolExecutions={tools}
-              />
-            ) : (
-              <EmptyState title="No messages recorded" />
-            )}
-          </PanelCard>
+      <SessionHero
+        snapshots={snapshots}
+        gem={gem}
+        budget={DEFAULT_CONTEXT_BUDGET}
+      />
 
-          {tools.length > 0 && (
-            <PanelCard
-              title="Tool Executions"
-              description={`${tools.length} tool calls`}
-            >
-              <ToolsTable tools={tools} />
-            </PanelCard>
-          )}
+      <PanelCard
+        title="Timeline"
+        description={`${snapshots.length} turn${snapshots.length === 1 ? '' : 's'} captured`}
+      >
+        <SessionTimeline
+          snapshots={snapshots}
+          messages={data.messages}
+          activeTurnIndex={gem.activeTurnIndex}
+          activeCategory={gem.activeCategory}
+          onTurnScrub={gem.setActiveTurnIndex}
+          onLoadedClick={(item, turnIndex) =>
+            gem.openDrawer(item, 'timeline', turnIndex)
+          }
+          budget={DEFAULT_CONTEXT_BUDGET}
+        />
+      </PanelCard>
 
-          {safetyEvents.length > 0 && (
-            <PanelCard
-              title="Safety Events"
-              description={`${safetyEvents.length} events`}
-            >
-              <SafetyTable events={safetyEvents} />
-            </PanelCard>
-          )}
-        </div>
+      {tools.length > 0 && (
+        <details data-testid="session-tools-panel" className="rounded-md border border-border bg-card">
+          <summary className="cursor-pointer list-none px-4 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground">
+            Tool executions · {tools.length}
+          </summary>
+          <div className="border-t border-border p-4">
+            <ToolsTable tools={tools} />
+          </div>
+        </details>
+      )}
 
-        {/* Right column */}
-        <TraceRail session={session} messages={messages} tools={tools} />
-      </div>
+      {safetyEvents.length > 0 && (
+        <details data-testid="session-safety-panel" className="rounded-md border border-border bg-card">
+          <summary className="cursor-pointer list-none px-4 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground hover:text-foreground">
+            Safety events · {safetyEvents.length}
+          </summary>
+          <div className="border-t border-border p-4">
+            <SafetyTable events={safetyEvents} />
+          </div>
+        </details>
+      )}
+
+      {/* The single page-level drawer; gem state owns the open/close lifecycle. */}
+      <ContextDrawer
+        open={gem.drawerItem !== null}
+        onOpenChange={(open) => {
+          if (!open) gem.closeDrawer();
+        }}
+        category={gem.drawerItem?.item.cat ?? 'system'}
+        name={gem.drawerItem?.name ?? ''}
+        path={gem.drawerItem?.path ?? ''}
+        role={gem.drawerItem?.content.role}
+        body={gem.drawerItem?.content.body ?? ''}
+        lang={gem.drawerItem?.content.lang}
+        onPrev={() => gem.walkDrawer(-1)}
+        onNext={() => gem.walkDrawer(1)}
+      />
     </div>
   );
 }
@@ -153,19 +197,22 @@ function BackButton({ onClick }: { onClick: () => void }) {
 function SessionHeader({ session }: { session: SessionRecord }) {
   const totalTokens = session.totalInputTokens + session.totalOutputTokens;
 
-  const stats: { label: string; value: string; sub?: string }[] = [
-    { label: 'Turns', value: session.turnCount.toString() },
-    { label: 'Duration', value: formatDuration(session.durationMs) },
-    {
-      label: 'Tokens',
-      value: formatTokens(totalTokens),
-      sub: `${formatTokens(session.totalInputTokens)} in / ${formatTokens(session.totalOutputTokens)} out`,
-    },
-    { label: 'Cache Hit', value: formatPercent(session.cacheHitRate) },
-    { label: 'Tool Calls', value: session.toolCallCount.toString() },
-    { label: 'Cost', value: formatCost(session.totalCostUsd) },
-    { label: 'Subagents', value: session.subagentCount.toString() },
-  ];
+  const stats: { label: string; value: string; sub?: string }[] = useMemo(
+    () => [
+      { label: 'Turns', value: session.turnCount.toString() },
+      { label: 'Duration', value: formatDuration(session.durationMs) },
+      {
+        label: 'Tokens',
+        value: formatTokens(totalTokens),
+        sub: `${formatTokens(session.totalInputTokens)} in / ${formatTokens(session.totalOutputTokens)} out`,
+      },
+      { label: 'Cache Hit', value: formatPercent(session.cacheHitRate) },
+      { label: 'Tool Calls', value: session.toolCallCount.toString() },
+      { label: 'Cost', value: formatCost(session.totalCostUsd) },
+      { label: 'Subagents', value: session.subagentCount.toString() },
+    ],
+    [session, totalTokens],
+  );
 
   return (
     <div className="space-y-3">
@@ -199,21 +246,21 @@ function SessionHeader({ session }: { session: SessionRecord }) {
         {stats.map((s, i) => {
           const slug = s.label.toLowerCase().replace(/\s+/g, '-');
           return (
-          <div
-            key={s.label}
-            data-testid={`stat-${slug}`}
-            className={`px-4 py-3 text-center ${i < stats.length - 1 ? 'border-r border-border' : ''}`}
-          >
-            <p className="text-[11px] uppercase tracking-wider text-otel-text-mute">
-              {s.label}
-            </p>
-            <p data-testid={`stat-${slug}-value`} className="text-base font-semibold font-mono tabular-nums text-card-foreground mt-0.5">
-              {s.value}
-            </p>
-            {s.sub && (
-              <p className="text-[10px] text-otel-text-dim mt-0.5">{s.sub}</p>
-            )}
-          </div>
+            <div
+              key={s.label}
+              data-testid={`stat-${slug}`}
+              className={`px-4 py-3 text-center ${i < stats.length - 1 ? 'border-r border-border' : ''}`}
+            >
+              <p className="text-[11px] uppercase tracking-wider text-otel-text-mute">
+                {s.label}
+              </p>
+              <p data-testid={`stat-${slug}-value`} className="text-base font-semibold font-mono tabular-nums text-card-foreground mt-0.5">
+                {s.value}
+              </p>
+              {s.sub && (
+                <p className="text-[10px] text-otel-text-dim mt-0.5">{s.sub}</p>
+              )}
+            </div>
           );
         })}
       </div>
@@ -222,288 +269,27 @@ function SessionHeader({ session }: { session: SessionRecord }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  CostWaterfall                                                     */
+/*  SessionVerdict — visible failure banner                            */
 /* ------------------------------------------------------------------ */
 
-interface TurnCost {
-  turn: number;
-  inputTokens: number;
-  outputTokens: number;
-  cost: number;
-  cumulative: number;
-}
-
-function CostWaterfall({ messages }: { messages: SessionMessageRecord[] }) {
-  const turns = useMemo(() => {
-    const grouped = new Map<number, { input: number; output: number; cost: number }>();
-    for (const m of messages) {
-      const existing = grouped.get(m.turnIndex) ?? { input: 0, output: 0, cost: 0 };
-      existing.input += m.inputTokens;
-      existing.output += m.outputTokens;
-      existing.cost += m.costUsd;
-      grouped.set(m.turnIndex, existing);
-    }
-
-    let cumulative = 0;
-    const result: TurnCost[] = [];
-    const sortedKeys = [...grouped.keys()].sort((a, b) => a - b);
-    for (const turn of sortedKeys) {
-      const g = grouped.get(turn)!;
-      cumulative += g.cost;
-      result.push({
-        turn,
-        inputTokens: g.input,
-        outputTokens: g.output,
-        cost: g.cost,
-        cumulative,
-      });
-    }
-    return result;
-  }, [messages]);
-
-  const maxCost = useMemo(
-    () => Math.max(...turns.map((t) => t.cost), 0.0001),
-    [turns],
-  );
-
-  if (turns.length === 0) return null;
-
+/**
+ * Renders `session.errorMessage` above the gem when the session ended in
+ * error. The old TraceRail housed this in a right-rail Verdict box; the
+ * pure-gem layout doesn't have a right rail, so the banner sits between the
+ * stat strip and the hero — high enough to be the first thing an operator
+ * triaging a failure sees.
+ */
+function SessionVerdict({ message }: { message: string }) {
   return (
-    <PanelCard
-      title="Cost Waterfall"
-      description="Cost per conversation turn"
+    <div
+      data-testid="session-verdict"
+      role="alert"
+      className="rounded-md border border-otel-negative/40 bg-otel-negative/10 px-4 py-3 text-sm text-otel-negative"
     >
-      <div className="space-y-1" data-testid="cost-waterfall-rows">
-        {/* Header */}
-        <div className="grid grid-cols-[3rem_1fr_6rem_5rem_5rem_5.5rem] gap-2 text-[11px] uppercase tracking-wider text-otel-text-mute px-1 pb-1 border-b border-border">
-          <span>Turn</span>
-          <span />
-          <span className="text-right">Tokens In</span>
-          <span className="text-right">Out</span>
-          <span className="text-right">Cost</span>
-          <span className="text-right">Cumul.</span>
-        </div>
-
-        {turns.map((t) => {
-          const pct = (t.cost / maxCost) * 100;
-          return (
-            <div
-              key={t.turn}
-              data-testid={`cost-row-${t.turn}`}
-              className="grid grid-cols-[3rem_1fr_6rem_5rem_5rem_5.5rem] gap-2 items-center px-1 py-0.5 rounded hover:bg-muted/40 transition-colors"
-            >
-              <span className="font-mono tabular-nums text-xs text-otel-text-dim">
-                #{t.turn}
-              </span>
-              <div className="h-4 rounded-sm overflow-hidden bg-muted/30">
-                <div
-                  className="h-full rounded-sm bg-otel-accent/70"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <span className="text-right font-mono tabular-nums text-xs text-otel-text-dim">
-                {formatTokens(t.inputTokens)}
-              </span>
-              <span className="text-right font-mono tabular-nums text-xs text-otel-text-dim">
-                {formatTokens(t.outputTokens)}
-              </span>
-              <span className="text-right font-mono tabular-nums text-xs text-foreground">
-                {formatCost(t.cost)}
-              </span>
-              <span className="text-right font-mono tabular-nums text-xs text-otel-text-mute">
-                {formatCost(t.cumulative)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </PanelCard>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  TraceRail sidebar                                                 */
-/* ------------------------------------------------------------------ */
-
-interface ToolAggregate {
-  name: string;
-  count: number;
-  avgDurationMs: number | null;
-  hasError: boolean;
-}
-
-function TraceRail({
-  session,
-  messages,
-  tools,
-}: {
-  session: SessionRecord;
-  messages: SessionMessageRecord[];
-  tools: ToolExecutionRecord[];
-}) {
-  const totalTokens =
-    session.totalInputTokens +
-    session.totalCacheRead +
-    session.totalOutputTokens;
-
-  const segments = useMemo(() => {
-    if (totalTokens === 0) return { input: 0, cache: 0, output: 0 };
-    return {
-      input: (session.totalInputTokens / totalTokens) * 100,
-      cache: (session.totalCacheRead / totalTokens) * 100,
-      output: (session.totalOutputTokens / totalTokens) * 100,
-    };
-  }, [session, totalTokens]);
-
-  const toolAggregates = useMemo(() => {
-    const map = new Map<string, { count: number; totalMs: number; durationCount: number; hasError: boolean }>();
-    for (const t of tools) {
-      const existing = map.get(t.toolName) ?? {
-        count: 0,
-        totalMs: 0,
-        durationCount: 0,
-        hasError: false,
-      };
-      existing.count++;
-      if (t.durationMs !== null) {
-        existing.totalMs += t.durationMs;
-        existing.durationCount++;
-      }
-      if (t.status !== 'ok' && t.status !== 'success') {
-        existing.hasError = true;
-      }
-      map.set(t.toolName, existing);
-    }
-
-    const result: ToolAggregate[] = [];
-    for (const [name, agg] of map) {
-      result.push({
-        name,
-        count: agg.count,
-        avgDurationMs: agg.durationCount > 0 ? agg.totalMs / agg.durationCount : null,
-        hasError: agg.hasError,
-      });
-    }
-    return result.sort((a, b) => b.count - a.count);
-  }, [tools]);
-
-  return (
-    <aside className="w-72 shrink-0 space-y-4 sticky top-6">
-      {/* Token Shape */}
-      <div className="bg-card border border-border rounded-md p-4 space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-otel-text-mute">
-          Token Shape
-        </h3>
-
-        {/* Stacked bar */}
-        <div className="h-5 rounded-sm overflow-hidden flex bg-muted/30">
-          {segments.input > 0 && (
-            <div
-              className="h-full bg-otel-info"
-              style={{ width: `${segments.input}%` }}
-              title={`Input: ${formatTokens(session.totalInputTokens)}`}
-            />
-          )}
-          {segments.cache > 0 && (
-            <div
-              className="h-full bg-otel-positive"
-              style={{ width: `${segments.cache}%` }}
-              title={`Cache read: ${formatTokens(session.totalCacheRead)}`}
-            />
-          )}
-          {segments.output > 0 && (
-            <div
-              className="h-full bg-otel-accent"
-              style={{ width: `${segments.output}%` }}
-              title={`Output: ${formatTokens(session.totalOutputTokens)}`}
-            />
-          )}
-        </div>
-
-        {/* Legend */}
-        <div className="space-y-1.5 text-xs">
-          <LegendRow
-            color="bg-otel-info"
-            label="Input"
-            value={formatTokens(session.totalInputTokens)}
-          />
-          <LegendRow
-            color="bg-otel-positive"
-            label="Cache read"
-            value={formatTokens(session.totalCacheRead)}
-          />
-          <LegendRow
-            color="bg-otel-accent"
-            label="Output"
-            value={formatTokens(session.totalOutputTokens)}
-          />
-        </div>
-      </div>
-
-      {/* Tools Used */}
-      {toolAggregates.length > 0 && (
-        <div className="bg-card border border-border rounded-md p-4 space-y-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-otel-text-mute">
-            Tools Used
-          </h3>
-          <div className="space-y-2">
-            {toolAggregates.map((t) => (
-              <div key={t.name} className="flex items-start gap-2">
-                <span
-                  className={`mt-1 inline-block w-2 h-2 rounded-full shrink-0 ${t.hasError ? 'bg-otel-negative' : 'bg-otel-positive'}`}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-foreground truncate">
-                    {t.name}
-                  </p>
-                  <p className="text-[11px] text-otel-text-dim font-mono tabular-nums">
-                    {t.count}x
-                    {t.avgDurationMs !== null && (
-                      <> &middot; avg {formatDuration(t.avgDurationMs)}</>
-                    )}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Verdict */}
-      {session.errorMessage && (
-        <div className="bg-otel-negative/10 border border-otel-negative/20 rounded-md p-4 space-y-1">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-otel-negative">
-            Verdict
-          </h3>
-          <p className="text-sm text-otel-negative/90 break-words">
-            {session.errorMessage}
-          </p>
-        </div>
-      )}
-    </aside>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Legend helper                                                      */
-/* ------------------------------------------------------------------ */
-
-function LegendRow({
-  color,
-  label,
-  value,
-}: {
-  color: string;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <div className="flex items-center gap-1.5">
-        <span className={`inline-block w-2.5 h-2.5 rounded-sm ${color}`} />
-        <span className="text-otel-text-dim">{label}</span>
-      </div>
-      <span className="font-mono tabular-nums text-foreground">{value}</span>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-otel-negative/90">
+        Verdict
+      </p>
+      <p className="break-words font-mono text-xs leading-relaxed">{message}</p>
     </div>
   );
 }

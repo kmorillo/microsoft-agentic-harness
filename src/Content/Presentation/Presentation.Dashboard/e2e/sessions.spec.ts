@@ -107,48 +107,59 @@ test.describe('Session Detail Page', () => {
     expect(text).toMatch(/\$/);
   });
 
-  test('conversation timeline renders with messages', async ({ page }) => {
-    const timeline = page.locator('[data-testid="conversation-timeline"]');
+  test('Foresight gem hero renders with the context bar', async ({ page }) => {
+    // PR 4 reskin: the old ConversationTimeline + message rows are gone;
+    // the page now leads with the Foresight gem (ContextBar + ContextLegend
+    // + ScrubStrip + ContentsPanel) above the per-turn SessionTimeline.
+    const hero = page.locator('[data-testid="session-hero"]');
+    await expect(hero).toBeVisible();
+
+    // The hero owns the large ContextBar.
+    const heroBar = hero.locator('[data-testid="context-bar"]').first();
+    await expect(heroBar).toBeVisible();
+  });
+
+  test('session timeline renders at least one snapshot row with a role badge', async ({ page }) => {
+    const timeline = page.locator('[data-testid="session-timeline"]');
     await expect(timeline).toBeVisible();
 
-    // Should have at least 2 messages (user + assistant from the echo agent seed)
-    const messageRows = page.locator('[data-testid^="message-row-"]');
-    const count = await messageRows.count();
+    const rows = page.locator('[data-testid^="timeline-row-"]');
+    const count = await rows.count();
+    expect(count).toBeGreaterThanOrEqual(1);
+
+    // Each row carries a role pill — assert it resolves to a known value so
+    // we catch role-inference regressions early.
+    const firstRoleBadge = rows.first().locator('[data-testid$="-role"]');
+    const role = (await firstRoleBadge.textContent())?.trim() ?? '';
+    expect(['user', 'assistant', 'tool']).toContain(role);
+  });
+
+  test('multi-turn: every seeded turn becomes a timeline row', async ({ page }) => {
+    // Echo-agent seed produces multiple turns. The new gem renders one
+    // timeline row per ContextSnapshot, not per message — so count by turn.
+    const rows = page.locator('[data-testid^="timeline-row-"]');
+    const count = await rows.count();
     expect(count).toBeGreaterThanOrEqual(2);
   });
 
-  test('conversation timeline shows both user and assistant messages', async ({ page }) => {
-    const timeline = page.locator('[data-testid="conversation-timeline"]');
-    await expect(timeline).toBeVisible();
-
-    const userMessages = page.locator('[data-testid^="message-row-"][data-testid$="-user"]');
-    const assistantMessages = page.locator('[data-testid^="message-row-"][data-testid$="-assistant"]');
-
-    expect(await userMessages.count()).toBeGreaterThanOrEqual(1);
-    expect(await assistantMessages.count()).toBeGreaterThanOrEqual(1);
-  });
-
-  test('multi-turn: all seeded messages appear in timeline', async ({ page }) => {
-    // The global setup seeds 2 messages, which should produce at least 4 timeline entries
-    // (2 user + 2 assistant). This test catches the bug where only the first turn is recorded.
-    const messageRows = page.locator('[data-testid^="message-row-"]');
-    const count = await messageRows.count();
-
-    // Echo agent with 2 messages should produce at least 4 entries (2 user + 2 assistant)
-    expect(count).toBeGreaterThanOrEqual(4);
-  });
-
-  test('cost waterfall renders turn rows', async ({ page }) => {
-    const waterfall = page.locator('[data-testid="panel-cost-waterfall"]');
-    const isVisible = await waterfall.isVisible().catch(() => false);
+  test('tools panel is a collapsible details with the tool count', async ({ page }) => {
+    // CostWaterfall was dropped intentionally (HANDOFF.md §4 pure gem). The
+    // replacement surface for tool executions is the collapsible Tool
+    // executions details below the timeline.
+    const toolsPanel = page.locator('[data-testid="session-tools-panel"]');
+    const isVisible = await toolsPanel.isVisible().catch(() => false);
     if (!isVisible) {
-      test.skip(true, 'No cost data in seeded session — cost waterfall not rendered');
+      test.skip(
+        true,
+        'No tool executions in seeded session — tools panel not rendered',
+      );
       return;
     }
-
-    const costRows = page.locator('[data-testid^="cost-row-"]');
-    const rowCount = await costRows.count();
-    expect(rowCount).toBeGreaterThanOrEqual(1);
+    const summary = toolsPanel.locator('summary').first();
+    await expect(summary).toBeVisible();
+    expect((await summary.textContent())?.toLowerCase()).toContain(
+      'tool executions',
+    );
   });
 
   test('back button returns to sessions list', async ({ page }) => {
