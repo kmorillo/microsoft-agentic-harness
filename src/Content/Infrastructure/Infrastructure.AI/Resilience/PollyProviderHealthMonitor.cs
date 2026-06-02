@@ -62,35 +62,49 @@ public sealed class PollyProviderHealthMonitor : IProviderHealthMonitor
     /// <summary>
     /// Called by Polly pipeline callbacks (OnOpened, OnClosed, OnHalfOpen) to report
     /// circuit breaker state transitions. Fires <see cref="OnCircuitStateChanged"/>
-    /// only when the state actually changes. Thread-safe for concurrent calls.
+    /// exactly once per real transition even under concurrent callers.
     /// </summary>
     /// <param name="providerName">The provider whose circuit state changed.</param>
     /// <param name="newState">The new <see cref="ProviderHealthState"/>.</param>
+    /// <remarks>
+    /// Uses TryAdd / TryUpdate as a CAS loop so only the thread that wins the atomic
+    /// transition fires the event. The previous AddOrUpdate-based implementation captured
+    /// the prior state inside each thread's add factory closure, which under
+    /// ConcurrentDictionary's add-then-retry-update path let multiple threads believe
+    /// they had caused the transition.
+    /// </remarks>
     public void ReportStateChange(string providerName, ProviderHealthState newState)
     {
-        ProviderHealthState? capturedOldState = null;
-
-        _providerStates.AddOrUpdate(
-            providerName,
-            addValueFactory: _ =>
+        while (true)
+        {
+            if (!_providerStates.TryGetValue(providerName, out var existing))
             {
-                var defaultState = ProviderHealthState.Healthy;
-                if (defaultState != newState)
-                    capturedOldState = defaultState;
-                return newState;
-            },
-            updateValueFactory: (_, existing) =>
+                if (!_providerStates.TryAdd(providerName, newState))
+                    continue; // raced — fall through and try the update branch
+
+                // We owned the insert. The default observable state is Healthy;
+                // emit a transition only when newState differs.
+                if (newState == ProviderHealthState.Healthy)
+                    return;
+
+                FireTransition(providerName, ProviderHealthState.Healthy, newState);
+                return;
+            }
+
+            if (existing == newState)
+                return;
+
+            if (_providerStates.TryUpdate(providerName, newState, existing))
             {
-                if (existing != newState)
-                    capturedOldState = existing;
-                return newState;
-            });
+                FireTransition(providerName, existing, newState);
+                return;
+            }
+            // raced — another thread updated; reload and retry
+        }
+    }
 
-        if (capturedOldState is null)
-            return;
-
-        var oldState = capturedOldState.Value;
-
+    private void FireTransition(string providerName, ProviderHealthState oldState, ProviderHealthState newState)
+    {
         _logger?.LogInformation("Provider {Provider} circuit state changed: {OldState} -> {NewState}",
             providerName, oldState, newState);
 
