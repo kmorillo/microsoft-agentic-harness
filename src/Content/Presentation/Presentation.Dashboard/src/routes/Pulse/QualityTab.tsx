@@ -3,7 +3,7 @@ import { KpiCard } from '@/components/panels/KpiCard';
 import { PanelCard } from '@/components/panels/PanelCard';
 import { PanelGrid } from '@/components/panels/PanelGrid';
 import { LoadingSkeleton } from '@/components/panels/LoadingSkeleton';
-import { GaugeChart } from '@/components/charts/GaugeChart';
+import { MetricPanel } from '@/components/metrics/MetricPanel';
 import { HBarList } from '@/components/charts/HBarList';
 import { StatusDot } from '@/components/primitives/StatusDot';
 import { latestValue, formatKpi, seriesToBars } from './pulse-helpers';
@@ -135,14 +135,14 @@ export function QualityTab() {
           description="sorted by call volume"
         >
           {toolRows.length === 0 ? (
-            <p className="text-xs text-otel-text-mute py-6 text-center">
+            <p className="text-xs text-muted-foreground py-6 text-center">
               No tool data yet
             </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-border text-otel-text-dim">
+                  <tr className="border-b border-border text-muted-foreground">
                     <th className="text-left py-2 font-medium">Tool</th>
                     <th className="text-right py-2 font-medium">Calls</th>
                     <th className="text-right py-2 font-medium">Err %</th>
@@ -189,41 +189,21 @@ export function QualityTab() {
           )}
         </PanelCard>
 
-        <PanelCard title="Safety" description="block rate + counts">
-          <GaugeChart
-            value={safetyBlockVal}
-            max={1}
-            label="Block Rate"
-            unit="percent"
-            thresholds={{ warn: 0.05, critical: 0.1 }}
+        <div className="flex flex-col gap-3">
+          <MetricPanel
+            title="Safety block rate"
+            value={`${(safetyBlockVal * 100).toFixed(2)}%`}
+            status={
+              safetyBlockVal >= 0.1
+                ? 'critical'
+                : safetyBlockVal >= 0.05
+                  ? 'warning'
+                  : 'ok'
+            }
+            sparklineData={safetyBlockRate.data?.series[0]?.dataPoints}
+            description={`${blocksVal.toFixed(0)} blocks · ${flagsVal.toFixed(0)} flags · ${redactionsVal.toFixed(0)} redactions`}
           />
-          <div className="grid grid-cols-3 gap-2 mt-4">
-            <div className="text-center">
-              <div className="text-lg font-bold text-card-foreground">
-                {blocksVal.toFixed(0)}
-              </div>
-              <div className="text-[10px] text-otel-text-mute uppercase">
-                Blocks
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-card-foreground">
-                {flagsVal.toFixed(0)}
-              </div>
-              <div className="text-[10px] text-otel-text-mute uppercase">
-                Flags
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-bold text-card-foreground">
-                {redactionsVal.toFixed(0)}
-              </div>
-              <div className="text-[10px] text-otel-text-mute uppercase">
-                Redactions
-              </div>
-            </div>
-          </div>
-        </PanelCard>
+        </div>
       </div>
 
       {/* RAG sources */}
@@ -232,11 +212,11 @@ export function QualityTab() {
         description="query volume per source"
       >
         {ragSourceBars.length === 0 ? (
-          <p className="text-xs text-otel-text-mute py-6 text-center">
+          <p className="text-xs text-muted-foreground py-6 text-center">
             No RAG source data yet
           </p>
         ) : (
-          <HBarList items={ragSourceBars} />
+          <HBarList items={ragSourceBars} colourBy="category" />
         )}
       </PanelCard>
     </div>

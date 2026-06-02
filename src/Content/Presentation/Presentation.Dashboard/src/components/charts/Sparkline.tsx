@@ -7,7 +7,13 @@ interface SparklineProps {
   height?: number;
 }
 
-export function Sparkline({ dataPoints, color = 'var(--chart-1)', height = 32 }: SparklineProps) {
+/**
+ * Inline line chart for trends. Default stroke is `currentColor` so callers
+ * can drive the colour from the surrounding text container (e.g. wrap with
+ * `<span className="text-cat-tools">` for a tools-tinted sparkline). Pass
+ * an explicit `color` value to override.
+ */
+export function Sparkline({ dataPoints, color = 'currentColor', height = 32 }: SparklineProps) {
   const data = dataPoints.map((dp) => ({
     v: parseFloat(dp.value) || 0,
   }));

@@ -54,7 +54,7 @@ function SloCard({ slo }: { slo: SloStatus }) {
 
       <div className="flex items-end justify-between gap-4">
         <div>
-          <div className="text-lg font-bold text-card-foreground">
+          <div className="text-lg font-bold font-mono tabular-nums text-card-foreground">
             {formatSloValue(slo.currentValue, slo.unit)}
           </div>
           <div className="text-[10px] text-muted-foreground mt-0.5">
@@ -99,7 +99,7 @@ export function SloBoard() {
   if (isLoading) {
     return (
       <PanelCard title="Service-Level Objectives">
-        <p className="text-xs text-otel-text-mute py-6 text-center">Loading SLO targets...</p>
+        <p className="text-xs text-muted-foreground py-6 text-center">Loading SLO targets...</p>
       </PanelCard>
     );
   }
@@ -107,7 +107,7 @@ export function SloBoard() {
   if (!slos || slos.length === 0) {
     return (
       <PanelCard title="Service-Level Objectives">
-        <p className="text-xs text-otel-text-mute py-6 text-center">
+        <p className="text-xs text-muted-foreground py-6 text-center">
           SLO tracking requires configuration. Define targets in appsettings.json.
         </p>
       </PanelCard>

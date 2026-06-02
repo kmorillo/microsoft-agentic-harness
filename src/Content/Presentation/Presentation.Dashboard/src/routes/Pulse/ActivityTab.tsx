@@ -142,7 +142,7 @@ export function ActivityTab() {
           description="most recent activity"
         >
           {feedItems.length === 0 ? (
-            <p className="text-xs text-otel-text-mute py-8 text-center">
+            <p className="text-xs text-muted-foreground py-8 text-center">
               No sessions yet
             </p>
           ) : (
@@ -155,13 +155,13 @@ export function ActivityTab() {
                   <StatusDot
                     status={item.active ? 'active' : 'completed'}
                   />
-                  <span className="text-xs font-mono text-otel-text-dim w-16 shrink-0 truncate">
+                  <span className="text-xs font-mono tabular-nums text-muted-foreground w-16 shrink-0 truncate">
                     {item.sessionId.slice(0, 9)}
                   </span>
                   <span className="text-xs text-card-foreground flex-1 truncate">
                     {item.agent}
                   </span>
-                  <span className="text-[10px] text-otel-text-mute shrink-0">
+                  <span className="text-[10px] text-muted-foreground shrink-0">
                     {item.timestamp > 0 ? fmtRelative(item.timestamp) : '--'}
                   </span>
                 </div>
@@ -186,7 +186,7 @@ export function ActivityTab() {
           title="By agent"
           description="sessions per agent today"
         >
-          <HBarList items={agentBars} />
+          <HBarList items={agentBars} colourBy="category" />
         </PanelCard>
       </div>
 
@@ -195,7 +195,7 @@ export function ActivityTab() {
         title="Top tools · last hour"
         description="call count per tool"
       >
-        <HBarList items={toolBars} />
+        <HBarList items={toolBars} colourBy="category" />
       </PanelCard>
     </div>
   );

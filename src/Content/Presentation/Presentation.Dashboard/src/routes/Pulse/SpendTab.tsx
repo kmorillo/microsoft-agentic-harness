@@ -3,7 +3,7 @@ import { KpiCard } from '@/components/panels/KpiCard';
 import { PanelCard } from '@/components/panels/PanelCard';
 import { PanelGrid } from '@/components/panels/PanelGrid';
 import { LoadingSkeleton } from '@/components/panels/LoadingSkeleton';
-import { GaugeChart } from '@/components/charts/GaugeChart';
+import { MetricPanel } from '@/components/metrics/MetricPanel';
 import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart';
 import { HBarList } from '@/components/charts/HBarList';
 import { useMetric, latestValue, formatKpi, seriesToBars } from './pulse-helpers';
@@ -120,37 +120,37 @@ export function SpendTab() {
           />
         </PanelCard>
 
-        <PanelCard
+        <MetricPanel
           title="Daily budget"
-          description={
-            budgetLimitVal > 0
-              ? `$${budgetLimitVal.toFixed(2)} cap`
-              : 'no cap set'
+          value={`${(budgetUtilVal * 100).toFixed(0)}% used`}
+          status={
+            budgetUtilVal >= 0.9
+              ? 'critical'
+              : budgetUtilVal >= 0.75
+                ? 'warning'
+                : 'ok'
           }
-        >
-          <GaugeChart
-            value={budgetUtilVal}
-            max={1}
-            label="Used"
-            unit="percent"
-            thresholds={{ warn: 0.75, critical: 0.9 }}
-          />
-          {burnVal > 0 && budgetLimitVal > 0 && budgetUtilVal < 1 && (
-            <p className="text-[11px] text-otel-text-dim text-center mt-2">
-              At current burn, exhausts in ~
-              {((budgetLimitVal * (1 - budgetUtilVal)) / burnVal).toFixed(1)}h
-            </p>
-          )}
-        </PanelCard>
+          sparklineData={budgetUtil.data?.series[0]?.dataPoints}
+          description={
+            burnVal > 0 && budgetLimitVal > 0 && budgetUtilVal < 1
+              ? `$${budgetLimitVal.toFixed(2)} cap · exhausts in ~${(
+                  (budgetLimitVal * (1 - budgetUtilVal)) /
+                  burnVal
+                ).toFixed(1)}h`
+              : budgetLimitVal > 0
+                ? `$${budgetLimitVal.toFixed(2)} cap`
+                : 'no cap set'
+          }
+        />
       </div>
 
       {/* By model / By agent */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <PanelCard title="By model" description="cost today">
-          <HBarList items={modelBars} />
+          <HBarList items={modelBars} colourBy="category" />
         </PanelCard>
         <PanelCard title="By agent" description="cost today">
-          <HBarList items={agentBars} />
+          <HBarList items={agentBars} colourBy="category" />
         </PanelCard>
       </div>
 
@@ -191,7 +191,7 @@ export function SpendTab() {
             </div>
           </div>
         ) : (
-          <p className="text-xs text-otel-text-mute py-6 text-center">
+          <p className="text-xs text-muted-foreground py-6 text-center">
             No token data yet
           </p>
         )}

@@ -187,7 +187,7 @@ export function HealthTab() {
       {/* Recent Incidents — placeholder */}
       <Section title="Recent Incidents" kicker="03">
         <PanelCard title="Incident Log">
-          <p className="text-xs text-otel-text-mute py-6 text-center">
+          <p className="text-xs text-muted-foreground py-6 text-center">
             No incidents recorded.
           </p>
         </PanelCard>
@@ -224,7 +224,7 @@ function StatBadge({
       </div>
       <div
         className={cn(
-          'text-sm font-bold mt-0.5',
+          'text-sm font-bold font-mono tabular-nums mt-0.5',
           variant === 'default' && 'text-card-foreground',
           variant === 'warning' && 'text-otel-warning',
           variant === 'critical' && 'text-otel-negative',
