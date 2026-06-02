@@ -8,8 +8,8 @@ function verdictColor(verdict: string): string {
   switch (verdict) {
     case 'Pass': return 'text-otel-positive';
     case 'Fail': return 'text-otel-negative';
-    case 'Warn': return 'text-otel-accent';
-    default: return 'text-otel-muted';
+    case 'Warn': return 'text-otel-warning';
+    default: return 'text-muted-foreground';
   }
 }
 
@@ -19,20 +19,20 @@ function formatScore(s: MetricScore): string {
 
 function CaseRow({ result }: { result: EvalResult }) {
   return (
-    <tr className="border-t border-otel-border">
+    <tr className="border-t border-border">
       <td className="px-3 py-2 font-mono text-xs">{result.case.id}</td>
-      <td className={`px-3 py-2 ${verdictColor(result.verdict)}`}>{result.verdict}</td>
+      <td className={`px-3 py-2 font-medium ${verdictColor(result.verdict)}`}>{result.verdict}</td>
       <td className="px-3 py-2">
         <div className="space-y-0.5 text-xs">
           {Object.entries(result.aggregatedScores).map(([k, v]) => (
             <div key={k}>
-              <span className="text-otel-muted">{k}:</span> {formatScore(v)}
+              <span className="text-muted-foreground">{k}:</span> {formatScore(v)}
             </div>
           ))}
         </div>
       </td>
-      <td className="px-3 py-2 text-right">${result.costUsd.toFixed(4)}</td>
-      <td className="px-3 py-2 text-xs text-otel-muted">{result.error ?? '—'}</td>
+      <td className="px-3 py-2 text-right font-mono tabular-nums">${result.costUsd.toFixed(4)}</td>
+      <td className="px-3 py-2 text-xs text-muted-foreground">{result.error ?? '—'}</td>
     </tr>
   );
 }
@@ -57,7 +57,7 @@ export default function EvalRunDetailPage() {
         <div className="text-otel-negative">
           Failed to load run: {String(error ?? 'not found')}
         </div>
-        <Link to="/evals" className="text-otel-accent underline">← Back to runs</Link>
+        <Link to="/evals" className="text-cat-accent underline">← Back to runs</Link>
       </div>
     );
   }
@@ -70,42 +70,42 @@ export default function EvalRunDetailPage() {
       />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="rounded border border-otel-border p-3">
-          <div className="text-xs text-otel-muted">Pass / Fail / Warn</div>
-          <div className="text-lg">
+        <div className="rounded border border-border p-3">
+          <div className="text-xs text-muted-foreground">Pass / Fail / Warn</div>
+          <div className="text-lg font-mono tabular-nums">
             <span className="text-otel-positive">{report.passedCount}</span>
             {' / '}
             <span className="text-otel-negative">{report.failedCount}</span>
             {' / '}
-            <span className="text-otel-accent">{report.warnedCount}</span>
+            <span className="text-otel-warning">{report.warnedCount}</span>
           </div>
         </div>
-        <div className="rounded border border-otel-border p-3">
-          <div className="text-xs text-otel-muted">Errored</div>
-          <div className="text-lg">{report.erroredCount}</div>
+        <div className="rounded border border-border p-3">
+          <div className="text-xs text-muted-foreground">Errored</div>
+          <div className="text-lg font-mono tabular-nums">{report.erroredCount}</div>
         </div>
-        <div className="rounded border border-otel-border p-3">
-          <div className="text-xs text-otel-muted">Total Cost</div>
-          <div className="text-lg">${report.totalCostUsd.toFixed(4)}</div>
+        <div className="rounded border border-border p-3">
+          <div className="text-xs text-muted-foreground">Total Cost</div>
+          <div className="text-lg font-mono tabular-nums">${report.totalCostUsd.toFixed(4)}</div>
         </div>
-        <div className="rounded border border-otel-border p-3">
-          <div className="text-xs text-otel-muted">Repeats</div>
-          <div className="text-lg">{report.repeats}</div>
+        <div className="rounded border border-border p-3">
+          <div className="text-xs text-muted-foreground">Repeats</div>
+          <div className="text-lg font-mono tabular-nums">{report.repeats}</div>
         </div>
       </div>
 
       {report.warnings.length > 0 && (
-        <div className="rounded border border-otel-accent/40 bg-otel-accent/10 p-3">
-          <div className="mb-2 text-sm font-semibold text-otel-accent">Warnings</div>
+        <div className="rounded border border-otel-warning/40 bg-otel-warning/10 p-3">
+          <div className="mb-2 text-sm font-semibold text-otel-warning">Warnings</div>
           <ul className="list-inside list-disc text-xs">
             {report.warnings.map((w, i) => <li key={i}>{w}</li>)}
           </ul>
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-lg border border-otel-border">
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
-          <thead className="bg-otel-surface/50 text-otel-muted">
+          <thead className="bg-muted/30 text-muted-foreground">
             <tr>
               <th className="px-3 py-2 text-left">Case ID</th>
               <th className="px-3 py-2 text-left">Verdict</th>
@@ -120,7 +120,7 @@ export default function EvalRunDetailPage() {
         </table>
       </div>
 
-      <Link to="/evals" className="text-otel-accent underline">← Back to runs</Link>
+      <Link to="/evals" className="text-cat-accent underline">← Back to runs</Link>
     </div>
   );
 }

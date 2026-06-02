@@ -13,7 +13,7 @@ function verdictBadgeClass(verdict: EvalRunSummary['overallVerdict']): string {
     case 'Fail':
       return 'bg-otel-negative/20 text-otel-negative border border-otel-negative/40';
     case 'Warn':
-      return 'bg-otel-accent/20 text-otel-accent border border-otel-accent/40';
+      return 'bg-otel-warning/20 text-otel-warning border border-otel-warning/40';
   }
 }
 
@@ -73,9 +73,9 @@ export default function EvalsListPage() {
     <div className="space-y-6">
       <PageHeader title="Evals" subtitle={`${runs.length} recent runs`} />
 
-      <div className="overflow-x-auto rounded-lg border border-otel-border">
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-sm">
-          <thead className="bg-otel-surface/50 text-otel-muted">
+          <thead className="bg-muted/30 text-muted-foreground">
             <tr>
               <th className="px-3 py-2 text-left">Run ID</th>
               <th className="px-3 py-2 text-left">Started</th>
@@ -93,16 +93,16 @@ export default function EvalsListPage() {
               <tr
                 key={run.runId}
                 onClick={() => navigate(`/evals/${encodeURIComponent(run.runId)}`)}
-                className="cursor-pointer border-t border-otel-border hover:bg-otel-surface/30"
+                className="cursor-pointer border-t border-border hover:bg-muted/30"
               >
                 <td className="px-3 py-2 font-mono text-xs">{run.runId}</td>
-                <td className="px-3 py-2 text-otel-muted">{formatTimestamp(run.startedAtUtc)}</td>
-                <td className="px-3 py-2 text-right">{run.passedCount}</td>
-                <td className="px-3 py-2 text-right">{run.failedCount}</td>
-                <td className="px-3 py-2 text-right">{run.warnedCount}</td>
-                <td className="px-3 py-2 text-right">{formatPercent(run.passRate)}</td>
-                <td className="px-3 py-2 text-right">{formatCost(run.totalCostUsd)}</td>
-                <td className="px-3 py-2 text-right">{run.repeats}</td>
+                <td className="px-3 py-2 text-muted-foreground">{formatTimestamp(run.startedAtUtc)}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{run.passedCount}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{run.failedCount}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{run.warnedCount}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{formatPercent(run.passRate)}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{formatCost(run.totalCostUsd)}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{run.repeats}</td>
                 <td className="px-3 py-2">
                   <span className={`inline-block rounded px-2 py-0.5 text-xs ${verdictBadgeClass(run.overallVerdict)}`}>
                     {run.overallVerdict}

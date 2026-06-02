@@ -141,7 +141,7 @@ function ModelsTab() {
 function MiniKpi({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-muted/40 rounded px-2.5 py-1.5">
-      <div className="text-[10px] text-otel-text-mute uppercase tracking-wider">{label}</div>
+      <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</div>
       <div className="text-sm font-mono tabular-nums text-card-foreground mt-0.5">{value}</div>
     </div>
   );
@@ -194,7 +194,7 @@ function AgentsTab() {
   return (
     <div className="space-y-0">
       {/* Header row */}
-      <div className="flex items-center gap-4 px-4 py-2 text-[10px] uppercase tracking-wider text-otel-text-mute border-b border-border">
+      <div className="flex items-center gap-4 px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
         <div className="flex-[2]">Agent Name</div>
         <div className="flex-[2]">Model</div>
         <div className="flex-1 text-right">Sessions</div>
@@ -220,7 +220,7 @@ function AgentsTab() {
             <div className="flex-[2] text-sm font-mono text-card-foreground truncate" title={name}>
               {name}
             </div>
-            <div className="flex-[2] text-xs text-otel-text-dim font-mono truncate" title={getModel(name)}>
+            <div className="flex-[2] text-xs text-muted-foreground font-mono truncate" title={getModel(name)}>
               {getModel(name)}
             </div>
             <div className="flex-1 text-right text-sm font-mono tabular-nums text-card-foreground">
@@ -233,7 +233,7 @@ function AgentsTab() {
               {errCount > 0 ? (
                 <span className="text-otel-negative">{fmt(errCount)} ({fmtPct(errRate)})</span>
               ) : (
-                <span className="text-otel-text-mute">0</span>
+                <span className="text-muted-foreground">0</span>
               )}
             </div>
             <div className="w-20 text-center">
@@ -290,7 +290,7 @@ function ToolsTab() {
   return (
     <div className="space-y-0">
       {/* Header row */}
-      <div className="flex items-center gap-4 px-4 py-2 text-[10px] uppercase tracking-wider text-otel-text-mute border-b border-border">
+      <div className="flex items-center gap-4 px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
         <div className="flex-[2]">Tool Name</div>
         <div className="flex-1 text-right">Calls</div>
         <div className="flex-1 text-right">Errors</div>
@@ -325,7 +325,7 @@ function ToolsTab() {
               {errCount > 0 ? (
                 <span className="text-otel-negative">{fmt(errCount)}</span>
               ) : (
-                <span className="text-otel-text-mute">0</span>
+                <span className="text-muted-foreground">0</span>
               )}
             </div>
             <div className="flex-1 text-right text-sm font-mono tabular-nums text-card-foreground">

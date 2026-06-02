@@ -5,7 +5,8 @@ import { PanelCard } from '@/components/panels/PanelCard';
 import { PanelGrid } from '@/components/panels/PanelGrid';
 import { LoadingSkeleton } from '@/components/panels/LoadingSkeleton';
 import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart';
-import { GaugeChart } from '@/components/charts/GaugeChart';
+import { MetricPanel } from '@/components/metrics/MetricPanel';
+import { budgetStatusFromUtilization } from '@/lib/metricStatus';
 
 function useMetric(catalogId: string) {
   const entry = metricCatalog[catalogId]!;
@@ -106,24 +107,26 @@ export default function OverviewPage() {
       </PanelGrid>
 
       <PanelGrid columns={2}>
-        <PanelCard title="Cache Efficiency">
-          <GaugeChart
-            value={latestValue(cacheHitRate.data)}
-            max={1}
-            label="Hit Rate"
-            unit="percent"
-            thresholds={{ warn: 0.3, critical: 0.1 }}
-          />
-        </PanelCard>
-        <PanelCard title="Budget Utilization">
-          <GaugeChart
-            value={latestValue(budgetStatus.data)}
-            max={1}
-            label="Used"
-            unit="percent"
-            thresholds={{ warn: 0.75, critical: 0.9 }}
-          />
-        </PanelCard>
+        <MetricPanel
+          title="Cache Efficiency"
+          value={`${(latestValue(cacheHitRate.data) * 100).toFixed(0)}%`}
+          description="hit rate — higher is better"
+          status={
+            latestValue(cacheHitRate.data) < 0.1
+              ? 'critical'
+              : latestValue(cacheHitRate.data) < 0.3
+                ? 'warning'
+                : 'ok'
+          }
+          sparklineData={cacheHitRate.data?.series[0]?.dataPoints}
+        />
+        <MetricPanel
+          title="Budget Utilization"
+          value={`${(latestValue(budgetStatus.data) * 100).toFixed(0)}%`}
+          description="of daily cap used"
+          status={budgetStatusFromUtilization(latestValue(budgetStatus.data))}
+          sparklineData={budgetStatus.data?.series[0]?.dataPoints}
+        />
       </PanelGrid>
     </div>
   );

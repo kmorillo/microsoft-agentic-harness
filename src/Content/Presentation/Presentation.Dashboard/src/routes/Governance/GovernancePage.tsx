@@ -7,15 +7,10 @@ import { LoadingSkeleton } from '@/components/panels/LoadingSkeleton';
 import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart';
 import { PageHeader } from '@/components/primitives/PageHeader';
 import { Section } from '@/components/primitives/Section';
-import { ArcGauge } from '@/components/primitives/ArcGauge';
-import { HBarList } from '@/components/primitives/HBarList';
+import { HBarList } from '@/components/charts/HBarList';
+import { MetricPanel } from '@/components/metrics/MetricPanel';
 import { Pill } from '@/components/primitives/Pill';
-
-function latestValue(data: ReturnType<typeof usePromQuery>['data']): number {
-  const dp = data?.series[0]?.dataPoints;
-  if (!dp || dp.length === 0) return 0;
-  return parseFloat(dp[dp.length - 1]!.value) || 0;
-}
+import { latestValue, formatKpi, seriesToBars } from '@/routes/Pulse/pulse-helpers';
 
 export default function GovernancePage() {
   const decisions = usePromQuery(metricCatalog['governance_decisions']!.query);
@@ -50,6 +45,22 @@ export default function GovernancePage() {
   const totalMcpThreats = latestValue(mcpThreats.data);
   const mcpThreatRate = totalMcpScans > 0 ? totalMcpThreats / totalMcpScans : 0;
 
+  const violationsByToolBars = seriesToBars(
+    violationsByTool.data?.series ?? [],
+    'agent_governance_tool',
+    (v) => formatKpi(v, 'count'),
+  );
+
+  const violationStatus =
+    violationRate > 0.2 ? 'critical' : violationRate > 0.05 ? 'warning' : 'ok';
+  const violationLabel =
+    violationRate > 0.2 ? 'High' : violationRate > 0.05 ? 'Moderate' : 'Low';
+  const violationPillVariant =
+    violationRate > 0.2 ? 'negative' : violationRate > 0.05 ? 'warning' : 'info';
+
+  const mcpThreatStatus =
+    mcpThreatRate > 0.1 ? 'critical' : mcpThreatRate > 0 ? 'warning' : 'ok';
+
   return (
     <div className="space-y-6">
       <PageHeader title="Governance" subtitle="Policy enforcement, injection detection, MCP security, and audit trail" />
@@ -59,13 +70,13 @@ export default function GovernancePage() {
           <KpiCard
             title="Policy Decisions"
             description="Total governance policy evaluations performed on tool calls. Each tool invocation triggers a policy check against loaded YAML rules."
-            value={totalDecisions.toFixed(0)}
+            value={formatKpi(totalDecisions, 'count')}
             sparklineData={decisions.data?.series[0]?.dataPoints}
           />
           <KpiCard
             title="Violations"
             description="Tool calls denied by governance policy. High counts may indicate agents attempting restricted operations or overly strict policies."
-            value={totalViolations.toFixed(0)}
+            value={formatKpi(totalViolations, 'count')}
             sparklineData={violations.data?.series[0]?.dataPoints}
             delta={violationRate > 0.1 ? `${(violationRate * 100).toFixed(0)}% denied` : undefined}
             trend={violationRate > 0.1 ? 'down' : undefined}
@@ -80,7 +91,7 @@ export default function GovernancePage() {
           <KpiCard
             title="Rate Limit Hits"
             description="Tool calls throttled by rate-limiting rules. Shows how often agents hit per-tool or per-agent rate limits."
-            value={latestValue(rateLimitHits.data).toFixed(0)}
+            value={formatKpi(latestValue(rateLimitHits.data), 'count')}
             sparklineData={rateLimitHits.data?.series[0]?.dataPoints}
           />
         </PanelGrid>
@@ -92,36 +103,25 @@ export default function GovernancePage() {
             <TimeSeriesChart series={decisionsTs.data?.series ?? []} unit="decisions/min" />
           </PanelCard>
           <PanelCard title="Top Blocked Tools" description="Most frequently denied tool calls">
-            <HBarList
-              items={(violationsByTool.data?.series ?? []).map((s) => ({
-                label: s.labels['agent_governance_tool'] ?? 'unknown',
-                value: parseFloat(s.dataPoints[s.dataPoints.length - 1]?.value ?? '0'),
-              }))}
-              color="var(--otel-negative)"
-              formatValue={(v) => v.toFixed(0)}
-            />
+            <HBarList items={violationsByToolBars} colourBy="category" />
           </PanelCard>
         </PanelGrid>
-        <PanelGrid columns={1}>
-          <PanelCard title="Violation Rate">
-            <div className="flex items-center gap-4 py-2">
-              <ArcGauge
-                value={violationRate}
-                max={1}
-                size={140}
-                color={violationRate > 0.2 ? 'var(--otel-negative)' : violationRate > 0.05 ? 'var(--otel-warning)' : 'var(--otel-positive)'}
-                label={`${(violationRate * 100).toFixed(1)}%`}
-                subtitle="of decisions denied"
-                thickness={12}
-              />
-              <div className="space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  {totalViolations.toFixed(0)} of {totalDecisions.toFixed(0)} decisions resulted in denials
-                </p>
-                <Pill variant={violationRate > 0.2 ? 'negative' : violationRate > 0.05 ? 'warning' : 'info'}>
-                  {violationRate > 0.2 ? 'High' : violationRate > 0.05 ? 'Moderate' : 'Low'} violation rate
-                </Pill>
-              </div>
+        <PanelGrid columns={2}>
+          <MetricPanel
+            title="Violation Rate"
+            value={`${(violationRate * 100).toFixed(1)}%`}
+            description="of decisions denied"
+            status={violationStatus}
+            sparklineData={decisions.data?.series[0]?.dataPoints}
+          />
+          <PanelCard title="Violation Detail">
+            <div className="space-y-2 py-2">
+              <p className="text-sm text-muted-foreground">
+                {formatKpi(totalViolations, 'count')} of {formatKpi(totalDecisions, 'count')} decisions resulted in denials
+              </p>
+              <Pill variant={violationPillVariant}>
+                {violationLabel} violation rate
+              </Pill>
             </div>
           </PanelCard>
         </PanelGrid>
@@ -137,7 +137,7 @@ export default function GovernancePage() {
               <KpiCard
                 title="Total Detections"
                 description="Prompt injection attempts identified and blocked by the PromptInjectionBehavior pipeline step."
-                value={totalInjections.toFixed(0)}
+                value={formatKpi(totalInjections, 'count')}
                 sparklineData={injections.data?.series[0]?.dataPoints}
               />
               <Pill variant={totalInjections > 0 ? 'negative' : 'info'}>
@@ -153,30 +153,24 @@ export default function GovernancePage() {
           <KpiCard
             title="Tools Scanned"
             description="MCP tools evaluated by the McpSecurityScanner for tool poisoning, description injection, and other threats."
-            value={totalMcpScans.toFixed(0)}
+            value={formatKpi(totalMcpScans, 'count')}
             sparklineData={mcpScans.data?.series[0]?.dataPoints}
           />
           <KpiCard
             title="Threats Found"
             description="MCP tools flagged as potentially malicious. Includes tool poisoning, zero-width character injection, and typosquatting detection."
-            value={totalMcpThreats.toFixed(0)}
+            value={formatKpi(totalMcpThreats, 'count')}
             sparklineData={mcpThreats.data?.series[0]?.dataPoints}
             delta={totalMcpThreats > 0 ? `${totalMcpThreats.toFixed(0)} threats` : undefined}
             trend={totalMcpThreats > 0 ? 'down' : undefined}
           />
-          <PanelCard title="Threat Rate">
-            <div className="flex items-center justify-center py-4">
-              <ArcGauge
-                value={mcpThreatRate}
-                max={1}
-                size={120}
-                color={mcpThreatRate > 0.1 ? 'var(--otel-negative)' : 'var(--otel-warning)'}
-                label={`${(mcpThreatRate * 100).toFixed(1)}%`}
-                subtitle="of scans flagged"
-                thickness={10}
-              />
-            </div>
-          </PanelCard>
+          <MetricPanel
+            title="Threat Rate"
+            value={`${(mcpThreatRate * 100).toFixed(1)}%`}
+            description="of scans flagged"
+            status={mcpThreatStatus}
+            sparklineData={mcpScans.data?.series[0]?.dataPoints}
+          />
         </PanelGrid>
       </Section>
 
@@ -185,7 +179,7 @@ export default function GovernancePage() {
           <KpiCard
             title="Audit Events"
             description="Governance audit log entries recording all policy evaluations, injection scans, and MCP security checks with tamper-evident hashing."
-            value={latestValue(auditEvents.data).toFixed(0)}
+            value={formatKpi(latestValue(auditEvents.data), 'count')}
             sparklineData={auditEvents.data?.series[0]?.dataPoints}
           />
           <PanelCard title="Chain Integrity">
