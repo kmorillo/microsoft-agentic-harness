@@ -7,14 +7,14 @@ import { LoadingSkeleton } from '@/components/panels/LoadingSkeleton';
 import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart';
 import { PageHeader } from '@/components/primitives/PageHeader';
 import { Section } from '@/components/primitives/Section';
-import { HBarList } from '@/components/primitives/HBarList';
-import { ArcGauge } from '@/components/primitives/ArcGauge';
-
-function latestValue(data: ReturnType<typeof usePromQuery>['data']): number {
-  const dp = data?.series[0]?.dataPoints;
-  if (!dp || dp.length === 0) return 0;
-  return parseFloat(dp[dp.length - 1]!.value) || 0;
-}
+import { HBarList } from '@/components/charts/HBarList';
+import { MetricPanel } from '@/components/metrics/MetricPanel';
+import {
+  latestValue,
+  formatKpi,
+  seriesToBars,
+} from '@/routes/Pulse/pulse-helpers';
+import { budgetStatusFromUtilization } from '@/lib/metricStatus';
 
 export default function CostPage() {
   const costTotal = usePromQuery(metricCatalog['cost_total']!.query);
@@ -40,6 +40,14 @@ export default function CostPage() {
   const budgetTotal = Math.max(totalCost + remaining, 1);
   const budgetPct = totalCost / budgetTotal;
 
+  const modelBars = seriesToBars(
+    byModel.data?.series ?? [],
+    'model',
+    (v) => formatKpi(v, 'usd'),
+  );
+
+  const budgetStatus = budgetStatusFromUtilization(budgetPct);
+
   return (
     <div className="space-y-6">
       <PageHeader title="Cost" subtitle="USD spend breakdown by model and environment" />
@@ -49,14 +57,14 @@ export default function CostPage() {
           <KpiCard
             title="Total Cost"
             description="Cumulative USD spent on LLM API calls across all models and sessions. Shows $0 when no completions have been recorded in the selected time range."
-            value={`$${totalCost.toFixed(4)}`}
+            value={formatKpi(totalCost, 'usd')}
             unit="USD"
             sparklineData={costTotal.data?.series[0]?.dataPoints}
           />
           <KpiCard
             title="Cache Savings"
             description="Estimated USD saved by serving tokens from the prompt cache instead of reprocessing them. Shows $0 when caching is disabled or there have been no cache hits."
-            value={`$${savings.toFixed(4)}`}
+            value={formatKpi(savings, 'usd')}
             unit="USD"
             sparklineData={cacheSavings.data?.series[0]?.dataPoints}
           />
@@ -79,40 +87,27 @@ export default function CostPage() {
       <Section title="Distribution" kicker="03">
         <PanelGrid columns={2}>
           <PanelCard title="Cost by Model">
-            <HBarList
-              items={(byModel.data?.series ?? []).map((s) => ({
-                label: s.labels['model'] ?? 'unknown',
-                value: parseFloat(s.dataPoints[s.dataPoints.length - 1]?.value ?? '0'),
-              }))}
-              color="var(--otel-accent)"
-              formatValue={(v) => `$${v.toFixed(4)}`}
-            />
+            <HBarList items={modelBars} colourBy="category" />
           </PanelCard>
-          <PanelCard title="Budget Progress">
-            <div className="flex items-center justify-center py-4">
-              <ArcGauge
-                value={totalCost}
-                max={budgetTotal}
-                size={140}
-                color={budgetPct > 0.75 ? 'var(--otel-warning)' : 'var(--otel-positive)'}
-                label={`$${totalCost.toFixed(2)}`}
-                subtitle="spent today"
-                thickness={12}
-              />
-            </div>
-          </PanelCard>
+          <MetricPanel
+            title="Budget Progress"
+            value={`$${totalCost.toFixed(2)}`}
+            description={`${formatKpi(budgetPct, 'percent0')} of $${budgetTotal.toFixed(2)} cap`}
+            status={budgetStatus}
+            sparklineData={costTotal.data?.series[0]?.dataPoints}
+          />
         </PanelGrid>
       </Section>
 
       <Section title="Efficiency" kicker="04">
         <PanelCard title="Cache ROI">
           <div className="flex flex-col items-center justify-center h-[160px]">
-            <div className="text-3xl font-bold text-card-foreground">
+            <div className="text-3xl font-bold text-card-foreground font-mono tabular-nums">
               {totalCost > 0 ? `${((savings / totalCost) * 100).toFixed(1)}%` : '—'}
             </div>
             <div className="text-xs text-muted-foreground mt-1">of total cost saved via caching</div>
-            <div className="text-sm text-muted-foreground mt-3">
-              ${savings.toFixed(4)} saved / ${totalCost.toFixed(4)} total
+            <div className="text-sm text-muted-foreground mt-3 font-mono tabular-nums">
+              {formatKpi(savings, 'usd')} saved / {formatKpi(totalCost, 'usd')} total
             </div>
           </div>
         </PanelCard>

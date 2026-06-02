@@ -7,13 +7,9 @@ import { LoadingSkeleton } from '@/components/panels/LoadingSkeleton';
 import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart';
 import { PageHeader } from '@/components/primitives/PageHeader';
 import { Section } from '@/components/primitives/Section';
-import { ArcGauge } from '@/components/primitives/ArcGauge';
-
-function latestValue(data: ReturnType<typeof usePromQuery>['data']): number {
-  const dp = data?.series[0]?.dataPoints;
-  if (!dp || dp.length === 0) return 0;
-  return parseFloat(dp[dp.length - 1]!.value) || 0;
-}
+import { MetricPanel } from '@/components/metrics/MetricPanel';
+import { latestValue, formatKpi } from '@/routes/Pulse/pulse-helpers';
+import { budgetStatusFromUtilization } from '@/lib/metricStatus';
 
 export default function BudgetPage() {
   const spent = usePromQuery(metricCatalog['budget_spent']!.query);
@@ -38,6 +34,17 @@ export default function BudgetPage() {
   const limitVal = latestValue(limit.data);
   const remainingVal = latestValue(remaining.data);
   const utilizationVal = latestValue(utilization.data);
+  const statusCode = latestValue(statusVal.data);
+
+  const utilizationStatus = budgetStatusFromUtilization(utilizationVal);
+
+  const statusLabel = statusCode >= 2 ? 'CRITICAL' : statusCode >= 1 ? 'WARNING' : 'OK';
+  const statusToneClass =
+    statusCode >= 2
+      ? 'text-otel-negative'
+      : statusCode >= 1
+        ? 'text-otel-warning'
+        : 'text-otel-positive';
 
   return (
     <div className="space-y-6">
@@ -48,7 +55,7 @@ export default function BudgetPage() {
           <KpiCard
             title="Total Spent"
             description="Cumulative USD spent against the configured budget cap in the current period. Shows $0 when no LLM API calls have incurred cost."
-            value={`$${spentVal.toFixed(4)}`}
+            value={formatKpi(spentVal, 'usd')}
             unit="USD"
             sparklineData={spent.data?.series[0]?.dataPoints}
           />
@@ -70,19 +77,17 @@ export default function BudgetPage() {
 
       <Section title="Utilization" kicker="02">
         <PanelGrid columns={2}>
-          <PanelCard title="Budget Utilization">
-            <div className="flex items-center justify-center py-4">
-              <ArcGauge
-                value={spentVal}
-                max={limitVal || 1}
-                size={160}
-                color={utilizationVal > 0.75 ? 'var(--otel-warning)' : 'var(--otel-accent)'}
-                label={`${(utilizationVal * 100).toFixed(0)}%`}
-                subtitle="of daily cap"
-                thickness={12}
-              />
-            </div>
-          </PanelCard>
+          <MetricPanel
+            title="Budget Utilization"
+            value={`${(utilizationVal * 100).toFixed(0)}%`}
+            description={
+              limitVal > 0
+                ? `$${spentVal.toFixed(2)} of $${limitVal.toFixed(2)} daily cap`
+                : 'no cap set'
+            }
+            status={utilizationStatus}
+            sparklineData={utilization.data?.series[0]?.dataPoints}
+          />
           <PanelCard title="Spend Rate" description="USD burn rate per hour">
             <TimeSeriesChart series={spendRate.data?.series ?? []} unit="usd" />
           </PanelCard>
@@ -93,17 +98,12 @@ export default function BudgetPage() {
         <PanelGrid columns={1}>
           <PanelCard title="Budget Status">
             <div className="flex flex-col items-center justify-center h-[200px]">
-              {(() => {
-                const status = latestValue(statusVal.data);
-                const label = status >= 2 ? 'CRITICAL' : status >= 1 ? 'WARNING' : 'OK';
-                const color = status >= 2 ? 'text-red-500' : status >= 1 ? 'text-yellow-500' : 'text-green-500';
-                return (
-                  <>
-                    <div className={`text-4xl font-bold ${color}`}>{label}</div>
-                    <div className="text-sm text-muted-foreground mt-2">current budget health</div>
-                  </>
-                );
-              })()}
+              <div
+                className={`text-4xl font-bold font-mono tabular-nums ${statusToneClass}`}
+              >
+                {statusLabel}
+              </div>
+              <div className="text-sm text-muted-foreground mt-2">current budget health</div>
             </div>
           </PanelCard>
         </PanelGrid>

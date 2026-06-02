@@ -36,6 +36,7 @@ export function computeDelta(
 export function formatKpi(value: number, unit: string): string {
   if (unit === 'usd') return `$${value.toFixed(4)}`;
   if (unit === 'percent') return `${(value * 100).toFixed(1)}%`;
+  if (unit === 'percent0') return `${(value * 100).toFixed(0)}%`;
   if (unit === 'tokens/min')
     return value >= 1000 ? `${(value / 1000).toFixed(1)}K` : value.toFixed(0);
   if (unit === 'ms') return `${value.toFixed(0)} ms`;

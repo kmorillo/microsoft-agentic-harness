@@ -20,13 +20,13 @@ export default function SpendHubPage() {
           <button
             key={to}
             onClick={() => navigate(to)}
-            className="bg-card border border-border rounded-lg p-5 text-left hover:border-otel-accent/40 transition-colors cursor-pointer"
+            className="bg-card border border-border rounded-lg p-5 text-left hover:border-cat-accent/40 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-2.5 mb-2">
-              <Icon className="h-4 w-4 text-otel-accent" />
+              <Icon className="h-4 w-4 text-cat-accent" />
               <span className="text-sm font-semibold text-foreground">{label}</span>
             </div>
-            <p className="text-xs text-otel-text-dim leading-relaxed">{description}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
           </button>
         ))}
       </PanelGrid>
