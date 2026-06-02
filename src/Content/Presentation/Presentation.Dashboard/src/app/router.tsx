@@ -5,6 +5,7 @@ const DashboardShell = lazy(() => import('@/components/layout/DashboardShell'));
 const PulsePage = lazy(() => import('@/routes/Pulse/PulsePage'));
 const SessionsPage = lazy(() => import('@/routes/Sessions/SessionsPage'));
 const SessionDetailPage = lazy(() => import('@/routes/Sessions/SessionDetailPage'));
+const ContextInspectorPage = lazy(() => import('@/routes/Sessions/ContextInspectorPage'));
 const SpendHubPage = lazy(() => import('@/routes/Spend/SpendHubPage'));
 const TokensPage = lazy(() => import('@/routes/Tokens/TokensPage'));
 const CostPage = lazy(() => import('@/routes/Cost/CostPage'));
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
       { path: 'pulse', element: <LazyWrapper><PulsePage /></LazyWrapper> },
       { path: 'sessions', element: <LazyWrapper><SessionsPage /></LazyWrapper> },
       { path: 'sessions/:sessionId', element: <LazyWrapper><SessionDetailPage /></LazyWrapper> },
+      { path: 'sessions/:sessionId/context', element: <LazyWrapper><ContextInspectorPage /></LazyWrapper> },
 
       // Spend
       { path: 'spend', element: <LazyWrapper><SpendHubPage /></LazyWrapper> },

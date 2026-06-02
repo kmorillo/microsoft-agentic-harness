@@ -102,6 +102,7 @@ export default function SessionDetailPage() {
         snapshots={snapshots}
         gem={gem}
         budget={DEFAULT_CONTEXT_BUDGET}
+        sessionId={sessionId}
       />
 
       <PanelCard

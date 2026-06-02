@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { ContextBar } from '@/components/context/ContextBar';
 import { ContextLegend } from '@/components/context/ContextLegend';
 import { ScrubStrip, type ScrubTurn } from '@/components/context/ScrubStrip';
@@ -12,6 +13,12 @@ interface SessionHeroProps {
   gem: SessionGemState;
   /** Context-window budget — drives bar headroom / over-budget styling. */
   budget?: number;
+  /**
+   * When set, renders a "View context inspector →" deep-link in the hero
+   * header that navigates to the standalone /sessions/:id/context route.
+   * SessionDetailPage passes its sessionId; embedded previews omit it.
+   */
+  sessionId?: string;
   className?: string;
 }
 
@@ -26,6 +33,7 @@ export function SessionHero({
   snapshots,
   gem,
   budget,
+  sessionId,
   className,
 }: SessionHeroProps) {
   const scrubTurns = useMemo<ScrubTurn[]>(() => {
@@ -70,16 +78,27 @@ export function SessionHero({
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
           {heroLabel}
         </h2>
-        {gem.isScrubbed && (
-          <button
-            type="button"
-            data-testid="session-hero-jump-current"
-            onClick={gem.jumpToCurrent}
-            className="rounded-full border border-cat-accent/40 bg-cat-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-cat-accent hover:bg-cat-accent/20"
-          >
-            Jump to current ↓
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {sessionId && (
+            <Link
+              data-testid="session-hero-inspector-link"
+              to={`/sessions/${sessionId}/context`}
+              className="text-[11px] font-medium uppercase tracking-wider text-cat-accent hover:underline"
+            >
+              Inspector →
+            </Link>
+          )}
+          {gem.isScrubbed && (
+            <button
+              type="button"
+              data-testid="session-hero-jump-current"
+              onClick={gem.jumpToCurrent}
+              className="rounded-full border border-cat-accent/40 bg-cat-accent/10 px-3 py-1 text-[11px] font-medium uppercase tracking-wider text-cat-accent hover:bg-cat-accent/20"
+            >
+              Jump to current ↓
+            </button>
+          )}
+        </div>
       </header>
 
       {gem.displayedBreakdown ? (
