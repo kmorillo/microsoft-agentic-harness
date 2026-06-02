@@ -137,4 +137,47 @@ public sealed class SessionsController : ControllerBase
             breakdown,
         });
     }
+
+    /// <summary>
+    /// Returns full args + stdout for a single tool invocation, scoped to its
+    /// parent session so a forged invocationId from a different session can't
+    /// leak through. Powers the <c>/sessions/:id/tools/:invocationId</c>
+    /// Foresight deep-link.
+    /// </summary>
+    /// <param name="id">Parent session id.</param>
+    /// <param name="invocationId">Tool execution row id.</param>
+    /// <param name="ct">Cancellation token.</param>
+    [HttpGet("{id:guid}/tools/{invocationId:guid}")]
+    [ProducesResponseType(typeof(ToolInvocationDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ToolInvocationDetailDto>> GetToolInvocation(
+        Guid id, Guid invocationId, CancellationToken ct = default)
+    {
+        var record = await _store.GetToolExecutionByIdAsync(id, invocationId, ct);
+        if (record is null)
+            return NotFound();
+
+        return Ok(ToolInvocationDetailDto.From(record));
+    }
+
+    /// <summary>
+    /// Returns the full message body for a single session message, scoped to
+    /// its parent session. Powers the <c>/sessions/:id/files/:messageId</c>
+    /// file-body Foresight deep-link.
+    /// </summary>
+    /// <param name="id">Parent session id.</param>
+    /// <param name="messageId">Message row id.</param>
+    /// <param name="ct">Cancellation token.</param>
+    [HttpGet("{id:guid}/messages/{messageId:guid}")]
+    [ProducesResponseType(typeof(MessageBodyDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<MessageBodyDto>> GetMessageBody(
+        Guid id, Guid messageId, CancellationToken ct = default)
+    {
+        var record = await _store.GetMessageByIdAsync(id, messageId, ct);
+        if (record is null)
+            return NotFound();
+
+        return Ok(MessageBodyDto.From(record));
+    }
 }

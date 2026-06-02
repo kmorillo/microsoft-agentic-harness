@@ -111,7 +111,7 @@ public class MetricsIntegrationFactory : TestWebApplicationFactory
                     It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<string>(), It.IsAny<string?>(),
                     It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<int>(), It.IsAny<int>(),
                     It.IsAny<int>(), It.IsAny<int>(), It.IsAny<decimal>(), It.IsAny<decimal>(),
-                    It.IsAny<string[]?>(), It.IsAny<CancellationToken>()))
+                    It.IsAny<string[]?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Guid.NewGuid());
             services.RemoveAll<IObservabilityStore>();
             services.AddSingleton(mockObsStore.Object);

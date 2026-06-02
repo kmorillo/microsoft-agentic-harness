@@ -11,6 +11,14 @@ public sealed record SessionMessageRecord
     public required string Role { get; init; }
     public string? Source { get; init; }
     public string? ContentPreview { get; init; }
+
+    /// <summary>
+    /// Full message body, captured verbatim before the 500-char preview
+    /// truncation. Used by the file-body deep-link endpoint
+    /// (<c>GET /api/sessions/{id}/messages/{messageId}</c>) so the dashboard
+    /// can render the complete original content. Untrusted — render escaped.
+    /// </summary>
+    public string? ContentFull { get; init; }
     public string? Model { get; init; }
     public int InputTokens { get; init; }
     public int OutputTokens { get; init; }

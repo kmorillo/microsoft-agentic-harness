@@ -36,6 +36,23 @@ public sealed class LlmUsageCapture : ILlmUsageCapture
     private string? _model;
     private readonly HashSet<string> _toolNames = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Per-CallId invocation capture. Tool call requests land here keyed by their
+    /// LLM-supplied call id; the matching result message updates the same entry
+    /// on the next turn (when the FunctionResultContent is submitted back).
+    /// CallId-less requests use a synthetic key so each one still lands as its
+    /// own invocation.
+    /// </summary>
+    private readonly Dictionary<string, MutableInvocation> _invocations = new(StringComparer.Ordinal);
+
+    private sealed class MutableInvocation
+    {
+        public required string? CallId { get; init; }
+        public required string ToolName { get; set; }
+        public string? ArgsJson { get; set; }
+        public string? Stdout { get; set; }
+    }
+
     public LlmUsageCapture(IOptionsMonitor<AppConfig> appConfig)
     {
         var config = appConfig.CurrentValue.Observability.LlmPricing;
@@ -64,6 +81,58 @@ public sealed class LlmUsageCapture : ILlmUsageCapture
         }
     }
 
+    public void RecordToolRequest(string? callId, string toolName, string? argsJson)
+    {
+        if (string.IsNullOrEmpty(toolName))
+            return;
+
+        lock (_lock)
+        {
+            _toolNames.Add(toolName);
+
+            var key = callId ?? $"__nocallid__{_invocations.Count}";
+            if (_invocations.TryGetValue(key, out var existing))
+            {
+                existing.ToolName = toolName;
+                existing.ArgsJson ??= argsJson;
+            }
+            else
+            {
+                _invocations[key] = new MutableInvocation
+                {
+                    CallId = callId,
+                    ToolName = toolName,
+                    ArgsJson = argsJson,
+                };
+            }
+        }
+    }
+
+    public void RecordToolResult(string? callId, string? stdout)
+    {
+        if (callId is null)
+            return; // can't pair without an id; leave as-is
+
+        lock (_lock)
+        {
+            if (_invocations.TryGetValue(callId, out var existing))
+            {
+                existing.Stdout = stdout;
+            }
+            else
+            {
+                // Result arriving before request (shouldn't happen with current
+                // middleware ordering, but keep the data rather than dropping it).
+                _invocations[callId] = new MutableInvocation
+                {
+                    CallId = callId,
+                    ToolName = string.Empty,
+                    Stdout = stdout,
+                };
+            }
+        }
+    }
+
     public LlmUsageSnapshot TakeSnapshot()
     {
         lock (_lock)
@@ -76,9 +145,19 @@ public sealed class LlmUsageCapture : ILlmUsageCapture
                 ? (IReadOnlyList<string>)_toolNames.ToList()
                 : Array.Empty<string>();
 
+            IReadOnlyList<ToolInvocationCapture> invocations = _invocations.Count > 0
+                ? _invocations.Values
+                    .Where(i => !string.IsNullOrEmpty(i.ToolName))
+                    .Select(i => new ToolInvocationCapture(i.CallId, i.ToolName, i.ArgsJson, i.Stdout))
+                    .ToList()
+                : Array.Empty<ToolInvocationCapture>();
+
             var snapshot = new LlmUsageSnapshot(
                 _inputTokens, _outputTokens, _cacheRead, _cacheWrite,
-                _model, cost, Math.Round(cacheHitPct, 4), toolNames);
+                _model, cost, Math.Round(cacheHitPct, 4), toolNames)
+            {
+                ToolInvocations = invocations
+            };
 
             _inputTokens = 0;
             _outputTokens = 0;
@@ -86,6 +165,7 @@ public sealed class LlmUsageCapture : ILlmUsageCapture
             _cacheWrite = 0;
             _model = null;
             _toolNames.Clear();
+            _invocations.Clear();
 
             return snapshot;
         }

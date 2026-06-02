@@ -1,6 +1,11 @@
 import { apiClient } from './client';
 import { useSessionSnapshotsStore } from '@/stores/sessionSnapshotsStore';
-import type { SessionRecord, SessionDetail } from './types';
+import type {
+  SessionRecord,
+  SessionDetail,
+  ToolInvocationDetail,
+  MessageBody,
+} from './types';
 
 export async function fetchSessions(
   limit = 50,
@@ -31,5 +36,36 @@ export async function fetchSessionDetail(id: string): Promise<SessionDetail> {
       .hydrateSession(data.session.conversationId, data.snapshots);
   }
 
+  return data;
+}
+
+/**
+ * Foresight per-invocation deep-link
+ * (`GET /api/sessions/:id/tools/:invocationId`). Returns the full args + stdout
+ * for one tool execution. Backend scopes the lookup to the parent session id,
+ * so passing a tool row id from a different session returns 404.
+ */
+export async function fetchToolInvocation(
+  sessionId: string,
+  invocationId: string,
+): Promise<ToolInvocationDetail> {
+  const { data } = await apiClient.get<ToolInvocationDetail>(
+    `/api/sessions/${sessionId}/tools/${invocationId}`,
+  );
+  return data;
+}
+
+/**
+ * File-body deep-link (`GET /api/sessions/:id/messages/:messageId`). Returns
+ * the full message body captured before the 500-char preview truncation, or
+ * `contentFull: null` when the row predates the content_full column.
+ */
+export async function fetchMessageBody(
+  sessionId: string,
+  messageId: string,
+): Promise<MessageBody> {
+  const { data } = await apiClient.get<MessageBody>(
+    `/api/sessions/${sessionId}/messages/${messageId}`,
+  );
   return data;
 }

@@ -57,6 +57,10 @@ CREATE TABLE session_messages (
                         'assistant_mixed','tool_result','system_context',
                         'hook_injection')),
     content_preview TEXT,
+    -- Full message body. content_preview is the 500-char truncation used by
+    -- the list panels; content_full is served by the file-body deep-link
+    -- endpoint (GET /api/sessions/{id}/messages/{messageId}).
+    content_full    TEXT,
     model           TEXT,
     input_tokens    INTEGER NOT NULL DEFAULT 0,
     output_tokens   INTEGER NOT NULL DEFAULT 0,
@@ -86,6 +90,17 @@ CREATE TABLE tool_executions (
                     CHECK (status IN ('success','failure','timeout')),
     error_type      TEXT,
     result_size     INTEGER,
+    -- LLM-supplied call id (FunctionCallContent.CallId). Used by the
+    -- middleware capture to pair function-call requests with their
+    -- subsequent function-result payloads and by the per-invocation
+    -- deep-link endpoint (GET /api/sessions/{id}/tools/{invocationId}).
+    call_id         TEXT,
+    -- JSON-serialized arguments the LLM passed to the tool. Truncated by
+    -- ToolDiagnosticsMiddleware to MaxPayloadSummaryLength.
+    args            TEXT,
+    -- Result payload returned from the tool to the LLM. Truncated by
+    -- ToolDiagnosticsMiddleware to MaxPayloadSummaryLength.
+    stdout          TEXT,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

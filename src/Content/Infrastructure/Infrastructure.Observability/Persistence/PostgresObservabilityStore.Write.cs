@@ -93,16 +93,17 @@ public sealed partial class PostgresObservabilityStore
         Guid sessionId, int turnIndex, string role, string? source,
         string? contentPreview, string? model, int inputTokens, int outputTokens,
         int cacheRead, int cacheWrite, decimal costUsd, decimal cacheHitPct,
-        string[]? toolNames = null, CancellationToken cancellationToken = default)
+        string[]? toolNames = null, string? contentFull = null,
+        CancellationToken cancellationToken = default)
     {
         if (sessionId == Guid.Empty) return Guid.Empty;
 
         const string sql = """
             INSERT INTO session_messages
-                (session_id, turn_index, role, source, content_preview, model,
+                (session_id, turn_index, role, source, content_preview, content_full, model,
                  input_tokens, output_tokens, cache_read, cache_write,
                  cost_usd, cache_hit_pct, tool_names)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING id
             """;
 
@@ -114,6 +115,7 @@ public sealed partial class PostgresObservabilityStore
             cmd.Parameters.AddWithValue(role);
             cmd.Parameters.AddWithValue(source ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue(contentPreview ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue(contentFull ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue(model ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue(inputTokens);
             cmd.Parameters.AddWithValue(outputTokens);
@@ -141,15 +143,17 @@ public sealed partial class PostgresObservabilityStore
     public async Task RecordToolExecutionAsync(
         Guid sessionId, Guid? messageId, string toolName, string toolSource,
         int durationMs, string status, string? errorType,
-        int? resultSize, CancellationToken cancellationToken = default)
+        int? resultSize, string? callId = null, string? args = null, string? stdout = null,
+        CancellationToken cancellationToken = default)
     {
         if (sessionId == Guid.Empty) return;
 
         const string sql = """
             INSERT INTO tool_executions
                 (session_id, message_id, tool_name, tool_source,
-                 duration_ms, status, error_type, result_size)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 duration_ms, status, error_type, result_size,
+                 call_id, args, stdout)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             """;
 
         await ExecuteNonQuerySafe(sql, cancellationToken,
@@ -157,7 +161,10 @@ public sealed partial class PostgresObservabilityStore
             messageId.HasValue && messageId.Value != Guid.Empty ? messageId.Value : DBNull.Value,
             toolName, toolSource, durationMs, status,
             errorType ?? (object)DBNull.Value,
-            resultSize.HasValue ? resultSize.Value : DBNull.Value);
+            resultSize.HasValue ? resultSize.Value : DBNull.Value,
+            callId ?? (object)DBNull.Value,
+            args ?? (object)DBNull.Value,
+            stdout ?? (object)DBNull.Value);
     }
 
     /// <inheritdoc />

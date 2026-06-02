@@ -85,24 +85,33 @@ public sealed class ToolDiagnosticsMiddleware : DelegatingChatClient
 
         foreach (var result in functionResults)
         {
+            var rawPayload = result.Result?.ToString() ?? string.Empty;
+            var redactedPayload = _redactor?.Redact(rawPayload) ?? rawPayload;
+            var trimmedPayload = redactedPayload.Length > MaxPayloadSummaryLength
+                ? redactedPayload[..MaxPayloadSummaryLength]
+                : redactedPayload;
+
+            // Always record the stdout against the matching call id so the
+            // observability pipeline can render it on the per-invocation page
+            // even when trace writer isn't wired.
+            LlmUsageCapture.Current?.RecordToolResult(result.CallId, trimmedPayload);
+
+            if (_traceWriter is null)
+                continue;
+
             try
             {
-                var rawPayload = result.Result?.ToString() ?? string.Empty;
-                var payload = _redactor?.Redact(rawPayload) ?? rawPayload;
-                if (payload.Length > MaxPayloadSummaryLength)
-                    payload = payload[..MaxPayloadSummaryLength];
-
                 var record = new ExecutionTraceRecord
                 {
                     Ts = DateTimeOffset.UtcNow,
                     Type = TraceRecordTypes.ToolResult,
-                    ExecutionRunId = _traceWriter!.Scope.ExecutionRunId.ToString("D"),
+                    ExecutionRunId = _traceWriter.Scope.ExecutionRunId.ToString("D"),
                     TurnId = result.CallId ?? Guid.NewGuid().ToString("D"),
                     ResultCategory = TraceResultCategories.Success,
-                    PayloadSummary = payload
+                    PayloadSummary = trimmedPayload
                 };
 
-                await _traceWriter!.AppendTraceAsync(record, ct);
+                await _traceWriter.AppendTraceAsync(record, ct);
             }
             catch (Exception ex)
             {
@@ -191,8 +200,31 @@ public sealed class ToolDiagnosticsMiddleware : DelegatingChatClient
             _logger.LogInformation("[ToolDiag] Tool call: {FunctionName} (CallId: {CallId})",
                 call.Name, call.CallId);
 
-            if (!string.IsNullOrEmpty(call.Name))
-                capture?.RecordToolCall(call.Name);
+            if (string.IsNullOrEmpty(call.Name))
+                continue;
+
+            capture?.RecordToolCall(call.Name);
+
+            string? argsJson = null;
+            if (call.Arguments is { Count: > 0 } args)
+            {
+                try
+                {
+                    argsJson = System.Text.Json.JsonSerializer.Serialize(args);
+                    if (_redactor is not null)
+                        argsJson = _redactor.Redact(argsJson);
+                    if (argsJson.Length > MaxPayloadSummaryLength)
+                        argsJson = argsJson[..MaxPayloadSummaryLength];
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "[ToolDiag] Failed to serialize args for {Tool} CallId={CallId}",
+                        call.Name, call.CallId);
+                }
+            }
+
+            capture?.RecordToolRequest(call.CallId, call.Name, argsJson);
         }
 
         if (count == 0)

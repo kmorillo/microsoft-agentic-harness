@@ -54,6 +54,13 @@ public interface IObservabilityStore
     /// Records a single conversation turn (user message, assistant response, or tool result).
     /// Returns the message ID for correlating tool executions.
     /// </summary>
+    /// <param name="contentFull">
+    /// Full message body. When non-null, persisted alongside the truncated
+    /// <paramref name="contentPreview"/> so the file-body deep-link endpoint
+    /// (<c>GET /api/sessions/{id}/messages/{messageId}</c>) can serve the
+    /// original content. Pass <c>null</c> for tool-result rows that have no
+    /// distinct full body or when storage is disabled.
+    /// </param>
     Task<Guid> RecordMessageAsync(
         Guid sessionId,
         int turnIndex,
@@ -68,6 +75,7 @@ public interface IObservabilityStore
         decimal costUsd,
         decimal cacheHitPct,
         string[]? toolNames = null,
+        string? contentFull = null,
         CancellationToken cancellationToken = default);
 
     // ── Tool Executions ──────────────────────────────────────────────────
@@ -75,6 +83,9 @@ public interface IObservabilityStore
     /// <summary>
     /// Records a single tool invocation with its outcome and performance data.
     /// </summary>
+    /// <param name="callId">LLM-supplied call id (FunctionCallContent.CallId).</param>
+    /// <param name="args">JSON-serialized arguments captured from the LLM's tool-call request.</param>
+    /// <param name="stdout">Result payload returned to the LLM (FunctionResultContent.Result).</param>
     Task RecordToolExecutionAsync(
         Guid sessionId,
         Guid? messageId,
@@ -84,6 +95,9 @@ public interface IObservabilityStore
         string status,
         string? errorType = null,
         int? resultSize = null,
+        string? callId = null,
+        string? args = null,
+        string? stdout = null,
         CancellationToken cancellationToken = default);
 
     // ── Safety Events ────────────────────────────────────────────────────
@@ -159,6 +173,30 @@ public interface IObservabilityStore
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<IReadOnlyList<ToolExecutionRecord>> GetSessionToolExecutionsAsync(
         Guid sessionId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves a single tool execution record scoped to its parent session.
+    /// Returns <c>null</c> when not found or when it belongs to a different session.
+    /// </summary>
+    /// <param name="sessionId">The expected parent session id.</param>
+    /// <param name="invocationId">The tool execution row id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<ToolExecutionRecord?> GetToolExecutionByIdAsync(
+        Guid sessionId,
+        Guid invocationId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves a single session message scoped to its parent session.
+    /// Returns <c>null</c> when not found or when it belongs to a different session.
+    /// </summary>
+    /// <param name="sessionId">The expected parent session id.</param>
+    /// <param name="messageId">The message row id.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<SessionMessageRecord?> GetMessageByIdAsync(
+        Guid sessionId,
+        Guid messageId,
         CancellationToken cancellationToken = default);
 
     /// <summary>

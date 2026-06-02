@@ -93,8 +93,9 @@ public sealed partial class PostgresObservabilityStore
     public async Task<IReadOnlyList<SessionMessageRecord>> GetSessionMessagesAsync(
         Guid sessionId, CancellationToken cancellationToken = default)
     {
+        // List view doesn't need the full body, just the preview.
         const string sql = """
-            SELECT id, session_id, turn_index, role, source, content_preview, model,
+            SELECT id, session_id, turn_index, role, source, content_preview, NULL::text, model,
                    input_tokens, output_tokens, cache_read, cache_write, cost_usd, cache_hit_pct,
                    tool_names, created_at
             FROM session_messages
@@ -122,12 +123,47 @@ public sealed partial class PostgresObservabilityStore
     }
 
     /// <inheritdoc />
+    public async Task<SessionMessageRecord?> GetMessageByIdAsync(
+        Guid sessionId, Guid messageId, CancellationToken cancellationToken = default)
+    {
+        // Detail view selects the full body so the file-body endpoint can
+        // return content_full to the dashboard.
+        const string sql = """
+            SELECT id, session_id, turn_index, role, source, content_preview, content_full, model,
+                   input_tokens, output_tokens, cache_read, cache_write, cost_usd, cache_hit_pct,
+                   tool_names, created_at
+            FROM session_messages
+            WHERE session_id = $1 AND id = $2
+            """;
+
+        try
+        {
+            await using var cmd = _dataSource.CreateCommand(sql);
+            cmd.Parameters.AddWithValue(sessionId);
+            cmd.Parameters.AddWithValue(messageId);
+
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            return await reader.ReadAsync(cancellationToken)
+                ? ReadSessionMessageRecord(reader)
+                : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to read message {MessageId} for session {SessionId}",
+                messageId, sessionId);
+            return null;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ToolExecutionRecord>> GetSessionToolExecutionsAsync(
         Guid sessionId, CancellationToken cancellationToken = default)
     {
+        // List view returns null bodies; the per-invocation route fetches them.
         const string sql = """
             SELECT id, session_id, message_id, tool_name, tool_source, duration_ms, status,
-                   error_type, result_size, created_at
+                   error_type, result_size, call_id, NULL::text, NULL::text, created_at
             FROM tool_executions
             WHERE session_id = $1
             ORDER BY created_at
@@ -149,6 +185,38 @@ public sealed partial class PostgresObservabilityStore
         {
             _logger.LogWarning(ex, "Failed to read tool executions for session {SessionId}", sessionId);
             return Array.Empty<ToolExecutionRecord>();
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<ToolExecutionRecord?> GetToolExecutionByIdAsync(
+        Guid sessionId, Guid invocationId, CancellationToken cancellationToken = default)
+    {
+        // Detail view selects args + stdout for the per-invocation page.
+        const string sql = """
+            SELECT id, session_id, message_id, tool_name, tool_source, duration_ms, status,
+                   error_type, result_size, call_id, args, stdout, created_at
+            FROM tool_executions
+            WHERE session_id = $1 AND id = $2
+            """;
+
+        try
+        {
+            await using var cmd = _dataSource.CreateCommand(sql);
+            cmd.Parameters.AddWithValue(sessionId);
+            cmd.Parameters.AddWithValue(invocationId);
+
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            return await reader.ReadAsync(cancellationToken)
+                ? ReadToolExecutionRecord(reader)
+                : null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to read tool execution {InvocationId} for session {SessionId}",
+                invocationId, sessionId);
+            return null;
         }
     }
 
@@ -213,15 +281,16 @@ public sealed partial class PostgresObservabilityStore
         Role = reader.GetString(3),
         Source = reader.IsDBNull(4) ? null : reader.GetString(4),
         ContentPreview = reader.IsDBNull(5) ? null : reader.GetString(5),
-        Model = reader.IsDBNull(6) ? null : reader.GetString(6),
-        InputTokens = reader.GetInt32(7),
-        OutputTokens = reader.GetInt32(8),
-        CacheRead = reader.GetInt32(9),
-        CacheWrite = reader.GetInt32(10),
-        CostUsd = reader.GetDecimal(11),
-        CacheHitPct = reader.GetDecimal(12),
-        ToolNames = reader.IsDBNull(13) ? null : reader.GetFieldValue<string[]>(13),
-        CreatedAt = reader.GetFieldValue<DateTimeOffset>(14)
+        ContentFull = reader.IsDBNull(6) ? null : reader.GetString(6),
+        Model = reader.IsDBNull(7) ? null : reader.GetString(7),
+        InputTokens = reader.GetInt32(8),
+        OutputTokens = reader.GetInt32(9),
+        CacheRead = reader.GetInt32(10),
+        CacheWrite = reader.GetInt32(11),
+        CostUsd = reader.GetDecimal(12),
+        CacheHitPct = reader.GetDecimal(13),
+        ToolNames = reader.IsDBNull(14) ? null : reader.GetFieldValue<string[]>(14),
+        CreatedAt = reader.GetFieldValue<DateTimeOffset>(15)
     };
 
     private static ToolExecutionRecord ReadToolExecutionRecord(NpgsqlDataReader reader) => new()
@@ -235,7 +304,10 @@ public sealed partial class PostgresObservabilityStore
         Status = reader.GetString(6),
         ErrorType = reader.IsDBNull(7) ? null : reader.GetString(7),
         ResultSize = reader.IsDBNull(8) ? null : reader.GetInt32(8),
-        CreatedAt = reader.GetFieldValue<DateTimeOffset>(9)
+        CallId = reader.IsDBNull(9) ? null : reader.GetString(9),
+        Args = reader.IsDBNull(10) ? null : reader.GetString(10),
+        Stdout = reader.IsDBNull(11) ? null : reader.GetString(11),
+        CreatedAt = reader.GetFieldValue<DateTimeOffset>(12)
     };
 
     private static SafetyEventRecord ReadSafetyEventRecord(NpgsqlDataReader reader) => new()

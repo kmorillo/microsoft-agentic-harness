@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { ContextBar } from '@/components/context/ContextBar';
 import { CategorySwatch } from '@/components/context/CategorySwatch';
@@ -47,6 +48,10 @@ export function SessionTimeline({
   budget,
   className,
 }: SessionTimelineProps) {
+  // sessionId comes from the parent /sessions/:sessionId route — needed to
+  // build the per-message file-body deep-link.
+  const { sessionId } = useParams<{ sessionId: string }>();
+
   const messagesByTurn = useMemo(() => {
     const map = new Map<number, SessionMessageRecord[]>();
     for (const m of messages) {
@@ -89,6 +94,7 @@ export function SessionTimeline({
             onTurnScrub={onTurnScrub}
             onLoadedClick={onLoadedClick}
             budget={budget}
+            sessionId={sessionId}
           />
         );
       })}
@@ -104,6 +110,7 @@ interface TimelineRowProps {
   onTurnScrub: (turnIndex: number) => void;
   onLoadedClick: (item: LoadedItem, turnIndex: number) => void;
   budget?: number;
+  sessionId: string | undefined;
 }
 
 function TimelineRow({
@@ -114,6 +121,7 @@ function TimelineRow({
   onTurnScrub,
   onLoadedClick,
   budget,
+  sessionId,
 }: TimelineRowProps) {
   // Heuristic role: prefer assistant message if present; else first turn message.
   const headerMessage =
@@ -177,12 +185,23 @@ function TimelineRow({
       </header>
 
       {headerMessage?.contentPreview && (
-        <p
-          data-testid={`timeline-row-${snapshot.turnIndex}-excerpt`}
-          className="px-4 py-2 text-sm leading-relaxed text-foreground/90 line-clamp-3"
-        >
-          {headerMessage.contentPreview}
-        </p>
+        <div className="px-4 py-2">
+          <p
+            data-testid={`timeline-row-${snapshot.turnIndex}-excerpt`}
+            className="text-sm leading-relaxed text-foreground/90 line-clamp-3"
+          >
+            {headerMessage.contentPreview}
+          </p>
+          {sessionId && headerMessage.id && (
+            <Link
+              data-testid={`timeline-row-${snapshot.turnIndex}-view-full`}
+              to={`/sessions/${sessionId}/files/${headerMessage.id}`}
+              className="mt-1 inline-block text-[11px] text-cat-accent hover:underline"
+            >
+              view full →
+            </Link>
+          )}
+        </div>
       )}
 
       <div className="px-4 pb-2">

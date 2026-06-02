@@ -36,14 +36,16 @@ public sealed class NullObservabilityStore : IObservabilityStore
         Guid sessionId, int turnIndex, string role, string? source,
         string? contentPreview, string? model, int inputTokens, int outputTokens,
         int cacheRead, int cacheWrite, decimal costUsd, decimal cacheHitPct,
-        string[]? toolNames = null, CancellationToken cancellationToken = default)
+        string[]? toolNames = null, string? contentFull = null,
+        CancellationToken cancellationToken = default)
         => Task.FromResult(Guid.Empty);
 
     /// <inheritdoc />
     public Task RecordToolExecutionAsync(
         Guid sessionId, Guid? messageId, string toolName, string toolSource,
         int durationMs, string status, string? errorType,
-        int? resultSize, CancellationToken cancellationToken = default)
+        int? resultSize, string? callId = null, string? args = null, string? stdout = null,
+        CancellationToken cancellationToken = default)
         => Task.CompletedTask;
 
     /// <inheritdoc />
@@ -81,6 +83,16 @@ public sealed class NullObservabilityStore : IObservabilityStore
     public Task<IReadOnlyList<ToolExecutionRecord>> GetSessionToolExecutionsAsync(
         Guid sessionId, CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyList<ToolExecutionRecord>>(Array.Empty<ToolExecutionRecord>());
+
+    /// <inheritdoc />
+    public Task<ToolExecutionRecord?> GetToolExecutionByIdAsync(
+        Guid sessionId, Guid invocationId, CancellationToken cancellationToken = default)
+        => Task.FromResult<ToolExecutionRecord?>(null);
+
+    /// <inheritdoc />
+    public Task<SessionMessageRecord?> GetMessageByIdAsync(
+        Guid sessionId, Guid messageId, CancellationToken cancellationToken = default)
+        => Task.FromResult<SessionMessageRecord?>(null);
 
     /// <inheritdoc />
     public Task<IReadOnlyList<SafetyEventRecord>> GetSessionSafetyEventsAsync(

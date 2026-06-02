@@ -89,7 +89,8 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 
 			await _observabilityStore.RecordMessageAsync(
 				request.ObservabilitySessionId, request.TurnNumber, "user", "user_message",
-				request.UserMessage.Truncate(500), null, 0, 0, 0, 0, 0m, 0m, null, cancellationToken);
+				request.UserMessage.Truncate(500), null, 0, 0, 0, 0, 0m, 0m, null,
+				request.UserMessage, cancellationToken);
 
 			// Clear stale usage data before the agent turn
 			_usageCapture.TakeSnapshot();
@@ -124,24 +125,49 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 			}
 
 			var source = toolsInvoked.Count > 0 ? "assistant_mixed" : "assistant_text";
-			await _observabilityStore.RecordMessageAsync(
+			var assistantMessageId = await _observabilityStore.RecordMessageAsync(
 				request.ObservabilitySessionId, request.TurnNumber, "assistant", source,
 				responseText.Truncate(500), usage.Model,
 				usage.InputTokens, usage.OutputTokens, usage.CacheRead, usage.CacheWrite,
 				usage.CostUsd, usage.CacheHitPct,
-				toolsInvoked.Count > 0 ? toolsInvoked.ToArray() : null, cancellationToken);
+				toolsInvoked.Count > 0 ? toolsInvoked.ToArray() : null,
+				responseText, cancellationToken);
 
-			foreach (var toolName in toolsInvoked)
+			// Pair captured per-CallId invocations with the assistant message that
+			// requested them so the per-invocation deep-link can resolve back to
+			// its parent. Fall back to the simple name-only path when no
+			// invocations were captured (mostly tests with mocked middleware).
+			if (usage.ToolInvocations.Count > 0)
 			{
-				ToolExecutionMetrics.Invocations.Add(1, new TagList
+				foreach (var inv in usage.ToolInvocations)
 				{
-					{ ToolConventions.Name, toolName },
-					{ ToolConventions.Status, ToolConventions.StatusValues.Success }
-				});
+					ToolExecutionMetrics.Invocations.Add(1, new TagList
+					{
+						{ ToolConventions.Name, inv.ToolName },
+						{ ToolConventions.Status, ToolConventions.StatusValues.Success }
+					});
 
-				await _observabilityStore.RecordToolExecutionAsync(
-					request.ObservabilitySessionId, null, toolName, "keyed_di",
-					0, "success", null, null, cancellationToken);
+					await _observabilityStore.RecordToolExecutionAsync(
+						request.ObservabilitySessionId, assistantMessageId,
+						inv.ToolName, "keyed_di",
+						0, "success", null, inv.Stdout?.Length,
+						inv.CallId, inv.ArgsJson, inv.Stdout, cancellationToken);
+				}
+			}
+			else
+			{
+				foreach (var toolName in toolsInvoked)
+				{
+					ToolExecutionMetrics.Invocations.Add(1, new TagList
+					{
+						{ ToolConventions.Name, toolName },
+						{ ToolConventions.Status, ToolConventions.StatusValues.Success }
+					});
+
+					await _observabilityStore.RecordToolExecutionAsync(
+						request.ObservabilitySessionId, assistantMessageId, toolName, "keyed_di",
+						0, "success", cancellationToken: cancellationToken);
+				}
 			}
 
 			// Build updated history (add user message + assistant response)

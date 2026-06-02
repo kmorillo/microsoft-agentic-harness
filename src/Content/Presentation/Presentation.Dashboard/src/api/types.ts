@@ -126,6 +126,12 @@ export interface SessionMessageRecord {
   role: string;
   source: string | null;
   contentPreview: string | null;
+  /**
+   * Full message body served by the file-body deep-link endpoint
+   * (`GET /api/sessions/:id/messages/:messageId`). Null in list responses —
+   * the list view only returns `contentPreview` to keep payloads small.
+   */
+  contentFull: string | null;
   model: string | null;
   inputTokens: number;
   outputTokens: number;
@@ -147,6 +153,48 @@ export interface ToolExecutionRecord {
   status: string;
   errorType: string | null;
   resultSize: number | null;
+  /**
+   * LLM-supplied call id from `FunctionCallContent.CallId`. Used to pair the
+   * request + result halves of a tool invocation and to deep-link from the
+   * tools table.
+   */
+  callId: string | null;
+  /**
+   * Serialized arguments — only returned from the per-invocation detail
+   * endpoint (`GET /api/sessions/:id/tools/:invocationId`); list responses
+   * omit it to keep payloads small.
+   */
+  args: string | null;
+  /**
+   * Tool return payload as returned to the LLM — also detail-endpoint only.
+   */
+  stdout: string | null;
+  createdAt: string;
+}
+
+/**
+ * Per-invocation detail response from
+ * `GET /api/sessions/:id/tools/:invocationId`. Identical shape to
+ * {@link ToolExecutionRecord} since the controller projects the domain
+ * record directly.
+ */
+export type ToolInvocationDetail = ToolExecutionRecord;
+
+/**
+ * File-body detail response from
+ * `GET /api/sessions/:id/messages/:messageId`. Carries the full content
+ * captured before the 500-char preview truncation, plus the parent message
+ * metadata so the page can render headers without a separate fetch.
+ */
+export interface MessageBody {
+  id: string;
+  sessionId: string;
+  turnIndex: number;
+  role: string;
+  source: string | null;
+  contentPreview: string | null;
+  contentFull: string | null;
+  model: string | null;
   createdAt: string;
 }
 
