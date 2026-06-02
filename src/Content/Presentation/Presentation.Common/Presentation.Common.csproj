@@ -37,6 +37,9 @@
     <!-- Health checks -->
     <PackageReference Include="AspNetCore.HealthChecks.UI" />
     <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" />
+    <!-- Transitive pin: HealthChecks.UI pulls KubernetesClient 15.0.1 which
+         has GHSA-w7r3-mgwf-4mqq. Force the patched 17.0.14+ version. -->
+    <PackageReference Include="KubernetesClient" />
     <PackageReference Include="AspNetCore.HealthChecks.ApplicationStatus" />
     <PackageReference Include="AspNetCore.HealthChecks.SqlServer" />
     <PackageReference Include="AspNetCore.HealthChecks.AzureKeyVault" />

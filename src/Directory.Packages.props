@@ -62,7 +62,8 @@
     <PackageVersion Include="YamlDotNet" Version="16.3.0" />
 
     <!-- Infrastructure.AI Prompt Registry (Sub-phase 5.3) -->
-    <PackageVersion Include="Scriban" Version="5.12.0" />
+    <!-- 7.0+ patches multiple critical/high CVEs (GHSA-5wr9-m6jw-xx44 etc). -->
+    <PackageVersion Include="Scriban" Version="7.2.3" />
 
     <!-- Infrastructure.AI.MCP -->
     <PackageVersion Include="ModelContextProtocol" Version="1.1.0" />
@@ -94,6 +95,9 @@
     <PackageVersion Include="AspNetCore.HealthChecks.SqlServer" Version="9.0.0" />
     <PackageVersion Include="AspNetCore.HealthChecks.UI" Version="9.0.0" />
     <PackageVersion Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="9.0.0" />
+    <!-- Transitive pin: AspNetCore.HealthChecks.UI pulls KubernetesClient 15.0.1.
+         17.0.14+ patches GHSA-w7r3-mgwf-4mqq. -->
+    <PackageVersion Include="KubernetesClient" Version="19.0.2" />
     <PackageVersion Include="Azure.Extensions.AspNetCore.Configuration.Secrets" Version="1.4.0" />
     <PackageVersion Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.4" />
     <PackageVersion Include="Microsoft.Extensions.Configuration.AzureAppConfiguration" Version="8.1.0" />
