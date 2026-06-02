@@ -142,8 +142,8 @@ public sealed partial class PostgresObservabilityStore
     /// <inheritdoc />
     public async Task RecordToolExecutionAsync(
         Guid sessionId, Guid? messageId, string toolName, string toolSource,
-        int durationMs, string status, string? errorType,
-        int? resultSize, string? callId = null, string? args = null, string? stdout = null,
+        int durationMs, string status, string? errorType = null,
+        int? resultSize = null, string? callId = null, string? args = null, string? stdout = null,
         CancellationToken cancellationToken = default)
     {
         if (sessionId == Guid.Empty) return;
