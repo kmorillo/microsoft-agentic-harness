@@ -58,16 +58,24 @@ export function seriesToBars(
   series: MetricSeries[],
   labelKey: string,
   formatter: (v: number) => string,
+  /**
+   * Optional value transform applied before dedup/format. Use for unit
+   * conversion (e.g. seconds → ms by passing `v => v * 1000`). Identity
+   * by default.
+   */
+  transform: (v: number) => number = (v) => v,
 ) {
-  return series
-    .map((s) => {
-      const v =
-        parseFloat(s.dataPoints[s.dataPoints.length - 1]?.value ?? '0') || 0;
-      return {
-        label: s.labels[labelKey] ?? 'unknown',
-        value: v,
-        formatted: formatter(v),
-      };
-    })
+  // Dedupe by label so multiple unlabeled series (all falling back to
+  // 'unknown') collapse into a single bar. Prevents React duplicate-key
+  // warnings when HBarList uses item.label as the row key.
+  const totals = new Map<string, number>();
+  for (const s of series) {
+    const label = s.labels[labelKey] ?? 'unknown';
+    const raw =
+      parseFloat(s.dataPoints[s.dataPoints.length - 1]?.value ?? '0') || 0;
+    totals.set(label, (totals.get(label) ?? 0) + transform(raw));
+  }
+  return Array.from(totals.entries())
+    .map(([label, value]) => ({ label, value, formatted: formatter(value) }))
     .sort((a, b) => b.value - a.value);
 }

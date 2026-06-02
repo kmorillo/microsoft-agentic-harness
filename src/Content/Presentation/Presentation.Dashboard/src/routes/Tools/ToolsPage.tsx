@@ -7,18 +7,9 @@ import { LoadingSkeleton } from '@/components/panels/LoadingSkeleton';
 import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart';
 import { PageHeader } from '@/components/primitives/PageHeader';
 import { Section } from '@/components/primitives/Section';
-import { HBarList } from '@/components/primitives/HBarList';
+import { HBarList } from '@/components/charts/HBarList';
 import { Pill } from '@/components/primitives/Pill';
-
-function latestValue(data: ReturnType<typeof usePromQuery>['data']): number {
-  const dp = data?.series[0]?.dataPoints;
-  if (!dp || dp.length === 0) return 0;
-  return parseFloat(dp[dp.length - 1]!.value) || 0;
-}
-
-function formatCount(v: number): string {
-  return v >= 1000 ? `${(v / 1000).toFixed(1)}K` : v.toFixed(0);
-}
+import { latestValue, formatKpi, seriesToBars } from '@/routes/Pulse/pulse-helpers';
 
 function formatMs(v: number): string {
   return v >= 1000 ? `${(v / 1000).toFixed(2)}s` : `${v.toFixed(0)}ms`;
@@ -108,10 +99,26 @@ export default function ToolsPage() {
   }
 
   const latencyMs = latestValue(avgLatency.data) * 1000;
+  const callsVal = latestValue(callsTotal.data);
+  const errorsVal = latestValue(errorsTotal.data);
+  const resultSizeVal = latestValue(resultSize.data);
   const reliabilityRows = buildReliabilityRows(
     callsByTool.data,
     errorsByTool.data,
     latencyByTool.data,
+  );
+
+  const callsBars = seriesToBars(
+    callsByTool.data?.series ?? [],
+    'tool_name',
+    (v) => formatKpi(v, 'count'),
+  );
+
+  const latencyBars = seriesToBars(
+    latencyByTool.data?.series ?? [],
+    'tool_name',
+    formatMs,
+    (v) => v * 1000,
   );
 
   return (
@@ -123,25 +130,25 @@ export default function ToolsPage() {
           <KpiCard
             title="Total Calls"
             description="Number of tool invocations made by agents across all sessions. Shows 0 when no agent turns have required tool use in the selected time range."
-            value={latestValue(callsTotal.data).toFixed(0)}
+            value={formatKpi(callsVal, 'count')}
             sparklineData={callsTotal.data?.series[0]?.dataPoints}
           />
           <KpiCard
             title="Errors"
             description="Number of tool invocations that returned an error or threw an exception. Shows 0 when all tool calls have completed successfully."
-            value={latestValue(errorsTotal.data).toFixed(0)}
+            value={formatKpi(errorsVal, 'count')}
             sparklineData={errorsTotal.data?.series[0]?.dataPoints}
           />
           <KpiCard
             title="Avg Latency"
             description="Mean execution time across all tool calls, measured from invocation to result. Shows 0ms when no tool calls have been recorded."
-            value={`${latencyMs.toFixed(0)}ms`}
+            value={formatMs(latencyMs)}
             sparklineData={avgLatency.data?.series[0]?.dataPoints}
           />
           <KpiCard
             title="Avg Result Size"
             description="Mean character count of tool return values sent back to the LLM. Shows 0 when no tool results have been recorded."
-            value={`${latestValue(resultSize.data).toFixed(0)}`}
+            value={formatKpi(resultSizeVal, 'count')}
             unit="chars"
             sparklineData={resultSize.data?.series[0]?.dataPoints}
           />
@@ -151,31 +158,17 @@ export default function ToolsPage() {
       <Section title="Tool Breakdown" kicker="02">
         <PanelGrid columns={2}>
           <PanelCard title="Calls by Tool" description="Invocation count per tool">
-            <HBarList
-              items={(callsByTool.data?.series ?? []).map((s) => ({
-                label: s.labels['tool_name'] ?? 'unknown',
-                value: parseFloat(s.dataPoints[s.dataPoints.length - 1]?.value ?? '0'),
-              }))}
-              color="var(--otel-accent)"
-              formatValue={formatCount}
-            />
+            <HBarList items={callsBars} colourBy="category" />
           </PanelCard>
           <PanelCard title="Latency by Tool" description="Average execution time">
-            <HBarList
-              items={(latencyByTool.data?.series ?? []).map((s) => ({
-                label: s.labels['tool_name'] ?? 'unknown',
-                value: parseFloat(s.dataPoints[s.dataPoints.length - 1]?.value ?? '0') * 1000,
-              }))}
-              color="var(--otel-warning)"
-              formatValue={formatMs}
-            />
+            <HBarList items={latencyBars} colourBy="category" />
           </PanelCard>
         </PanelGrid>
       </Section>
 
       <Section title="Reliability Board" kicker="03">
         <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="flex px-4 py-2 text-[10px] uppercase tracking-wider text-otel-text-mute border-b border-border">
+          <div className="flex px-4 py-2 text-[10px] uppercase tracking-wider text-muted-foreground border-b border-border">
             <div className="flex-[2]">Tool</div>
             <div className="flex-1 text-right">Calls</div>
             <div className="flex-1 text-right">Errors</div>
@@ -183,7 +176,7 @@ export default function ToolsPage() {
             <div className="flex-1 text-right">Avg Latency</div>
           </div>
           {reliabilityRows.length === 0 && (
-            <div className="px-4 py-6 text-center text-[11px] text-otel-text-mute">
+            <div className="px-4 py-6 text-center text-[11px] text-muted-foreground">
               No tool data available
             </div>
           )}
@@ -194,7 +187,7 @@ export default function ToolsPage() {
             >
               <div className="flex-[2] font-mono text-foreground truncate">{row.name}</div>
               <div className="flex-1 text-right font-mono tabular-nums text-foreground">
-                {formatCount(row.calls)}
+                {formatKpi(row.calls, 'count')}
               </div>
               <div className="flex-1 text-right font-mono tabular-nums text-foreground">
                 {row.errors.toFixed(0)}
@@ -204,7 +197,7 @@ export default function ToolsPage() {
                   {(row.errorRate * 100).toFixed(1)}%
                 </Pill>
               </div>
-              <div className="flex-1 text-right font-mono tabular-nums text-otel-text-dim">
+              <div className="flex-1 text-right font-mono tabular-nums text-muted-foreground">
                 {formatMs(row.avgLatency)}
               </div>
             </div>
