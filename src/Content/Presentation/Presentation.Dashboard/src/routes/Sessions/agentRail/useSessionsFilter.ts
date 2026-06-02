@@ -1,0 +1,66 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { SessionRecord } from '@/api/types';
+import type { AgentRollup } from '@/lib/agentRoster';
+
+export interface SessionsFilterState {
+  /** Selected agent id, or null when the rail shows "All agents". */
+  selectedAgentId: string | null;
+  selectAgent: (id: string | null) => void;
+  /** Sessions filtered against the current selection. */
+  filteredSessions: SessionRecord[];
+  /** Convenience flag for the rail's "All agents" affordance. */
+  isFiltered: boolean;
+}
+
+interface UseSessionsFilterOptions {
+  sessions: SessionRecord[];
+  roster: AgentRollup[];
+}
+
+/**
+ * Owns the page-level "which agent is selected?" state and projects the
+ * filtered sessions list off the canonical sessions array. Filter is by
+ * `agentName` (the field the sessions wire actually carries) joined against
+ * the roster's id → name mapping; an unknown id renders zero rows so a stale
+ * selection doesn't accidentally widen the table back to "all".
+ */
+export function useSessionsFilter({
+  sessions,
+  roster,
+}: UseSessionsFilterOptions): SessionsFilterState {
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+
+  // Auto-clear the selection when the roster identity transitions and the
+  // previously-selected id is no longer in it. This covers the cold-load
+  // race where the fallback roster (id = agentName) gets clicked, then the
+  // registry resolves and ids switch to canonical 'agent-xxx' values — the
+  // old id would otherwise produce a silent empty list with no active tile.
+  useEffect(() => {
+    if (selectedAgentId === null) return;
+    const exists = roster.some((a) => a.id === selectedAgentId);
+    if (!exists) setSelectedAgentId(null);
+  }, [selectedAgentId, roster]);
+
+  const filteredSessions = useMemo(() => {
+    // null id → no filter; full list passes through.
+    if (selectedAgentId === null) return sessions;
+    const selectedName =
+      roster.find((a) => a.id === selectedAgentId)?.name ?? null;
+    // Selection points at an id the roster doesn't know — return empty so
+    // the user sees the empty state. The useEffect above will clear the
+    // selection on the next paint.
+    if (selectedName === null) return [];
+    return sessions.filter((s) => s.agentName === selectedName);
+  }, [sessions, selectedAgentId, roster]);
+
+  const selectAgent = useCallback((id: string | null) => {
+    setSelectedAgentId(id);
+  }, []);
+
+  return {
+    selectedAgentId,
+    selectAgent,
+    filteredSessions,
+    isFiltered: selectedAgentId !== null,
+  };
+}

@@ -337,6 +337,16 @@ export const handlers = [
   }),
 
   // --- Evals (Sub-phase 5.4) ---
+  // PR 5: SessionsPage agent rail reads /api/agents to render the canonical
+  // roster. Ids here line up with the agentName field on the seeded sessions
+  // so the in-place filter test exercises a real join.
+  http.get('/api/agents', () => {
+    return HttpResponse.json([
+      { id: 'agent-code', name: 'CodeAssistant', description: 'General-purpose pair-coder' },
+      { id: 'agent-research', name: 'ResearchAgent', description: 'Reads docs and synthesises notes' },
+    ]);
+  }),
+
   http.get('/api/evals/runs', () => {
     return HttpResponse.json([
       {

@@ -1,3 +1,14 @@
+/**
+ * Lightweight wire shape returned by `GET /api/agents` — mirrors the C#
+ * record `Presentation.AgentHub.DTOs.AgentSummary(Id, Name, Description)`.
+ * Consumed by the agent rail on the SessionsPage.
+ */
+export interface AgentSummary {
+  id: string;
+  name: string;
+  description: string;
+}
+
 export interface MetricDataPoint {
   timestamp: number;
   value: string;

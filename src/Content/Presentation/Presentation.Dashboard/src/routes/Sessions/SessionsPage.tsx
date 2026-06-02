@@ -1,18 +1,22 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { usePromQuery } from '@/hooks/usePromQuery';
 import { metricCatalog } from '@/config/metricCatalog';
 import { fetchSessions } from '@/api/sessions';
+import { fetchAgents } from '@/api/agents';
 import { useTimeRangeStore } from '@/stores/timeRangeStore';
-import { useMemo } from 'react';
 import { KpiCard } from '@/components/panels/KpiCard';
 import { PanelCard } from '@/components/panels/PanelCard';
 import { PanelGrid } from '@/components/panels/PanelGrid';
 import { LoadingSkeleton } from '@/components/panels/LoadingSkeleton';
 import { EmptyState } from '@/components/panels/EmptyState';
 import { PageHeader } from '@/components/primitives/PageHeader';
-import { StatusBadge } from './StatusBadge';
-import { formatDuration, formatDurationSeconds, formatTokens, formatCost, formatTimestamp } from './format';
+import { buildAgentRoster } from '@/lib/agentRoster';
+import { AgentRail } from './agentRail/AgentRail';
+import { useSessionsFilter } from './agentRail/useSessionsFilter';
+import { SessionTableRow } from './SessionTableRow';
+import { formatDurationSeconds } from './format';
 import type { SessionRecord } from '@/api/types';
 
 function latestValue(data: ReturnType<typeof usePromQuery>['data']): number {
@@ -21,140 +25,16 @@ function latestValue(data: ReturnType<typeof usePromQuery>['data']): number {
   return parseFloat(dp[dp.length - 1]!.value) || 0;
 }
 
-function formatTimeLabel(date: Date): string {
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatGanttDuration(ms: number | null): string {
-  if (ms === null || ms <= 0) return 'active';
-  if (ms < 1000) return `${ms}ms`;
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const minutes = seconds / 60;
-  if (minutes < 60) return `${minutes.toFixed(1)}m`;
-  const hours = minutes / 60;
-  return `${hours.toFixed(1)}h`;
-}
-
-function getStatusColors(status: string): { bg: string; border: string; hover: string } {
-  switch (status) {
-    case 'active':
-      return {
-        bg: 'bg-otel-positive/30',
-        border: 'border-otel-positive',
-        hover: 'hover:bg-otel-positive/45',
-      };
-    case 'errored':
-      return {
-        bg: 'bg-otel-negative/30',
-        border: 'border-otel-negative',
-        hover: 'hover:bg-otel-negative/45',
-      };
-    default:
-      return {
-        bg: 'bg-otel-accent/25',
-        border: 'border-otel-accent',
-        hover: 'hover:bg-otel-accent/40',
-      };
-  }
-}
-
-interface GanttTimelineProps {
-  sessions: SessionRecord[];
-  onSessionClick: (id: string) => void;
-}
-
-function GanttTimeline({ sessions, onSessionClick }: GanttTimelineProps) {
-  const { rangeStart, rangeEnd, rangeWidth, markers } = useMemo(() => {
-    if (sessions.length === 0) {
-      const now = Date.now();
-      return { rangeStart: now, rangeEnd: now, rangeWidth: 1, markers: [] as Date[] };
-    }
-
-    const starts = sessions.map((s) => new Date(s.startedAt).getTime());
-    const ends = sessions.map((s) =>
-      s.endedAt ? new Date(s.endedAt).getTime() : Date.now(),
-    );
-
-    const minStart = Math.min(...starts);
-    const maxEnd = Math.max(...ends);
-    const width = maxEnd - minStart || 1;
-
-    const m = [0, 0.25, 0.5, 0.75, 1].map(
-      (pct) => new Date(minStart + width * pct),
-    );
-
-    return { rangeStart: minStart, rangeEnd: maxEnd, rangeWidth: width, markers: m };
-  }, [sessions]);
-
-  if (sessions.length === 0) {
-    return (
-      <EmptyState
-        title="No sessions to visualize"
-        description="Sessions will appear on the timeline once agent conversations are recorded."
-      />
-    );
-  }
-
-  return (
-    <div className="space-y-1">
-      {/* Time axis */}
-      <div className="relative h-6 mb-2 border-b border-border/50">
-        {markers.map((m, i) => {
-          const pct = ((m.getTime() - rangeStart) / rangeWidth) * 100;
-          return (
-            <span
-              key={i}
-              className="absolute text-[10px] text-muted-foreground -translate-x-1/2 top-0"
-              style={{ left: `${pct}%` }}
-            >
-              {formatTimeLabel(m)}
-            </span>
-          );
-        })}
-      </div>
-
-      {/* Session bars */}
-      <div className="space-y-1.5">
-        {sessions.map((s) => {
-          const startMs = new Date(s.startedAt).getTime();
-          const endMs = s.endedAt ? new Date(s.endedAt).getTime() : Date.now();
-          const duration = endMs - startMs;
-
-          const leftPct = ((startMs - rangeStart) / rangeWidth) * 100;
-          const widthPct = Math.max((duration / rangeWidth) * 100, 2);
-
-          const colors = getStatusColors(s.status);
-
-          return (
-            <div key={s.id} className="relative h-8" title={`${s.agentName} - ${formatGanttDuration(s.durationMs)}`}>
-              <button
-                onClick={() => onSessionClick(s.id)}
-                className={`absolute top-0 h-full rounded-md border ${colors.bg} ${colors.border} ${colors.hover} transition-colors cursor-pointer flex items-center overflow-hidden px-2 gap-1.5`}
-                style={{ left: `${leftPct}%`, width: `${widthPct}%`, minWidth: '60px' }}
-              >
-                <span className="text-xs font-medium text-foreground truncate">
-                  {s.agentName}
-                </span>
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap ml-auto">
-                  {formatGanttDuration(s.durationMs)}
-                </span>
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export default function SessionsPage() {
   const navigate = useNavigate();
   const preset = useTimeRangeStore((s) => s.preset);
   const customStart = useTimeRangeStore((s) => s.customStart);
   const customEnd = useTimeRangeStore((s) => s.customEnd);
   const getRange = useTimeRangeStore((s) => s.getRange);
-  const { start, end } = useMemo(() => getRange(), [preset, customStart, customEnd, getRange]);
+  const { start, end } = useMemo(
+    () => getRange(),
+    [preset, customStart, customEnd, getRange],
+  );
 
   const sessionsTotal = usePromQuery(metricCatalog['sessions_total']!.query);
   const sessionsActive = usePromQuery(metricCatalog['sessions_active']!.query);
@@ -167,11 +47,30 @@ export default function SessionsPage() {
     staleTime: 30_000,
   });
 
+  // Separate query so the rail can render once agents come back; refetches
+  // on its own 60s cadence and survives time-range changes (agents are not
+  // time-bound). Single retry — registry failures are typically auth/role
+  // problems where hammering doesn't help; surface via `degraded` instead.
+  const agentsQuery = useQuery({
+    queryKey: ['agents'],
+    queryFn: fetchAgents,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
+  const sessions = sessionsQuery.data ?? [];
+  const roster = useMemo(
+    () => buildAgentRoster(agentsQuery.data ?? [], sessions),
+    [agentsQuery.data, sessions],
+  );
+
+  const filter = useSessionsFilter({ sessions, roster });
+
   const isKpiLoading = sessionsTotal.isLoading;
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Sessions" subtitle="Session analytics and timeline view" />
+      <PageHeader title="Sessions" subtitle="Agents in flight + per-session context-window composition" />
 
       {isKpiLoading ? (
         <PanelGrid columns={4}>
@@ -206,33 +105,51 @@ export default function SessionsPage() {
         </PanelGrid>
       )}
 
-      <PanelCard title="Session Timeline" description="Click a session bar to view details">
-        <GanttTimeline
-          sessions={sessionsQuery.data ?? []}
-          onSessionClick={(id) => navigate(`/sessions/${id}`)}
+      <div className="flex items-start gap-6">
+        <AgentRail
+          agents={roster}
+          selectedAgentId={filter.selectedAgentId}
+          onSelectAgent={filter.selectAgent}
+          degraded={agentsQuery.isError}
         />
-      </PanelCard>
 
-      <PanelCard title="Recent Sessions" description="Click a row to view session details">
-        <SessionTable
-          sessions={sessionsQuery.data ?? []}
-          isLoading={sessionsQuery.isLoading}
-          isError={sessionsQuery.isError}
-          onRowClick={(id) => navigate(`/sessions/${id}`)}
-        />
-      </PanelCard>
+        <PanelCard
+          title="Recent Sessions"
+          description={
+            filter.isFiltered
+              ? `Filtered to one agent — ${filter.filteredSessions.length} session${filter.filteredSessions.length === 1 ? '' : 's'}`
+              : 'Click a row to view session details'
+          }
+          className="flex-1 min-w-0"
+        >
+          <SessionTable
+            sessions={filter.filteredSessions}
+            isLoading={sessionsQuery.isLoading}
+            isError={sessionsQuery.isError}
+            isFiltered={filter.isFiltered}
+            onRowClick={(id) => navigate(`/sessions/${id}`)}
+          />
+        </PanelCard>
+      </div>
     </div>
   );
 }
 
 interface SessionTableProps {
-  sessions: Awaited<ReturnType<typeof fetchSessions>>;
+  sessions: SessionRecord[];
   isLoading: boolean;
   isError: boolean;
+  isFiltered: boolean;
   onRowClick: (id: string) => void;
 }
 
-function SessionTable({ sessions, isLoading, isError, onRowClick }: SessionTableProps) {
+function SessionTable({
+  sessions,
+  isLoading,
+  isError,
+  isFiltered,
+  onRowClick,
+}: SessionTableProps) {
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -255,8 +172,12 @@ function SessionTable({ sessions, isLoading, isError, onRowClick }: SessionTable
   if (sessions.length === 0) {
     return (
       <EmptyState
-        title="No sessions recorded"
-        description="Sessions will appear here once agent conversations are initiated."
+        title={isFiltered ? 'No sessions for this agent' : 'No sessions yet'}
+        description={
+          isFiltered
+            ? 'This agent has no sessions in the current time range. Click another tile or "All agents" to reset.'
+            : 'Sessions appear here once an agent runs at least one conversation in the selected time range.'
+        }
       />
     );
   }
@@ -274,29 +195,13 @@ function SessionTable({ sessions, isLoading, isError, onRowClick }: SessionTable
             <th className="pb-2 pr-4 text-right">Tools</th>
             <th className="pb-2 pr-4 text-right">Tokens</th>
             <th className="pb-2 pr-4 text-right">Cost</th>
-            <th className="pb-2">Status</th>
+            <th className="pb-2 pr-4">Status</th>
+            <th className="pb-2 w-32">Context</th>
           </tr>
         </thead>
         <tbody>
           {sessions.map((s) => (
-            <tr
-              key={s.id}
-              data-testid={`session-row-${s.id}`}
-              onClick={() => onRowClick(s.id)}
-              className="border-b border-border/50 cursor-pointer hover:bg-muted/50 transition-colors"
-            >
-              <td className="py-2.5 pr-4 font-medium text-card-foreground">{s.agentName}</td>
-              <td className="py-2.5 pr-4 text-muted-foreground">{s.model ?? '--'}</td>
-              <td className="py-2.5 pr-4 text-muted-foreground">{formatTimestamp(s.startedAt)}</td>
-              <td className="py-2.5 pr-4 text-right text-muted-foreground">{formatDuration(s.durationMs)}</td>
-              <td className="py-2.5 pr-4 text-right">{s.turnCount}</td>
-              <td className="py-2.5 pr-4 text-right">{s.toolCallCount}</td>
-              <td className="py-2.5 pr-4 text-right text-muted-foreground">
-                {formatTokens(s.totalInputTokens)} / {formatTokens(s.totalOutputTokens)}
-              </td>
-              <td className="py-2.5 pr-4 text-right">{formatCost(s.totalCostUsd)}</td>
-              <td className="py-2.5"><StatusBadge status={s.status} /></td>
-            </tr>
+            <SessionTableRow key={s.id} session={s} onRowClick={onRowClick} />
           ))}
         </tbody>
       </table>

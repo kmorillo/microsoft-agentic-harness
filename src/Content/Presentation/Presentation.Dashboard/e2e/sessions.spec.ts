@@ -35,9 +35,59 @@ test.describe('Sessions List Page', () => {
     expect(Number(turns)).toBeGreaterThan(0);
   });
 
-  test('session timeline panel renders', async ({ page }) => {
-    const timeline = page.locator('[data-testid="panel-session-timeline"]');
-    await expect(timeline).toBeVisible();
+  test('agent rail renders with at least one tile', async ({ page }) => {
+    // PR 5: Foresight reskin replaced the Gantt timeline with the agent
+    // rail. The rail lives to the left of the table and is the entry point
+    // for the in-place filter affordance.
+    const rail = page.locator('[data-testid="agent-rail"]');
+    await expect(rail).toBeVisible();
+    const tiles = rail.locator('[data-testid^="agent-rail-tile-"]');
+    expect(await tiles.count()).toBeGreaterThanOrEqual(1);
+    await expect(rail.locator('[data-testid="agent-rail-all"]')).toBeVisible();
+  });
+
+  test('clicking an agent tile filters the sessions table', async ({ page }) => {
+    // Use the dedicated name testid so we read the agent name (not the
+    // avatar initials, which are the first span inside the button).
+    const firstTile = page.locator('[data-testid^="agent-rail-tile-"]').first();
+    const tileName = await firstTile
+      .locator('[data-testid^="agent-rail-tile-name-"]')
+      .first()
+      .textContent();
+    await firstTile.click();
+
+    // Every visible row's Agent column should match the selected agent.
+    const rows = page.locator('[data-testid="session-table"] tbody tr');
+    const count = await rows.count();
+    expect(count).toBeGreaterThanOrEqual(1);
+    for (let i = 0; i < count; i++) {
+      const cellText = await rows.nth(i).locator('td').first().textContent();
+      expect(cellText?.trim()).toBe(tileName?.trim());
+    }
+  });
+
+  test('clicking "All agents" clears the filter', async ({ page }) => {
+    const firstTile = page.locator('[data-testid^="agent-rail-tile-"]').first();
+    await firstTile.click();
+    await page.locator('[data-testid="agent-rail-all"]').click();
+
+    // After clearing, the All-agents pseudo-tile is the active one.
+    await expect(
+      page.locator('[data-testid="agent-rail-all"]'),
+    ).toHaveAttribute('data-active', 'true');
+  });
+
+  test('rows expose a mini context bar column (or fallback rail)', async ({ page }) => {
+    // The new mini-bar column lives on every row; sessions with a
+    // breakdown show the ContextBar, sessions without it show the
+    // fallback. Either testid prefix must be present per row.
+    const rows = page.locator('[data-testid^="session-row-"]');
+    const count = await rows.count();
+    expect(count).toBeGreaterThanOrEqual(1);
+    const barOrFallback = page.locator(
+      '[data-testid^="session-row-bar-"]',
+    );
+    expect(await barOrFallback.count()).toBeGreaterThanOrEqual(count);
   });
 
   test('clicking a session row navigates to detail', async ({ page }) => {
