@@ -77,7 +77,10 @@ public static class AppConfigHelper
 
         var builder = new ConfigurationBuilder();
 
-        builder.SetBasePath(Directory.GetCurrentDirectory());
+        // Anchor on the executing binary's directory (where the build copies appsettings.json)
+        // rather than CWD. This lets `dotnet run --project X` work from any directory,
+        // and matches how published binaries behave.
+        builder.SetBasePath(AppContext.BaseDirectory);
 
         builder.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
         builder.AddJsonFile($"appsettings.{GetEnvironmentName()}.json", optional: true, reloadOnChange: true);

@@ -82,6 +82,7 @@ public static class IServiceCollectionExtensions
         services.Configure<ConnectorsConfig>(configuration.GetSection("AppConfig:Connectors"));
         services.Configure<ObservabilityConfig>(configuration.GetSection("AppConfig:Observability"));
         services.Configure<AIConfig>(configuration.GetSection("AppConfig:AI"));
+        services.Configure<EmbeddingConfig>(configuration.GetSection("AppConfig:AI:Embedding"));
         services.Configure<AzureConfig>(configuration.GetSection("AppConfig:Azure"));
         services.Configure<CacheConfig>(configuration.GetSection("AppConfig:Cache"));
         services.Configure<EscalationConfig>(configuration.GetSection("AppConfig:AI:Governance:Escalation"));

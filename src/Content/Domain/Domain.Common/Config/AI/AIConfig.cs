@@ -26,6 +26,7 @@ namespace Domain.Common.Config.AI;
 /// <code>
 /// AppConfig.AI
 /// ├── AgentFramework    — Provider type and default deployment
+/// ├── Embedding         — Optional dedicated embedding provider (falls back to AgentFramework)
 /// ├── AIFoundry         — Azure AI Foundry persistent agents
 /// ├── MCP               — Server-side MCP configuration (auth, tool assemblies)
 /// ├── McpServers        — Client-side MCP server registry (external servers to connect to)
@@ -53,6 +54,16 @@ public class AIConfig
     /// Gets or sets the agent framework provider and default deployment settings.
     /// </summary>
     public AgentFrameworkConfig AgentFramework { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the optional dedicated embedding provider used by RAG and
+    /// knowledge graph features. When unset, the harness reuses the
+    /// <see cref="AgentFramework"/> client for embeddings if that provider
+    /// supports them (AzureOpenAI, OpenAI). Required when
+    /// <see cref="AgentFramework"/> selects a chat-only provider such as
+    /// Anthropic or AzureAIInference.
+    /// </summary>
+    public EmbeddingConfig Embedding { get; set; } = new();
 
     /// <summary>
     /// Gets or sets the Azure AI Foundry configuration for persistent agents.
