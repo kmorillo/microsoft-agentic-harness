@@ -252,14 +252,14 @@ function SessionHeader({ session }: { session: SessionRecord }) {
               data-testid={`stat-${slug}`}
               className={`px-4 py-3 text-center ${i < stats.length - 1 ? 'border-r border-border' : ''}`}
             >
-              <p className="text-[11px] uppercase tracking-wider text-otel-text-mute">
+              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
                 {s.label}
               </p>
               <p data-testid={`stat-${slug}-value`} className="text-base font-semibold font-mono tabular-nums text-card-foreground mt-0.5">
                 {s.value}
               </p>
               {s.sub && (
-                <p className="text-[10px] text-otel-text-dim mt-0.5">{s.sub}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{s.sub}</p>
               )}
             </div>
           );

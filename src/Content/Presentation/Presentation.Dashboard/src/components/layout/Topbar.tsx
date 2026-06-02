@@ -1,7 +1,6 @@
 import { RefreshCw } from 'lucide-react';
 import { TimeRangePicker } from './TimeRangePicker';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
-import { PulseDot } from '@/components/primitives/PulseDot';
 import { useTelemetryStore } from '@/stores/telemetryStore';
 import { useTimeRangeStore } from '@/stores/timeRangeStore';
 import { useQueryClient } from '@tanstack/react-query';
@@ -21,6 +20,26 @@ const breadcrumbMap: Record<string, string> = {
   '/catalog': 'Catalog',
 };
 
+/**
+ * Animated status pip — pulses outward when connected to convey live data
+ * flow. Inlined here (instead of a `PulseDot` primitive) because Topbar is
+ * the only consumer; relies on the `pulse-ring` keyframe in index.css.
+ */
+function ConnectionPip({ connected }: { connected: boolean }) {
+  const color = connected ? 'var(--otel-positive)' : 'var(--otel-negative)';
+  return (
+    <span className="relative inline-block" style={{ width: 6, height: 6 }}>
+      {connected && (
+        <span
+          className="absolute inset-0 rounded-full opacity-40"
+          style={{ background: color, animation: 'pulse-ring 1.6s ease-out infinite' }}
+        />
+      )}
+      <span className="absolute inset-0 rounded-full" style={{ background: color }} />
+    </span>
+  );
+}
+
 export function Topbar() {
   const connected = useTelemetryStore((s) => s.connected);
   const refreshInterval = useTimeRangeStore((s) => s.refreshIntervalSeconds);
@@ -32,14 +51,14 @@ export function Topbar() {
   return (
     <header className="h-12 border-b border-border bg-background flex items-center justify-between px-5">
       <div className="flex items-center gap-3">
-        <span className="text-[11px] font-mono text-otel-text-dim">{breadcrumb}</span>
+        <span className="text-[11px] font-mono text-muted-foreground">{breadcrumb}</span>
         <TimeRangePicker />
         <div className="flex items-center gap-1.5 ml-2">
-          <PulseDot color={connected ? 'var(--otel-positive)' : 'var(--otel-negative)'} size={6} />
+          <ConnectionPip connected={connected} />
           <span className={`text-[10px] font-mono ${connected ? 'text-otel-positive' : 'text-otel-negative'}`}>
             {connected ? 'LIVE' : 'OFFLINE'}
           </span>
-          <span className="text-[10px] text-otel-text-mute ml-1">· {refreshInterval}s</span>
+          <span className="text-[10px] text-muted-foreground ml-1">· {refreshInterval}s</span>
         </div>
       </div>
       <div className="flex items-center gap-2">
