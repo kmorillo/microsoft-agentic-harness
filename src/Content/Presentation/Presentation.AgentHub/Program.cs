@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Presentation.AgentHub;
 using Presentation.AgentHub.AgUi;
+using Presentation.AgentHub.HealthChecks;
 using Presentation.AgentHub.Hubs;
 using Presentation.Common.Extensions;
 
@@ -34,8 +36,13 @@ var app = builder.Build();
 app.UseSecurityHeadersMiddleware();
 app.UseGlobalExceptionMiddleware();
 if (!app.Environment.IsDevelopment())
+{
     app.UseHsts();
-app.UseHttpsRedirection();
+    // Skipped in Development: the Vite dev proxy forwards over http://:52000, and an
+    // http→https redirect (to :52001) makes the browser follow cross-origin, breaking
+    // the same-origin proxy model and failing credentialed SignalR negotiation with CORS.
+    app.UseHttpsRedirection();
+}
 // UseCors must precede UseAuthentication so CORS preflight (OPTIONS) is answered
 // before the auth middleware can reject with 401.
 app.UseRouting();
@@ -48,6 +55,14 @@ app.MapHub<AgentTelemetryHub>("/hubs/agent");
 app.MapAgUiEndpoints();
 app.MapPrometheusScrapingEndpoint().RequireAuthorization();
 app.AddHealthCheckEndpoint("/api");
+
+// Lightweight, AI-only readiness probe. Returns the missing configuration keys in its JSON body
+// so a developer (or CI) can see at a glance why agent turns are failing.
+app.MapHealthChecks("/health/ai", new HealthCheckOptions
+{
+    Predicate = static registration => registration.Tags.Contains("ai"),
+    ResponseWriter = AiHealthEndpoint.WriteResponse,
+});
 
 app.Run();
 

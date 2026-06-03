@@ -82,8 +82,10 @@ public class AzureAIConnectivityTests
     }
 
     /// <summary>
-    /// Marks the test as Skipped when any of Endpoint/ApiKey/DefaultDeployment
-    /// secrets are missing, rather than failing the run.
+    /// Marks the test as Skipped when the Azure-AI credentials are missing OR when the configured
+    /// endpoint is not an Azure AI Foundry endpoint — these tests are specific to the Azure Anthropic
+    /// surface, so a dev environment pointed at another OpenAI-compatible provider (e.g. OpenRouter)
+    /// must skip rather than fail.
     /// </summary>
     private void SkipIfCredentialsMissing()
     {
@@ -93,5 +95,16 @@ public class AzureAIConnectivityTests
             string.IsNullOrWhiteSpace(_deployment),
             "Azure AI credentials not configured in user secrets for agentic-harness-console-ui. " +
             "Set AppConfig:AI:AgentFramework:Endpoint, ApiKey, and DefaultDeployment to enable.");
+
+        Skip.IfNot(
+            IsAzureFoundryEndpoint(_endpoint!),
+            $"Configured endpoint '{_endpoint}' is not an Azure AI Foundry endpoint — these Azure-specific " +
+            "connectivity tests are skipped (the harness is pointed at another provider, e.g. OpenRouter).");
     }
+
+    private static bool IsAzureFoundryEndpoint(string endpoint) =>
+        Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) &&
+        (uri.Host.EndsWith(".services.ai.azure.com", StringComparison.OrdinalIgnoreCase) ||
+         uri.Host.EndsWith(".cognitiveservices.azure.com", StringComparison.OrdinalIgnoreCase) ||
+         uri.Host.EndsWith(".openai.azure.com", StringComparison.OrdinalIgnoreCase));
 }

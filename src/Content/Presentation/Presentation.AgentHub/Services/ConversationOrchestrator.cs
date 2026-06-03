@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using Application.AI.Common.Exceptions;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.OpenTelemetry.Metrics;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using Domain.AI.Telemetry.Conventions;
 using MediatR;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Presentation.AgentHub.Config;
 using Presentation.AgentHub.DTOs;
@@ -27,6 +29,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
     private readonly IObservabilityStore _observabilityStore;
     private readonly IConnectionTracker _connectionTracker;
     private readonly AgentHubConfig _config;
+    private readonly IHostEnvironment _environment;
     private readonly ILogger<ConversationOrchestrator> _logger;
 
     public ConversationOrchestrator(
@@ -37,6 +40,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         IObservabilityStore observabilityStore,
         IConnectionTracker connectionTracker,
         IOptions<AgentHubConfig> config,
+        IHostEnvironment environment,
         ILogger<ConversationOrchestrator> logger)
     {
         _mediator = mediator;
@@ -46,6 +50,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         _observabilityStore = observabilityStore;
         _connectionTracker = connectionTracker;
         _config = config.Value;
+        _environment = environment;
         _logger = logger;
     }
 
@@ -263,14 +268,16 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         catch (Exception ex)
         {
             _healthTracker.RecordError(agentName);
-            return await HandleTurnErrorAsync(conversationId, ex, ct);
+            var kind = ex is AiProviderNotConfiguredException ? AgentTurnErrorKind.Configuration : AgentTurnErrorKind.Internal;
+            return await HandleTurnErrorAsync(conversationId, ex, kind, ct);
         }
 
         if (!result.Success)
         {
             _healthTracker.RecordError(agentName);
             return await HandleTurnErrorAsync(conversationId,
-                new InvalidOperationException(result.Error ?? "Agent returned a failure result."), ct);
+                new InvalidOperationException(result.Error ?? "Agent returned a failure result."),
+                result.ErrorKind, ct);
         }
 
         var agentTag = new KeyValuePair<string, object?>(AgentConventions.Name, agentName);
@@ -382,9 +389,18 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
     }
 
     private async Task<TurnOutcome> HandleTurnErrorAsync(
-        string conversationId, Exception ex, CancellationToken ct)
+        string conversationId, Exception ex, AgentTurnErrorKind errorKind, CancellationToken ct)
     {
         _logger.LogError(ex, "Agent turn failed for conversation {ConversationId}.", conversationId);
+
+        // A provider-configuration failure carries an actionable, secret-free message. Surface it in
+        // Development so the chat explains what to fix; keep it generic in Production to avoid leaking
+        // configuration detail. Mirrors AgUiRunHandler so both transports behave the same.
+        var clientMessage = errorKind == AgentTurnErrorKind.Configuration
+            && _environment.IsDevelopment()
+            && !string.IsNullOrWhiteSpace(ex.Message)
+                ? ex.Message
+                : "An error occurred processing your request.";
 
         try
         {
@@ -403,7 +419,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         return new TurnOutcome
         {
             Success = false,
-            ErrorMessage = "An error occurred processing your request.",
+            ErrorMessage = clientMessage,
         };
     }
 

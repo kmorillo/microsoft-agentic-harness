@@ -80,6 +80,13 @@ public record AgentTurnResult : IAgentTurnResult
 	public IReadOnlyList<string> ToolsInvoked { get; init; } = [];
 	public string? Error { get; init; }
 
+	/// <summary>
+	/// Classifies a failed turn so transports can decide how to surface <see cref="Error"/>.
+	/// <see cref="AgentTurnErrorKind.Configuration"/> errors carry an actionable, secret-free
+	/// message that may be shown to developers; other kinds stay generic in production.
+	/// </summary>
+	public AgentTurnErrorKind ErrorKind { get; init; } = AgentTurnErrorKind.None;
+
 	// Token usage captured from the LLM calls during this turn
 	public int InputTokens { get; init; }
 	public int OutputTokens { get; init; }
@@ -87,4 +94,22 @@ public record AgentTurnResult : IAgentTurnResult
 	public int CacheWrite { get; init; }
 	public decimal CostUsd { get; init; }
 	public string? Model { get; init; }
+}
+
+/// <summary>
+/// Classifies why an agent turn failed, so transports can choose how much detail to surface.
+/// </summary>
+public enum AgentTurnErrorKind
+{
+	/// <summary>The turn succeeded, or no classification applies.</summary>
+	None,
+
+	/// <summary>
+	/// The AI provider is not configured (missing endpoint, API key, or registered client).
+	/// The accompanying message is actionable and secret-free.
+	/// </summary>
+	Configuration,
+
+	/// <summary>An unexpected internal error occurred during the turn.</summary>
+	Internal
 }

@@ -2,6 +2,7 @@ using Application.AI.Common.Interfaces;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using FluentAssertions;
 using MediatR;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -28,15 +29,21 @@ public class ConversationOrchestratorTests
     private readonly ConversationLockRegistry _lockRegistry = new();
     private readonly AgentHubConfig _config = new() { MaxHistoryMessages = 20 };
 
-    private ConversationOrchestrator CreateOrchestrator() => new(
-        _mediator.Object,
-        _store.Object,
-        _lockRegistry,
-        _healthTracker.Object,
-        _obsStore.Object,
-        _connectionTracker.Object,
-        Options.Create(_config),
-        NullLogger<ConversationOrchestrator>.Instance);
+    private ConversationOrchestrator CreateOrchestrator(string environmentName = "Development")
+    {
+        var environment = new Mock<IHostEnvironment>();
+        environment.SetupGet(e => e.EnvironmentName).Returns(environmentName);
+        return new(
+            _mediator.Object,
+            _store.Object,
+            _lockRegistry,
+            _healthTracker.Object,
+            _obsStore.Object,
+            _connectionTracker.Object,
+            Options.Create(_config),
+            environment.Object,
+            NullLogger<ConversationOrchestrator>.Instance);
+    }
 
     // ── StartConversation ────────────────────────────────────────────────
 
@@ -224,6 +231,66 @@ public class ConversationOrchestratorTests
 
         outcome.Success.Should().BeFalse();
         _healthTracker.Verify(h => h.RecordError("agent"), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendMessage_ConfigurationError_InDevelopment_SurfacesActionableMessage()
+    {
+        const string actionable =
+            "Anthropic client is not configured. Set AppConfig:AI:AgentFramework:Endpoint and ApiKey.";
+        var record = new ConversationRecord("c1", "agent", "user1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []);
+        _store.Setup(s => s.GetAsync("c1", It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        _store.Setup(s => s.GetHistoryForDispatch("c1", 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConversationMessage>());
+        _obsStore.Setup(s => s.StartSessionAsync("c1", "agent", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
+        _mediator.Setup(m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurnResult
+            {
+                Success = false,
+                Response = "",
+                UpdatedHistory = [],
+                Error = actionable,
+                ErrorKind = AgentTurnErrorKind.Configuration,
+            });
+
+        var orchestrator = CreateOrchestrator(environmentName: "Development");
+
+        var outcome = await orchestrator.SendMessageAsync(
+            "conn1", "c1", Guid.NewGuid(), "Hello", "user1", null, CancellationToken.None);
+
+        outcome.Success.Should().BeFalse();
+        outcome.ErrorMessage.Should().Be(actionable);
+    }
+
+    [Fact]
+    public async Task SendMessage_ConfigurationError_InProduction_StaysGeneric()
+    {
+        const string actionable =
+            "Anthropic client is not configured. Set AppConfig:AI:AgentFramework:Endpoint and ApiKey.";
+        var record = new ConversationRecord("c1", "agent", "user1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []);
+        _store.Setup(s => s.GetAsync("c1", It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        _store.Setup(s => s.GetHistoryForDispatch("c1", 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConversationMessage>());
+        _obsStore.Setup(s => s.StartSessionAsync("c1", "agent", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
+        _mediator.Setup(m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AgentTurnResult
+            {
+                Success = false,
+                Response = "",
+                UpdatedHistory = [],
+                Error = actionable,
+                ErrorKind = AgentTurnErrorKind.Configuration,
+            });
+
+        var orchestrator = CreateOrchestrator(environmentName: "Production");
+
+        var outcome = await orchestrator.SendMessageAsync(
+            "conn1", "c1", Guid.NewGuid(), "Hello", "user1", null, CancellationToken.None);
+
+        outcome.Success.Should().BeFalse();
+        outcome.ErrorMessage.Should().Be("An error occurred processing your request.");
     }
 
     [Fact]

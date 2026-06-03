@@ -1,4 +1,5 @@
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Models;
 using Domain.Common.Config.AI;
 
 namespace Presentation.AgentHub.Tests.Fakes;
@@ -14,6 +15,13 @@ public sealed class FakeChatClientFactory : IChatClientFactory
 
     /// <summary>The default client returned when no deployment-specific client is registered.</summary>
     public FakeChatClient DefaultClient => _defaultClient;
+
+    /// <summary>
+    /// The status returned by <see cref="GetProviderStatus"/>. Defaults to a configured provider;
+    /// override to exercise the unconfigured path.
+    /// </summary>
+    public AiProviderStatus ProviderStatus { get; set; } =
+        new(AIAgentFrameworkClientType.AzureOpenAI, "fake-deployment", IsConfigured: true, MissingSettings: []);
 
     /// <summary>Registers a fake client for a specific deployment/agent ID.</summary>
     public FakeChatClientFactory WithClient(string deploymentOrAgentId, FakeChatClient client)
@@ -44,6 +52,9 @@ public sealed class FakeChatClientFactory : IChatClientFactory
             [AIAgentFrameworkClientType.AzureOpenAI] = true,
             [AIAgentFrameworkClientType.OpenAI] = true,
         };
+
+    /// <inheritdoc />
+    public AiProviderStatus GetProviderStatus() => ProviderStatus;
 
     /// <inheritdoc />
     public Task<string> CreatePersistentAgentAsync(

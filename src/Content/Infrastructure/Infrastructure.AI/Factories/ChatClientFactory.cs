@@ -1,4 +1,5 @@
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Models;
 using Azure.AI.Agents.Persistent;
 using Azure.AI.OpenAI;
 using Domain.Common.Config;
@@ -63,34 +64,59 @@ public sealed partial class ChatClientFactory : IChatClientFactory, IDisposable
 
     private void LogProviderConfigurationStatus()
     {
-        var framework = _appConfig.CurrentValue.AI.AgentFramework;
-        var configured = IsAvailable(framework.ClientType);
+        var status = GetProviderStatus();
 
-        if (configured)
+        if (status.IsConfigured)
         {
             _logger?.LogInformation(
-                "AI provider '{ClientType}' is available (Endpoint={EndpointSet}, ApiKey={ApiKeySet}, Deployment={Deployment}).",
-                framework.ClientType,
-                !string.IsNullOrWhiteSpace(framework.Endpoint),
-                !string.IsNullOrWhiteSpace(framework.ApiKey),
-                framework.DefaultDeployment);
+                "AI provider '{ClientType}' is available (Deployment={Deployment}).",
+                status.ClientType, status.DefaultDeployment);
             return;
         }
-
-        var missing = new List<string>();
-        if (string.IsNullOrWhiteSpace(framework.ApiKey)) missing.Add("ApiKey");
-        if (string.IsNullOrWhiteSpace(framework.Endpoint)
-            && framework.ClientType is not AIAgentFrameworkClientType.OpenAI
-            and not AIAgentFrameworkClientType.PersistentAgents) missing.Add("Endpoint");
-        if (framework.ClientType == AIAgentFrameworkClientType.PersistentAgents && _adminClient is null)
-            missing.Add("PersistentAgentsAdministrationClient (AIFoundry.ProjectEndpoint)");
 
         _logger?.LogWarning(
             "AI provider '{ClientType}' is NOT available. Missing: [{Missing}]. " +
             "Configure AppConfig:AI:AgentFramework via user-secrets, environment variables, or appsettings.{{Environment}}.json. " +
-            "Agent requests will fail with InvalidOperationException until this is resolved.",
-            framework.ClientType,
-            missing.Count == 0 ? "credentials" : string.Join(", ", missing));
+            "Agent requests will fail until this is resolved.",
+            status.ClientType,
+            status.MissingSettings.Count == 0 ? "credentials" : string.Join(", ", status.MissingSettings));
+    }
+
+    /// <inheritdoc />
+    public AiProviderStatus GetProviderStatus()
+    {
+        var framework = _appConfig.CurrentValue.AI.AgentFramework;
+        var clientType = framework.ClientType;
+        var configured = IsAvailable(clientType);
+
+        return new AiProviderStatus(
+            ClientType: clientType,
+            DefaultDeployment: framework.DefaultDeployment,
+            IsConfigured: configured,
+            MissingSettings: configured ? [] : ComputeMissingSettings(clientType));
+    }
+
+    /// <summary>
+    /// Names the configuration settings that must be supplied before the given client type can
+    /// create a chat client. Returns config-key paths so the message is directly actionable.
+    /// </summary>
+    private IReadOnlyList<string> ComputeMissingSettings(AIAgentFrameworkClientType clientType)
+    {
+        var framework = _appConfig.CurrentValue.AI.AgentFramework;
+        var missing = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(framework.ApiKey))
+            missing.Add("AppConfig:AI:AgentFramework:ApiKey");
+
+        if (string.IsNullOrWhiteSpace(framework.Endpoint)
+            && clientType is not AIAgentFrameworkClientType.OpenAI
+            and not AIAgentFrameworkClientType.PersistentAgents)
+            missing.Add("AppConfig:AI:AgentFramework:Endpoint");
+
+        if (clientType == AIAgentFrameworkClientType.PersistentAgents && _adminClient is null)
+            missing.Add("AppConfig:AI:AIFoundry:ProjectEndpoint");
+
+        return missing;
     }
 
     /// <inheritdoc />

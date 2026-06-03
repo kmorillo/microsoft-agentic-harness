@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using Application.AI.Common.Exceptions;
 using Application.AI.Common.Helpers;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Context;
@@ -227,22 +228,57 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 				Model = usage.Model
 			};
 		}
-		catch (Exception ex)
+		catch (Exception ex) when (FindConfigurationError(ex) is { } configError)
 		{
-			_logger.LogError(ex, "Agent {AgentName} turn {TurnNumber} failed", request.AgentName, request.TurnNumber);
+			_logger.LogError(ex,
+				"Agent {AgentName} turn {TurnNumber} failed — AI provider not configured",
+				request.AgentName, request.TurnNumber);
 
-			var errorTag = new TagList { { AgentConventions.Name, request.AgentName } };
-			OrchestrationMetrics.TurnsTotal.Add(1, errorTag);
-			OrchestrationMetrics.TurnErrors.Add(1, errorTag);
+			RecordTurnError(request.AgentName);
 
 			return new AgentTurnResult
 			{
 				Success = false,
 				Response = string.Empty,
 				UpdatedHistory = [.. request.ConversationHistory, new ChatMessage(ChatRole.User, request.UserMessage)],
-				Error = "An internal error occurred during the agent turn."
+				Error = configError.Message,
+				ErrorKind = AgentTurnErrorKind.Configuration
 			};
 		}
+		catch (Exception ex)
+		{
+			_logger.LogError(ex, "Agent {AgentName} turn {TurnNumber} failed", request.AgentName, request.TurnNumber);
+
+			RecordTurnError(request.AgentName);
+
+			return new AgentTurnResult
+			{
+				Success = false,
+				Response = string.Empty,
+				UpdatedHistory = [.. request.ConversationHistory, new ChatMessage(ChatRole.User, request.UserMessage)],
+				Error = "An internal error occurred during the agent turn.",
+				ErrorKind = AgentTurnErrorKind.Internal
+			};
+		}
+	}
+
+	private static void RecordTurnError(string agentName)
+	{
+		var errorTag = new TagList { { AgentConventions.Name, agentName } };
+		OrchestrationMetrics.TurnsTotal.Add(1, errorTag);
+		OrchestrationMetrics.TurnErrors.Add(1, errorTag);
+	}
+
+	/// <summary>
+	/// Walks the exception chain for an <see cref="AiProviderNotConfiguredException"/> so a
+	/// provider-misconfiguration is classified even when the agent pipeline wraps it.
+	/// </summary>
+	private static AiProviderNotConfiguredException? FindConfigurationError(Exception? ex)
+	{
+		for (; ex is not null; ex = ex.InnerException)
+			if (ex is AiProviderNotConfiguredException configError)
+				return configError;
+		return null;
 	}
 
 

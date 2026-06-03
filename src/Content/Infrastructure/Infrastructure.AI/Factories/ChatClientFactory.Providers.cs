@@ -1,4 +1,5 @@
 using Anthropic.SDK;
+using Application.AI.Common.Exceptions;
 using Azure.AI.Agents.Persistent;
 using Azure.AI.Inference;
 using Azure.AI.OpenAI;
@@ -16,8 +17,9 @@ public sealed partial class ChatClientFactory
     private Task<IChatClient> GetAzureOpenAIChatClientAsync(string deploymentName, CancellationToken cancellationToken)
     {
         var client = _serviceProvider.GetService<AzureOpenAIClient>()
-            ?? throw new InvalidOperationException(
-                "AzureOpenAI is not configured. Register AzureOpenAIClient in DI.");
+            ?? throw new AiProviderNotConfiguredException(
+                "Azure OpenAI is not configured. Set AppConfig:AI:AgentFramework:Endpoint and ApiKey, " +
+                "and ensure ClientType matches your deployment.");
 
         return Task.FromResult(client.GetChatClient(deploymentName).AsIChatClient());
     }
@@ -62,9 +64,9 @@ public sealed partial class ChatClientFactory
             var config = _appConfig.CurrentValue.AI.AgentFramework;
             if (string.IsNullOrWhiteSpace(config.Endpoint) || string.IsNullOrWhiteSpace(config.ApiKey))
             {
-                throw new InvalidOperationException(
+                throw new AiProviderNotConfiguredException(
                     "Azure AI Inference is not configured. " +
-                    "Set AppConfig.AI.AgentFramework.Endpoint and ApiKey.");
+                    "Set AppConfig:AI:AgentFramework:Endpoint and ApiKey.");
             }
 
             if (!Uri.TryCreate(config.Endpoint, UriKind.Absolute, out var endpointUri))
@@ -102,8 +104,8 @@ public sealed partial class ChatClientFactory
     private Task<IChatClient> GetOpenAIChatClientAsync(string deploymentName, CancellationToken cancellationToken)
     {
         var client = _serviceProvider.GetService<OpenAIClient>()
-            ?? throw new InvalidOperationException(
-                "OpenAI is not configured. Register OpenAIClient in DI.");
+            ?? throw new AiProviderNotConfiguredException(
+                "OpenAI is not configured. Set AppConfig:AI:AgentFramework:ApiKey.");
 
         return Task.FromResult(client.GetChatClient(deploymentName).AsIChatClient());
     }
@@ -117,9 +119,9 @@ public sealed partial class ChatClientFactory
     {
         if (_adminClient is null)
         {
-            throw new InvalidOperationException(
-                "PersistentAgentsAdministrationClient is not configured. " +
-                "Set AppConfig.AI.AIFoundry.ProjectEndpoint and ensure credentials are valid.");
+            throw new AiProviderNotConfiguredException(
+                "PersistentAgents is not configured. " +
+                "Set AppConfig:AI:AIFoundry:ProjectEndpoint and ensure credentials are valid.");
         }
 
         var cacheKey = $"persistent_agent_{agentId}";
@@ -173,9 +175,9 @@ public sealed partial class ChatClientFactory
 
         if (string.IsNullOrWhiteSpace(config.Endpoint) || string.IsNullOrWhiteSpace(config.ApiKey))
         {
-            throw new InvalidOperationException(
+            throw new AiProviderNotConfiguredException(
                 "Anthropic client is not configured. " +
-                "Set AppConfig.AI.AgentFramework.Endpoint and ApiKey.");
+                "Set AppConfig:AI:AgentFramework:Endpoint and ApiKey.");
         }
 
         // Anthropic.SDK builds absolute URLs to api.anthropic.com — BaseAddress is ignored.

@@ -1,4 +1,5 @@
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Models;
 using Domain.Common.Config.AI;
 using Microsoft.Extensions.AI;
 
@@ -45,6 +46,10 @@ public sealed class FakeChatClientFactory : IChatClientFactory
             [AIAgentFrameworkClientType.AzureOpenAI] = true,
             [AIAgentFrameworkClientType.OpenAI] = true,
         };
+
+    /// <inheritdoc />
+    public AiProviderStatus GetProviderStatus() =>
+        new(AIAgentFrameworkClientType.AzureOpenAI, "fake-deployment", IsConfigured: true, MissingSettings: []);
 
     /// <inheritdoc />
     public Task<string> CreatePersistentAgentAsync(

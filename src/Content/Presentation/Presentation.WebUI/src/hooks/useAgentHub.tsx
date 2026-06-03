@@ -79,7 +79,7 @@ export function AgentHubProvider({ children }: { children: ReactNode }) {
     connection.onclose(() => { if (active) setConnectionState('disconnected'); });
 
     setConnectionState('connecting');
-    connection.start()
+    const startPromise = connection.start()
       .then(async () => {
         if (!active) return;
         setConnectionState('connected');
@@ -108,7 +108,11 @@ export function AgentHubProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
       connectionRef.current = null;
-      void connection.stop();
+      // Stop only after start() settles. Calling stop() while negotiation is still
+      // in flight — which StrictMode's dev double-mount guarantees — aborts it with
+      // "The connection was stopped during negotiation". Chaining onto the start
+      // promise lets the in-flight negotiation finish before we tear it down.
+      void startPromise.finally(() => connection.stop());
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

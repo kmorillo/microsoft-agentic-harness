@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Header } from './Header';
+import { AiProviderBanner } from './AiProviderBanner';
 import { SidebarSwitcher } from './SidebarSwitcher';
 import { useAppStore } from '@/stores/appStore';
 import { CommandPalette, type CommandItem } from '@/features/commands/CommandPalette';
@@ -117,6 +118,7 @@ export function DashboardLayout() {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
       <Header />
+      <AiProviderBanner />
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <SidebarSwitcher />
         <Outlet />

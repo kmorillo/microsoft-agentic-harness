@@ -168,6 +168,58 @@ public sealed class ChatClientFactoryAvailabilityTests : IDisposable
     }
 
     [Fact]
+    public void GetProviderStatus_WhenUnconfigured_ReportsNotConfiguredWithMissingSettings()
+    {
+        var config = new AppConfig
+        {
+            AI = new AIConfig
+            {
+                AgentFramework = new AgentFrameworkConfig
+                {
+                    ClientType = AIAgentFrameworkClientType.Anthropic,
+                    DefaultDeployment = "claude-sonnet-4-6"
+                    // No Endpoint, no ApiKey
+                }
+            }
+        };
+
+        using var factory = CreateFactory(config);
+
+        var status = factory.GetProviderStatus();
+
+        status.IsConfigured.Should().BeFalse();
+        status.ClientType.Should().Be(AIAgentFrameworkClientType.Anthropic);
+        status.DefaultDeployment.Should().Be("claude-sonnet-4-6");
+        status.MissingSettings.Should().Contain("AppConfig:AI:AgentFramework:ApiKey");
+        status.MissingSettings.Should().Contain("AppConfig:AI:AgentFramework:Endpoint");
+    }
+
+    [Fact]
+    public void GetProviderStatus_WhenConfigured_ReportsConfiguredWithNoMissingSettings()
+    {
+        var config = new AppConfig
+        {
+            AI = new AIConfig
+            {
+                AgentFramework = new AgentFrameworkConfig
+                {
+                    ClientType = AIAgentFrameworkClientType.Anthropic,
+                    DefaultDeployment = "claude-sonnet-4-6",
+                    Endpoint = "https://myresource.services.ai.azure.com",
+                    ApiKey = "test-key"
+                }
+            }
+        };
+
+        using var factory = CreateFactory(config);
+
+        var status = factory.GetProviderStatus();
+
+        status.IsConfigured.Should().BeTrue();
+        status.MissingSettings.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task GetChatClientAsync_UnsupportedType_Throws()
     {
         using var factory = CreateFactory();

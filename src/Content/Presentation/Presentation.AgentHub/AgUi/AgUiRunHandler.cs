@@ -6,6 +6,7 @@ using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using Domain.AI.Telemetry.Conventions;
 using MediatR;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Presentation.AgentHub.DTOs;
 using Presentation.AgentHub.Hubs;
@@ -30,6 +31,7 @@ public sealed class AgUiRunHandler
     private readonly IObservabilityStore _observabilityStore;
     private readonly ConversationLockRegistry _lockRegistry;
     private readonly IAgUiEventWriterAccessor _writerAccessor;
+    private readonly IHostEnvironment _environment;
     private readonly ILogger<AgUiRunHandler> _logger;
 
     /// <summary>
@@ -41,6 +43,7 @@ public sealed class AgUiRunHandler
         IObservabilityStore observabilityStore,
         ConversationLockRegistry lockRegistry,
         IAgUiEventWriterAccessor writerAccessor,
+        IHostEnvironment environment,
         ILogger<AgUiRunHandler> logger)
     {
         _mediator = mediator;
@@ -48,6 +51,7 @@ public sealed class AgUiRunHandler
         _observabilityStore = observabilityStore;
         _lockRegistry = lockRegistry;
         _writerAccessor = writerAccessor;
+        _environment = environment;
         _logger = logger;
     }
 
@@ -220,7 +224,17 @@ public sealed class AgUiRunHandler
         if (!result.Success)
         {
             _logger.LogWarning("AG-UI run {RunId}: agent returned failure — {Error}.", input.RunId, result.Error);
-            await writer.WriteAsync(new RunErrorEvent("The agent was unable to process your request."), ct);
+
+            // A provider-configuration failure carries an actionable, secret-free message. Surface it
+            // to the developer in Development so the chat itself explains what to fix; keep the generic
+            // message in Production to avoid leaking configuration detail.
+            var message = result.ErrorKind == AgentTurnErrorKind.Configuration
+                && _environment.IsDevelopment()
+                && !string.IsNullOrWhiteSpace(result.Error)
+                    ? result.Error!
+                    : "The agent was unable to process your request.";
+
+            await writer.WriteAsync(new RunErrorEvent(message), ct);
             return;
         }
 

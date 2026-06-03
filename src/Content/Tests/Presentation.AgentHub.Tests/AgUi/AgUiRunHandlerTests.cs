@@ -6,6 +6,7 @@ using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using FluentAssertions;
 using MediatR;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Presentation.AgentHub.AgUi;
@@ -76,6 +77,36 @@ public sealed class AgUiRunHandlerTests
             Error = error
         };
 
+    private static AgentTurnResult MakeConfigFailureResult(string error) =>
+        new()
+        {
+            Success = false,
+            Response = string.Empty,
+            UpdatedHistory = [],
+            Error = error,
+            ErrorKind = AgentTurnErrorKind.Configuration
+        };
+
+    private static (Mock<IMediator> Mediator, Mock<IConversationStore> Store) SetupFailingTurn(
+        string threadId, string userId, AgentTurnResult failure)
+    {
+        var mediator = new Mock<IMediator>();
+        var store = new Mock<IConversationStore>();
+        store.Setup(s => s.GetAsync(threadId, It.IsAny<CancellationToken>()))
+             .ReturnsAsync(MakeRecord(threadId, userId));
+        store.Setup(s => s.GetHistoryForDispatch(threadId, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+             .ReturnsAsync([]);
+        store.Setup(s => s.AppendMessageAsync(threadId, It.IsAny<ConversationMessage>(), It.IsAny<CancellationToken>()))
+             .Returns(Task.CompletedTask);
+        mediator.Setup(m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(failure);
+        return (mediator, store);
+    }
+
+    private static string RunErrorMessage(IEnumerable<JsonDocument> frames) =>
+        frames.First(f => EventType(f) == AgUiEventType.RunError)
+              .RootElement.GetProperty("message").GetString()!;
+
     /// <summary>
     /// Parses SSE frames from a MemoryStream and returns the deserialized event objects.
     /// Each frame has the form <c>data: {json}\n\n</c>.
@@ -106,7 +137,8 @@ public sealed class AgUiRunHandlerTests
     private static AgUiRunHandler BuildHandler(
         Mock<IMediator> mediator,
         Mock<IConversationStore> store,
-        Mock<IObservabilityStore>? observability = null)
+        Mock<IObservabilityStore>? observability = null,
+        string environmentName = "Development")
     {
         if (observability is null)
         {
@@ -116,12 +148,16 @@ public sealed class AgUiRunHandlerTests
                 .ReturnsAsync(Guid.NewGuid());
         }
 
+        var environment = new Mock<IHostEnvironment>();
+        environment.SetupGet(e => e.EnvironmentName).Returns(environmentName);
+
         return new AgUiRunHandler(
             mediator.Object,
             store.Object,
             observability.Object,
             new ConversationLockRegistry(),
             new AgUiEventWriterAccessor(),
+            environment.Object,
             NullLogger<AgUiRunHandler>.Instance);
     }
 
@@ -178,6 +214,40 @@ public sealed class AgUiRunHandlerTests
         frames.Should().NotContain(f => EventType(f) == AgUiEventType.RunFinished);
 
         mediator.Verify(m => m.Send(It.IsAny<IRequest<AgentTurnResult>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleRunAsync_ConfigurationError_InDevelopment_SurfacesActionableMessage()
+    {
+        const string threadId = "conv-cfg-dev";
+        const string userId = "user-cfg";
+        const string actionable =
+            "Anthropic client is not configured. Set AppConfig:AI:AgentFramework:Endpoint and ApiKey.";
+
+        var (mediator, store) = SetupFailingTurn(threadId, userId, MakeConfigFailureResult(actionable));
+        var handler = BuildHandler(mediator, store, environmentName: "Development");
+
+        using var ms = new MemoryStream();
+        await handler.HandleRunAsync(MakeInput(threadId, "Hi"), new AgUiEventWriter(ms), MakeUser(userId));
+
+        RunErrorMessage(ParseSseFrames(ms)).Should().Be(actionable);
+    }
+
+    [Fact]
+    public async Task HandleRunAsync_ConfigurationError_InProduction_StaysGeneric()
+    {
+        const string threadId = "conv-cfg-prod";
+        const string userId = "user-cfg";
+        const string actionable =
+            "Anthropic client is not configured. Set AppConfig:AI:AgentFramework:Endpoint and ApiKey.";
+
+        var (mediator, store) = SetupFailingTurn(threadId, userId, MakeConfigFailureResult(actionable));
+        var handler = BuildHandler(mediator, store, environmentName: "Production");
+
+        using var ms = new MemoryStream();
+        await handler.HandleRunAsync(MakeInput(threadId, "Hi"), new AgUiEventWriter(ms), MakeUser(userId));
+
+        RunErrorMessage(ParseSseFrames(ms)).Should().Be("The agent was unable to process your request.");
     }
 
     [Fact]

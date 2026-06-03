@@ -45,9 +45,35 @@ public sealed class AgentFrameworkHelperTests
     [Fact]
     public void GetOpenAIClientOptions_CustomTimeout_IsApplied()
     {
-        var options = AgentFrameworkHelper.GetOpenAIClientOptions(120);
+        var options = AgentFrameworkHelper.GetOpenAIClientOptions(networkTimeoutSeconds: 120);
 
         options.NetworkTimeout.Should().Be(TimeSpan.FromSeconds(120));
+    }
+
+    [Fact]
+    public void GetOpenAIClientOptions_WithEndpoint_TargetsCompatibleGateway()
+    {
+        var options = AgentFrameworkHelper.GetOpenAIClientOptions("https://openrouter.ai/api/v1");
+
+        options.Endpoint.Should().Be(new Uri("https://openrouter.ai/api/v1"));
+    }
+
+    [Fact]
+    public void GetOpenAIClientOptions_WithoutEndpoint_LeavesSdkDefault()
+    {
+        var options = AgentFrameworkHelper.GetOpenAIClientOptions();
+
+        options.Endpoint.Should().BeNull();
+    }
+
+    [Fact]
+    public void GetOpenAIClientOptions_WithMalformedEndpoint_ThrowsInsteadOfSilentlyFallingBack()
+    {
+        // A scheme-less typo must fail loud — otherwise the OpenRouter key would be sent to
+        // api.openai.com and 401 with no indication the endpoint was dropped.
+        var act = () => AgentFrameworkHelper.GetOpenAIClientOptions("openrouter.ai/api/v1");
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*not a valid absolute URI*");
     }
 
     [Fact]

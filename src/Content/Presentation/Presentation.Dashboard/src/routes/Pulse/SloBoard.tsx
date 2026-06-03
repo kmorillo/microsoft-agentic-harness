@@ -31,7 +31,14 @@ function formatTarget(target: number, comparator: string, unit: string): string 
 
 function SloCard({ slo }: { slo: SloStatus }) {
   const sparkline = usePromQuery(slo.sparklineQuery, !!slo.sparklineQuery);
-  const config = verdictConfig[slo.status];
+  // Fall back to a visible "unknown" state rather than impersonating a real verdict — an
+  // unmapped status signals a backend/contract problem an operator should see, not silently
+  // treat as "AT RISK".
+  const config = verdictConfig[slo.status] ?? {
+    label: String(slo.status || 'UNKNOWN').toUpperCase(),
+    pill: 'warning' as const,
+    dot: 'warning' as const,
+  };
   const sparkData = primarySeries(sparkline.data)?.dataPoints;
 
   return (

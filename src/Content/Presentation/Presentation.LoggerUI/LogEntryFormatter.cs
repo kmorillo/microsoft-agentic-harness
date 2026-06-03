@@ -22,6 +22,55 @@ internal static class LogEntryFormatter
 
     private static readonly object OutputLock = new();
 
+    /// <summary>Severity rank per level name; higher is more severe. Unknown levels rank as info.</summary>
+    private static readonly Dictionary<string, int> LevelRanks = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["trce"] = 0, ["trace"] = 0,
+        ["dbug"] = 1, ["dbg"] = 1, ["debug"] = 1,
+        ["info"] = 2, ["information"] = 2,
+        ["warn"] = 3, ["warning"] = 3,
+        ["error"] = 4, ["err"] = 4, ["fail"] = 4,
+        ["crit"] = 5, ["critical"] = 5, ["fatal"] = 5,
+    };
+
+    /// <summary>Display names for each minimum-level filter step, indexed by rank.</summary>
+    private static readonly string[] FilterNames = { "ALL", "DEBUG+", "INFO+", "WARN+", "ERROR+", "CRIT only" };
+
+    /// <summary>
+    /// Minimum severity rank to display; entries below it are suppressed. 0 shows everything.
+    /// <c>volatile</c> because the keyboard listener thread mutates it while reader threads read it.
+    /// </summary>
+    private static volatile int _minLevelRank;
+
+    /// <summary>
+    /// Toggles the warning filter: jumps straight to WARN+ from any other state, or back to ALL
+    /// when already at WARN+. Bound to the <c>W</c> key for one-press "show me the warnings".
+    /// </summary>
+    internal static void ToggleWarningFilter()
+    {
+        _minLevelRank = _minLevelRank == 3 ? 0 : 3;
+        AnnounceFilter();
+    }
+
+    /// <summary>Advances the minimum-level filter one step, wrapping back to ALL. Bound to <c>L</c>.</summary>
+    internal static void CycleLevelFilter()
+    {
+        _minLevelRank = (_minLevelRank + 1) % FilterNames.Length;
+        AnnounceFilter();
+    }
+
+    private static void AnnounceFilter() =>
+        WriteStatusLine($"[bold]Filter:[/] showing [cyan]{FilterNames[_minLevelRank]}[/]");
+
+    private static bool PassesFilter(LogEntry entry)
+    {
+        if (_minLevelRank == 0)
+            return true;
+
+        var rank = entry.Level is not null && LevelRanks.TryGetValue(entry.Level, out var r) ? r : 2;
+        return rank >= _minLevelRank;
+    }
+
     /// <summary>
     /// Builds the per-source tag (e.g. "[ConsoleUI]") with a stable color from the palette.
     /// </summary>
@@ -87,7 +136,7 @@ internal static class LogEntryFormatter
             var tag = BuildSourceTag(pipeNames[i], i);
             AnsiConsole.MarkupLine($"  {tag} [grey]{pipeNames[i]}[/]");
         }
-        AnsiConsole.MarkupLine("[grey]Press C to clear, Ctrl+C to exit[/]");
+        AnsiConsole.MarkupLine("[grey]Press C to clear, W to toggle warnings-only, L to cycle level filter, Ctrl+C to exit[/]");
         AnsiConsole.WriteLine();
     }
 
@@ -96,6 +145,9 @@ internal static class LogEntryFormatter
     /// </summary>
     private static void DisplayLogEntry(LogEntry entry, string sourceTag)
     {
+        if (!PassesFilter(entry))
+            return;
+
         var config = LogEntryParser.GetLogLevelConfig(entry.Level);
         var color = config.Color;
         var icon = config.Icon;

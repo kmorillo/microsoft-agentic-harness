@@ -102,9 +102,11 @@ public static partial class DependencyInjection
                 break;
 
             case AIAgentFrameworkClientType.OpenAI:
+                // Endpoint is optional: blank → real OpenAI; set → an OpenAI-compatible gateway
+                // such as OpenRouter (https://openrouter.ai/api/v1).
                 services.AddSingleton(new OpenAIClient(
                     new System.ClientModel.ApiKeyCredential(framework.ApiKey!),
-                    AgentFrameworkHelper.GetOpenAIClientOptions()));
+                    AgentFrameworkHelper.GetOpenAIClientOptions(framework.Endpoint)));
                 break;
 
             case AIAgentFrameworkClientType.AzureAIInference:
@@ -183,7 +185,7 @@ public static partial class DependencyInjection
             case AIAgentFrameworkClientType.OpenAI:
                 var openAIClient = new OpenAIClient(
                     new System.ClientModel.ApiKeyCredential(embedding.ApiKey!),
-                    AgentFrameworkHelper.GetOpenAIClientOptions());
+                    AgentFrameworkHelper.GetOpenAIClientOptions(embedding.Endpoint));
                 services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
                     _ => openAIClient.GetEmbeddingClient(deployment).AsIEmbeddingGenerator());
                 break;

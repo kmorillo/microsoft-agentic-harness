@@ -1,3 +1,4 @@
+using Application.AI.Common.Models;
 using Domain.Common.Config.AI;
 using Microsoft.Extensions.AI;
 
@@ -33,6 +34,15 @@ public interface IChatClientFactory
 	/// Gets availability status for all AI providers.
 	/// </summary>
 	IReadOnlyDictionary<AIAgentFrameworkClientType, bool> GetAvailableProviders();
+
+	/// <summary>
+	/// Returns a configuration-readiness snapshot for the <em>active</em> provider
+	/// (<c>AppConfig.AI.AgentFramework.ClientType</c>): whether it can serve agent turns and,
+	/// when it cannot, the names of the configuration settings that are missing. Used to detect
+	/// and surface missing credentials at startup, over the config-status endpoint, and via the
+	/// AI health check. Never includes secret values.
+	/// </summary>
+	AiProviderStatus GetProviderStatus();
 
 	/// <summary>
 	/// Creates a new persistent agent in Azure AI Foundry and returns its assigned ID.

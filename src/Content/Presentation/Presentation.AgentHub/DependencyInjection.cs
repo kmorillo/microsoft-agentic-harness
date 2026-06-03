@@ -45,7 +45,26 @@ public static class DependencyInjection
         IConfiguration configuration,
         IWebHostEnvironment environment)
     {
-        services.AddControllers();
+        services.AddControllers()
+            .AddJsonOptions(options =>
+            {
+                // Serialize enums (e.g. SloVerdict) as strings so controller responses match
+                // the frontend TS contracts ('Met' | 'AtRisk' | 'Breached'). Without this,
+                // System.Text.Json emits numeric values and the dashboard cannot map them.
+                options.JsonSerializerOptions.Converters.Add(
+                    new System.Text.Json.Serialization.JsonStringEnumConverter());
+            });
+
+        // Surfaces a missing/invalid AI provider configuration via /health/ai. Additive to the
+        // health checks registered in Presentation.Common — Degraded (not Unhealthy) because the
+        // host still serves the dashboard and telemetry without a live LLM.
+        // Tagged "ai" only (NOT "ready"): a missing LLM key is Degraded, not a reason to fail a
+        // readiness probe — the host still serves the dashboard, telemetry, and Echo-mode agents.
+        services.AddHealthChecks()
+            .AddCheck<HealthChecks.AiProviderHealthCheck>(
+                "ai_provider",
+                failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded,
+                tags: ["ai"]);
 
         var authDisabled = environment.IsDevelopment()
             && configuration.GetValue<bool>("Auth:Disabled");

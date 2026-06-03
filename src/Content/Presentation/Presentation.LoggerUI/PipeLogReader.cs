@@ -58,15 +58,23 @@ internal static class PipeLogReader
             ConsoleKeyInfo key;
             try { key = Console.ReadKey(true); }
             catch { return; }
-            if (key.Key == ConsoleKey.C)
+            if (key.Modifiers == ConsoleModifiers.Control && key.Key == ConsoleKey.C)
+            {
+                cts.Cancel();
+                break;
+            }
+            else if (key.Key == ConsoleKey.C)
             {
                 Console.Clear();
                 LogEntryFormatter.PrintHeader(pipeNames);
             }
-            else if (key.Modifiers == ConsoleModifiers.Control && key.Key == ConsoleKey.C)
+            else if (key.Key == ConsoleKey.W && key.Modifiers == 0)
             {
-                cts.Cancel();
-                break;
+                LogEntryFormatter.ToggleWarningFilter();
+            }
+            else if (key.Key == ConsoleKey.L && key.Modifiers == 0)
+            {
+                LogEntryFormatter.CycleLevelFilter();
             }
         }
     }
