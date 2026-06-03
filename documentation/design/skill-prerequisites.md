@@ -1,5 +1,7 @@
 # Skill Prerequisites
 
+> **Status: Implemented.** `SkillPrerequisiteResolver` (`Application.AI.Common/Services/Skills/`) builds the prerequisite map; `SkillPrerequisiteMiddleware` (`Application.AI.Common/Middleware/`) filters tools per LLM call. Both are covered by `SkillPrerequisiteResolverTests` and `SkillPrerequisiteMiddlewareTests`. This doc is the design of record for the shipped behavior.
+
 ## Problem
 
 Skills in a multi-skill agent have no ordering constraints. An agent with `[validate, deploy]` skills exposes all tools from both immediately. Nothing prevents the LLM from calling deploy tools before validation has run. For enterprise workloads (validate-before-deploy, research-before-present), this is a gap.

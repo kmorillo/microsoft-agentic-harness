@@ -320,14 +320,32 @@
                         Apps environment or as a separate deployment.
                     </p>
 
-                    <div class="callout callout-tip">
-                        <span class="callout-icon">&#10003;</span>
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
                         <div class="callout-body">
-                            <div class="callout-title">Pre-built Grafana dashboards</div>
-                            <p>
-                                The harness ships with dashboard JSON files in <code>tools/grafana/</code> that
-                                you can import directly. They cover agent performance, RAG pipeline health, and
-                                governance metrics.
+                            <div class="callout-title">App emits OTLP + Prometheus; collector is optional</div>
+                            <p style="margin: 0">
+                                The harness itself only knows how to speak two protocols: OTLP (over gRPC) and
+                                Prometheus scrape (the <code>/metrics</code> endpoint, mapped in <code>Program.cs</code>).
+                                The OTel Collector shown in the diagram is one common packaging choice — it lets
+                                you fan out to Tempo, Loki, and other backends without changing app config. You can
+                                also point the OTLP exporter directly at a backend that accepts OTLP (Tempo, Honeycomb,
+                                Datadog) and skip the collector entirely. The app doesn't know or care.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Dashboards are bring-your-own</div>
+                            <p style="margin: 0">
+                                There are no pre-bundled Grafana dashboard JSON files in this template — the metric
+                                and span names listed above are the contract you build dashboards against. The shape
+                                of every span and metric attribute lives in
+                                <code>Infrastructure.AI/Observability/GenAiSemconvRegistry.cs</code> and is locked in
+                                by <code>Tests/Presentation.AgentHub.Tests/Telemetry/DashboardContractTests.cs</code>,
+                                so dashboard authors can rely on the names staying stable across releases.
                             </p>
                         </div>
                     </div>

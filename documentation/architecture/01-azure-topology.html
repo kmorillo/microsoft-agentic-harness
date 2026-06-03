@@ -99,9 +99,10 @@
                     <div class="rg-group">
                         <span class="rg-label">rg-harness-data</span>
                         <p>
-                            <strong>Data.</strong> Cosmos DB for PostgreSQL (knowledge graph backend), Azure SQL
-                            (plan state persistence via EF Core), and Blob Storage (document ingestion, FAISS index
-                            snapshots, JSONL audit logs).
+                            <strong>Data.</strong> Knowledge graph backend (Neo4j on AKS or PostgreSQL via Cosmos
+                            DB — both ship as <code>IGraphDatabaseBackend</code> implementations and you pick one
+                            per environment), Azure SQL (plan state persistence via EF Core), and Blob Storage
+                            (document ingestion, FAISS index snapshots, JSONL audit logs).
                         </p>
                     </div>
 
@@ -269,9 +270,9 @@
                             <div class="callout-title">Dev shortcut</div>
                             <p style="margin: 0">
                                 For local development, everything runs on localhost with SQLite (plan state), in-memory
-                                FAISS (vector search), and Kuzu embedded graph (knowledge graph). You don't need
-                                <em>any</em> Azure resources to develop locally — only an Azure OpenAI endpoint for LLM
-                                calls.
+                                FAISS (vector search), and the <code>InMemoryGraphStore</code> (knowledge graph). You
+                                don't need <em>any</em> Azure resources to develop locally — only an Azure OpenAI
+                                endpoint for LLM calls.
                             </p>
                         </div>
                     </div>
@@ -289,15 +290,16 @@
                             <div class="tier-header tier-header-dev">Development</div>
                             <div class="tier-body">
                                 <ul>
-                                    <li>Local process (no Container Apps)</li>
-                                    <li>SQLite for plan state</li>
-                                    <li>In-memory FAISS for vectors</li>
-                                    <li>Kuzu embedded for knowledge graph</li>
-                                    <li>Azure OpenAI (shared dev key)</li>
-                                    <li>Jaeger / Aspire Dashboard for traces</li>
+                                    <li>AgentHub on Container Apps (single replica, scale-to-zero)</li>
+                                    <li>Dashboard on Static Web App</li>
+                                    <li>Azure OpenAI S0 (chat + embedding)</li>
+                                    <li>Blob Storage (artifacts, eval datasets)</li>
+                                    <li>Key Vault for secrets</li>
+                                    <li>Application Insights</li>
+                                    <li>SQLite (plan state) and FAISS (vectors) stay in-process — no Azure data resources</li>
                                 </ul>
                             </div>
-                            <span class="tier-price">~$0/mo (Azure OpenAI pay-per-token only)</span>
+                            <span class="tier-price">~$183/mo (API-validated, eastus)</span>
                         </div>
 
                         <!-- Staging -->
@@ -305,15 +307,15 @@
                             <div class="tier-header tier-header-staging">Staging</div>
                             <div class="tier-body">
                                 <ul>
-                                    <li>Container Apps (Consumption plan)</li>
-                                    <li>Azure SQL Serverless</li>
-                                    <li>Azure AI Search Basic</li>
-                                    <li>Azure OpenAI (shared, low quota)</li>
-                                    <li>Blob Storage Standard LRS</li>
-                                    <li>Application Insights (workspace-based)</li>
+                                    <li>AgentHub + MCP Server on Container Apps (VNet ingress)</li>
+                                    <li>Front Door + APIM in front</li>
+                                    <li>Azure OpenAI S1, AI Search Basic</li>
+                                    <li>Neo4j single-node on AKS (KG)</li>
+                                    <li>Azure SQL (plan state), Blob Storage, Key Vault — all private endpoint</li>
+                                    <li>Entra ID, Log Analytics + App Insights</li>
                                 </ul>
                             </div>
-                            <span class="tier-price">~$200/mo</span>
+                            <span class="tier-price">~$1,573/mo (API-validated, eastus)</span>
                         </div>
 
                         <!-- Production -->
@@ -321,15 +323,109 @@
                             <div class="tier-header tier-header-prod">Production</div>
                             <div class="tier-body">
                                 <ul>
-                                    <li>Container Apps (Dedicated plan)</li>
-                                    <li>Azure SQL S1 or Elastic Pool</li>
-                                    <li>Azure AI Search Standard S1</li>
-                                    <li>Azure OpenAI (provisioned throughput)</li>
-                                    <li>Cosmos DB for PostgreSQL</li>
-                                    <li>Front Door + Key Vault + Entra ID P1</li>
+                                    <li>Staging shape, plus DDoS Protection Standard</li>
+                                    <li>Front Door Premium with private-link origins</li>
+                                    <li>Azure OpenAI PTU + S1 burst, AI Search S2 (HA)</li>
+                                    <li>Neo4j Enterprise causal cluster on AKS (zone-redundant)</li>
+                                    <li>Azure SQL Business Critical, Redis Cache, geo-redundant Storage</li>
+                                    <li>Key Vault Premium (HSM), CMK on data services</li>
                                 </ul>
                             </div>
-                            <span class="tier-price">~$800+/mo</span>
+                            <span class="tier-price">~$4,597/mo (API-validated, eastus)</span>
+                        </div>
+                    </div>
+
+                    <!-- ==============================
+                         Generated topology diagrams
+                         ============================== -->
+                    <h2 id="generated-topology">Generated topology diagrams</h2>
+                    <p>
+                        The three tiers above were modeled deterministically with the
+                        <strong>AzureCraft Architecture Generator</strong> and validated against the Azure
+                        Well-Architected Framework pillars (security, reliability, performance, operational
+                        excellence, cost). The generator places services into the right resource group, VNet, and
+                        subnet automatically; the cost figures above are pulled directly from its pricing model for
+                        the East US region.
+                    </p>
+                    <p>
+                        The payload files below are the source of truth for the topology — edit them and re-POST to
+                        <code>http://localhost:3001/api/generate</code> to regenerate. The full DiagramState JSON
+                        (nodes, edges, layout, validationResults, costSummary) is saved by the generator under its
+                        own <code>generated/</code> directory; reference the file IDs from the table below.
+                    </p>
+
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Tier</th>
+                                <th>Services</th>
+                                <th>Connections</th>
+                                <th>Monthly cost</th>
+                                <th>Findings</th>
+                                <th>Payload</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Development</td>
+                                <td>6</td>
+                                <td>5</td>
+                                <td>$183.44</td>
+                                <td>6 (all expected for a public, minimal dev tier — no DDoS / Entra / Log Analytics by design)</td>
+                                <td><a href="assets/diagrams/payloads/dev.json"><code>dev.json</code></a></td>
+                            </tr>
+                            <tr>
+                                <td>Staging</td>
+                                <td>14</td>
+                                <td>20</td>
+                                <td>$1,573.07</td>
+                                <td>3 (no DDoS plan, no Redis, storage lifecycle — saved for the prod tier)</td>
+                                <td><a href="assets/diagrams/payloads/staging.json"><code>staging.json</code></a></td>
+                            </tr>
+                            <tr>
+                                <td>Production</td>
+                                <td>16</td>
+                                <td>22</td>
+                                <td>$4,597.37</td>
+                                <td><strong>0</strong> — clean against all WAF pillars</td>
+                                <td><a href="assets/diagrams/payloads/prod.json"><code>prod.json</code></a></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
+                        <div class="callout-body">
+                            <div class="callout-title">How to regenerate</div>
+                            <p style="margin: 0">
+                                With the AzureCraft generator running locally
+                                (<code>npm run dev</code> in its <code>apps/web</code> folder, default port
+                                <code>3001</code>), POST any payload above to <code>/api/generate</code>:
+                            </p>
+<pre style="margin-top: 12px"><code>Invoke-RestMethod -Uri 'http://localhost:3001/api/generate' `
+  -Method Post -ContentType 'application/json' `
+  -InFile 'documentation/architecture/assets/diagrams/payloads/prod.json'</code></pre>
+                            <p style="margin: 12px 0 0">
+                                The response includes a <code>report</code> summary, the full <code>diagram</code>
+                                state, and a <code>file</code> path under the generator's own
+                                <code>generated/</code> output. Re-run after any topology change to refresh the
+                                cost and validation numbers in this table.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">&#10003;</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Why dev shows 6 findings and prod shows 0</div>
+                            <p style="margin: 0">
+                                Dev intentionally omits DDoS Protection, Front Door, Entra ID, and Log Analytics to
+                                stay cheap — the generator correctly flags these as gaps against the WAF security
+                                and reliability pillars. They reappear in staging and prod where the cost is
+                                justified. Prod hits zero findings after wiring the Neo4j AKS workload to both Key
+                                Vault and App Insights (a real omission the generator caught and we fixed before
+                                committing).
+                            </p>
                         </div>
                     </div>
 

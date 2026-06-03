@@ -1,0 +1,43 @@
+{
+  "diagramName": "Agentic Harness — Staging Tier",
+  "region": "eastus",
+  "viewMode": "2d",
+  "services": [
+    { "serviceType": "front-door", "displayName": "Front Door (stg)", "description": "Global entry. WAF, TLS termination, single public hostname for AgentHub and Dashboard." },
+    { "serviceType": "api-management", "displayName": "APIM (stg)", "description": "Fronts the MCP server. JWT validation against Entra ID, per-tenant rate limiting, version routing." },
+    { "serviceType": "container-apps", "displayName": "AgentHub (stg)", "description": "Web host on Container Apps. SignalR + AG-UI + controllers. Multi-replica behind VNet ingress." },
+    { "serviceType": "container-apps", "displayName": "MCP Server (stg)", "description": "Infrastructure.AI.MCPServer Container App. Exposes tools / prompts / resources over HTTP to external agents." },
+    { "serviceType": "static-web-app", "displayName": "Dashboard (stg)", "description": "Vite SPA served via Front Door." },
+    { "serviceType": "azure-openai", "displayName": "Azure OpenAI (stg)", "description": "S1. Chat + embedding deployments. Public network disabled; reachable only via private endpoint." },
+    { "serviceType": "ai-search", "displayName": "AI Search (stg)", "description": "Basic SKU. Vector index for dense retrieval, BM25 index for sparse retrieval (hybrid RRF)." },
+    { "serviceType": "aks", "displayName": "Neo4j / KG (stg)", "description": "Single-node Neo4j on AKS. Production graph backend behind IGraphDatabaseBackend. Leiden community detection, feedback weights, cross-session memory." },
+    { "serviceType": "azure-sql", "displayName": "Azure SQL (stg)", "description": "Plan state for DAG plan executor. EF Core with SqliteVersionInterceptor pattern carried over." },
+    { "serviceType": "storage-account", "displayName": "Storage (stg)", "description": "AG-UI artifacts, ingestion staging, escalation JSONL audit." },
+    { "serviceType": "key-vault", "displayName": "Key Vault (stg)", "description": "All secrets. Private endpoint, RBAC, soft delete." },
+    { "serviceType": "entra-id", "displayName": "Entra ID", "description": "Identity for AgentHub and MCP server. JWT issuer for APIM validation." },
+    { "serviceType": "log-analytics", "displayName": "Log Analytics (stg)", "description": "Centralized observability workspace. Backs App Insights and Container Apps logs." },
+    { "serviceType": "application-insights", "displayName": "App Insights (stg)", "description": "OTel exporter target. GenAi semconv attributes from GenAiSemconvRegistry." }
+  ],
+  "connections": [
+    { "source": "Front Door (stg)", "target": "AgentHub (stg)", "connectionType": "public" },
+    { "source": "Front Door (stg)", "target": "Dashboard (stg)", "connectionType": "public" },
+    { "source": "Front Door (stg)", "target": "APIM (stg)", "connectionType": "public" },
+    { "source": "APIM (stg)", "target": "MCP Server (stg)", "connectionType": "vnet-integration" },
+    { "source": "Dashboard (stg)", "target": "AgentHub (stg)", "connectionType": "public" },
+    { "source": "AgentHub (stg)", "target": "Azure OpenAI (stg)", "connectionType": "private-endpoint" },
+    { "source": "AgentHub (stg)", "target": "AI Search (stg)", "connectionType": "private-endpoint" },
+    { "source": "AgentHub (stg)", "target": "Neo4j / KG (stg)", "connectionType": "vnet-integration" },
+    { "source": "AgentHub (stg)", "target": "Azure SQL (stg)", "connectionType": "private-endpoint" },
+    { "source": "AgentHub (stg)", "target": "Storage (stg)", "connectionType": "private-endpoint" },
+    { "source": "AgentHub (stg)", "target": "Key Vault (stg)", "connectionType": "private-endpoint" },
+    { "source": "AgentHub (stg)", "target": "Entra ID", "connectionType": "public" },
+    { "source": "MCP Server (stg)", "target": "Azure OpenAI (stg)", "connectionType": "private-endpoint" },
+    { "source": "MCP Server (stg)", "target": "Key Vault (stg)", "connectionType": "private-endpoint" },
+    { "source": "MCP Server (stg)", "target": "Entra ID", "connectionType": "public" },
+    { "source": "AgentHub (stg)", "target": "App Insights (stg)", "connectionType": "vnet-integration" },
+    { "source": "MCP Server (stg)", "target": "App Insights (stg)", "connectionType": "vnet-integration" },
+    { "source": "Neo4j / KG (stg)", "target": "Key Vault (stg)", "connectionType": "private-endpoint" },
+    { "source": "Neo4j / KG (stg)", "target": "App Insights (stg)", "connectionType": "vnet-integration" },
+    { "source": "App Insights (stg)", "target": "Log Analytics (stg)", "connectionType": "public" }
+  ]
+}

@@ -1,5 +1,7 @@
 # Plugin System Design
 
+> **Status: Implemented (Phase 1).** Goals 1–6 are live in `Infrastructure.AI/Plugins/` (`PluginLoader`, `PluginRegistry`, `PluginManifestReader`, `PluginDependencyResolver`) wired through `Application.AI.Common/Interfaces/Plugins/`. `LocalPluginResolver` and `GitHubPluginResolver` are shipped; `NuGetPluginResolver` and the marketplace remain in Phase 2/4. This document is the design of record, not a feature pitch — phased work items at the bottom remain accurate.
+
 ## Problem
 
 The harness has four extension points (skills, tools, MCP servers, hooks) but all require manual installation — copying files, editing config, recompiling for .NET tools. There's no way to declare "I want the azure-skills plugin" and have the harness fetch, cache, and wire it automatically.

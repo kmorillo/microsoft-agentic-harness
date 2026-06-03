@@ -1,5 +1,7 @@
 # Multi-Skill Agent Execution
 
+> **Status: Implemented.** `ExecuteAgentTurnCommandHandler` resolves the full `Skills` list and passes it through `AgentConversationCache` → `AgentFactory.CreateAgentFromSkillsAsync` → `AgentExecutionContextFactory.MapToAgentContextAsync`. Instruction merging, tool deduplication, and `AllowedTools` whitelist filtering all live. Skill prerequisites (originally listed as a separate gap) are also implemented — see [skill-prerequisites.md](skill-prerequisites.md).
+
 ## Problem
 
 The harness maps one skill to one agent execution context. `AgentDefinition` has a single `Skill` property. `AgentFactory.CreateAgentFromSkillAsync` takes one skill ID. `AgentExecutionContextFactory.MapToAgentContextAsync` takes one `SkillDefinition`. An agent that needs both "research-topic" and "make-ppt" capabilities requires two separate agents coordinated by a supervisor — two LLM calls, two contexts, no shared state.
@@ -18,7 +20,7 @@ Claude Code loads all relevant skills into the system prompt simultaneously and 
 
 - Harness-controlled skill switching per turn (LLM self-orchestrates)
 - Tier-based progressive disclosure at execution time (all declared skills load fully)
-- Skill prerequisites enforcement (Gap #2, separate work)
+- ~~Skill prerequisites enforcement (Gap #2, separate work)~~ — **now implemented**, see [skill-prerequisites.md](skill-prerequisites.md)
 - Plugin skill consumption (Gap #4, separate work)
 
 ---

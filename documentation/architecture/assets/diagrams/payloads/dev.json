@@ -1,0 +1,20 @@
+{
+  "diagramName": "Agentic Harness — Dev Tier",
+  "region": "eastus",
+  "viewMode": "2d",
+  "services": [
+    { "serviceType": "container-apps", "displayName": "AgentHub (dev)", "description": "AgentHub web host: SignalR + AG-UI + controllers. Public ingress, single replica, scale-to-zero." },
+    { "serviceType": "static-web-app", "displayName": "Dashboard (dev)", "description": "React + Vite SPA. Telemetry, eval, governance views." },
+    { "serviceType": "azure-openai", "displayName": "Azure OpenAI (dev)", "description": "S0 tier. Chat + embedding deployments share one resource." },
+    { "serviceType": "storage-account", "displayName": "Storage (dev)", "description": "AG-UI artifacts, ingestion staging, eval datasets." },
+    { "serviceType": "key-vault", "displayName": "Key Vault (dev)", "description": "Secrets for dev; User Secrets is local-only and not deployed." },
+    { "serviceType": "application-insights", "displayName": "App Insights (dev)", "description": "OTel exporter target. Traces + metrics for the dev environment." }
+  ],
+  "connections": [
+    { "source": "Dashboard (dev)", "target": "AgentHub (dev)", "connectionType": "public" },
+    { "source": "AgentHub (dev)", "target": "Azure OpenAI (dev)", "connectionType": "public" },
+    { "source": "AgentHub (dev)", "target": "Storage (dev)", "connectionType": "public" },
+    { "source": "AgentHub (dev)", "target": "Key Vault (dev)", "connectionType": "public" },
+    { "source": "AgentHub (dev)", "target": "App Insights (dev)", "connectionType": "public" }
+  ]
+}

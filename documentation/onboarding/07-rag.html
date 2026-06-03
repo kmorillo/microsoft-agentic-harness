@@ -190,6 +190,18 @@ Cite chunk IDs in the format [doc:chunk-id] when quoting passages.</code></pre>
                     <p>Each section maps to a class under <code>Domain.Common/Config/AI/RAG/</code>. Default values are tuned for "works well out of the box on the included demo corpus."</p>
 
                     <h2>Where the code lives</h2>
+                    <div class="callout callout-jargon">
+                        <span class="callout-icon">¶</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Project layout note</div>
+                            <p style="margin: 0">
+                                All paths below sit inside the <strong><code>Infrastructure.AI.RAG</code></strong> project
+                                (<code>src/Content/Infrastructure/Infrastructure.AI.RAG/Infrastructure.AI.RAG.csproj</code>),
+                                which is a sibling of <code>Infrastructure.AI</code> — not a subdirectory of it. The split
+                                lets consumers swap retrieval implementations without touching the agent runtime.
+                            </p>
+                        </div>
+                    </div>
                     <table>
                         <thead><tr><th>Concern</th><th>Location</th></tr></thead>
                         <tbody>
@@ -203,19 +215,81 @@ Cite chunk IDs in the format [doc:chunk-id] when quoting passages.</code></pre>
                         </tbody>
                     </table>
 
-                    <h2>Knowledge graph layer (planned)</h2>
+                    <h2>Advanced pipeline phases</h2>
                     <p>
-                        The codebase includes a teaching-stub <code>ManagedCodeGraphRagService</code> in
-                        <code>Infrastructure.AI.KnowledgeGraph</code>, intended to be replaced with a real graph
-                        backend (Neo4j, Kuzu, or PostgreSQL with extensions). When complete, it'll add:
+                        The five stages above are the baseline. Three additional capabilities ship alongside them and
+                        change how the pipeline behaves on harder workloads:
                     </p>
                     <ul>
-                        <li>Entity extraction with ontology validation.</li>
-                        <li>Community detection (Leiden algorithm) for thematic clustering.</li>
-                        <li>Feedback-weighted retrieval — historical "this chunk helped" scores blended with semantic relevance.</li>
-                        <li>Cross-session knowledge persistence — <code>Remember()</code>, <code>Recall()</code>, <code>Forget()</code>, <code>Improve()</code> operations on the graph.</li>
+                        <li>
+                            <strong>Complexity routing (Phase A)</strong> — an LLM classifier scores each query as
+                            simple / moderate / complex and routes it to a tiered pipeline. Simple lookups skip
+                            reranking and CRAG; complex queries get the full treatment. Saves 30–50% of retrieval
+                            cost on mixed workloads without hurting quality on the hard ones.
+                        </li>
+                        <li>
+                            <strong>Multi-hop retrieval (Phase B)</strong> — for questions that need information
+                            chained across sources, the pipeline decomposes the query, retrieves iteratively, and
+                            evaluates sufficiency between hops. An answer-faithfulness evaluator runs at the end to
+                            catch hallucinations before the response leaves the agent.
+                        </li>
+                        <li>
+                            <strong>Full autonomy (Phase D)</strong> — parallel orchestration across vector, BM25, and
+                            graph sources, with retrieval-cost tracking and quality gates at every stage. This is the
+                            mode the agent uses when given a research task instead of a single question.
+                        </li>
                     </ul>
-                    <p>If you're extending the harness with domain-specific intelligence, this is where it'll plug in. See <a href="../../CLAUDE.md">CLAUDE.md</a> for the design notes.</p>
+                    <p>
+                        Each phase is gated behind config — you opt into them per agent or per skill. See
+                        <code>AppConfig.AI.Rag.ComplexityRouting</code>, <code>AppConfig.AI.Rag.MultiHop</code>, and
+                        <code>AppConfig.AI.Rag.Autonomy</code> for the knobs.
+                    </p>
+
+                    <h2>Knowledge graph layer</h2>
+                    <p>
+                        <code>Infrastructure.AI.KnowledgeGraph</code> ships a working graph-backed retrieval layer
+                        — not a stub. It exposes the same surface as the vector pipeline (entities and relationships
+                        instead of chunks and embeddings) and is wired through DI alongside the rest of RAG.
+                    </p>
+                    <p>What's in the box today:</p>
+                    <ul>
+                        <li>
+                            <strong>Graph stores</strong> — <code>Neo4jGraphStore</code> and
+                            <code>PostgreSqlGraphStore</code> for production, <code>InMemoryGraphStore</code> for tests
+                            and local dev, all behind one interface so you can swap without touching consumers.
+                        </li>
+                        <li>
+                            <strong>Community detection</strong> — Leiden algorithm clusters the graph into thematic
+                            communities, used by graph-RAG to retrieve at community granularity rather than node-by-node.
+                        </li>
+                        <li>
+                            <strong>Feedback-weighted retrieval</strong> — <code>GraphFeedbackStore</code> +
+                            <code>LlmFeedbackDetector</code> blend historical "this node/edge helped answer" weights
+                            into ranking, so the graph learns which paths are useful over time.
+                        </li>
+                        <li>
+                            <strong>Cross-session memory</strong> — <code>KnowledgeMemoryService</code> exposes
+                            <code>Remember()</code>, <code>Recall()</code>, <code>Forget()</code>, <code>Improve()</code>
+                            on top of the graph, with <code>InMemorySessionCache</code> for fast reads and configurable
+                            decay tiers (CRITICAL / STANDARD / EPHEMERAL).
+                        </li>
+                        <li>
+                            <strong>Provenance + compliance</strong> — <code>DefaultProvenanceStamper</code> tags every
+                            node and edge with source, pipeline, and timestamp. <code>ComplianceAwareGraphStore</code>
+                            enforces retention; <code>DefaultErasureOrchestrator</code> handles right-to-erasure with
+                            audited <code>ErasureReceipt</code> records.
+                        </li>
+                        <li>
+                            <strong>Multi-tenant isolation</strong> — <code>TenantIsolatedGraphStore</code> enforces
+                            scope boundaries (user → dataset → owner) so multiple agents/users share infrastructure
+                            without leaking knowledge.
+                        </li>
+                    </ul>
+                    <p>
+                        If you're extending the harness with domain-specific intelligence, this is where richer
+                        reasoning patterns plug in. See <a href="../../CLAUDE.md">CLAUDE.md</a> for the full capability
+                        list and the Cognee-inspired design lineage.
+                    </p>
 
                     <hr />
 

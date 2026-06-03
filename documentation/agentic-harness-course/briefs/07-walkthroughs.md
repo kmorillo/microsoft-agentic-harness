@@ -23,6 +23,8 @@ LLM emits a tool call → keyed DI resolves it → sandbox check → result feed
 ### Screen 5: Walkthrough D — A RAG Question
 "What does the README say about RAG?" → classify → retrieve → fuse → rerank → CRAG → assemble → cite. 10 stops. Flow animation. Code translation of the RRF math. Quiz on hybrid retrieval.
 
+> **Prerequisite reading:** This walkthrough assumes the learner knows what RAG is conceptually. Module 5b (RAG & Knowledge) introduces the pipeline in plain English — flag it inline if the learner skipped ahead. Don't re-explain embeddings or RRF here; cite the 05b vocabulary and focus on tracing the actual code paths.
+
 ### Screen 6: The Patterns You Keep Seeing
 Synthesis: factories, keyed DI, middleware pipeline, async streaming, structured tracing — the same patterns surface in every walkthrough. Final scenario quiz that combines all four flows.
 
