@@ -79,4 +79,26 @@ public sealed class TokenAndToolConventionsTests
     {
         actual.Should().Be(expected);
     }
+
+    [Theory]
+    [InlineData(ToolConventions.ChatOperation, "chat")]
+    [InlineData(ToolConventions.TextCompletionOperation, "text_completion")]
+    [InlineData(ToolConventions.EmbeddingsOperation, "embeddings")]
+    [InlineData(ToolConventions.InvokeAgentOperation, "invoke_agent")]
+    [InlineData(ToolConventions.GenAiOperationName, "gen_ai.operation.name")]
+    public void ToolConventions_GenAiOperationValues_HaveExpectedValues(string actual, string expected)
+    {
+        actual.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData(ToolConventions.GenAiToolCallId, "gen_ai.tool.call.id")]
+    [InlineData(ToolConventions.GenAiToolType, "gen_ai.tool.type")]
+    [InlineData(ToolConventions.GenAiToolDescription, "gen_ai.tool.description")]
+    [InlineData(ToolConventions.ToolCallArguments, "gen_ai.tool.call.arguments")]
+    [InlineData(ToolConventions.ToolCallResult, "gen_ai.tool.call.result")]
+    public void ToolConventions_GenAiToolCallNamespace_HaveExpectedValues(string actual, string expected)
+    {
+        actual.Should().Be(expected);
+    }
 }

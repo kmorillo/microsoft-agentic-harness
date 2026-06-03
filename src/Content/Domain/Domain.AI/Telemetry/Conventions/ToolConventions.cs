@@ -27,12 +27,26 @@ public static class ToolConventions
 
     /// <summary>Gen AI operation name for tool execution spans.</summary>
     public const string ExecuteToolOperation = "execute_tool";
+    /// <summary>Gen AI operation value: chat completion.</summary>
+    public const string ChatOperation = "chat";
+    /// <summary>Gen AI operation value: text completion (legacy).</summary>
+    public const string TextCompletionOperation = "text_completion";
+    /// <summary>Gen AI operation value: embeddings generation.</summary>
+    public const string EmbeddingsOperation = "embeddings";
+    /// <summary>Gen AI operation value: top-level agent invocation span.</summary>
+    public const string InvokeAgentOperation = "invoke_agent";
     /// <summary>Gen AI span attribute containing the serialized tool call arguments (input).</summary>
     public const string ToolCallArguments = "gen_ai.tool.call.arguments";
     /// <summary>Gen AI span attribute containing the tool call result text.</summary>
     public const string ToolCallResult = "gen_ai.tool.call.result";
     /// <summary>Gen AI span attribute for the operation name.</summary>
     public const string GenAiOperationName = "gen_ai.operation.name";
+    /// <summary>Gen AI span attribute for per-tool-call identifier (matches the LLM tool_call_id).</summary>
+    public const string GenAiToolCallId = "gen_ai.tool.call.id";
+    /// <summary>Gen AI span attribute for tool type. Values: function, extension, datastore.</summary>
+    public const string GenAiToolType = "gen_ai.tool.type";
+    /// <summary>Gen AI span attribute for tool description as advertised to the model.</summary>
+    public const string GenAiToolDescription = "gen_ai.tool.description";
     /// <summary>Maximum tool result length before truncation.</summary>
     public const int MaxResultLength = 4096;
 
