@@ -1,12 +1,10 @@
 using System.Text.RegularExpressions;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.MetaHarness;
-using Application.AI.Common.Interfaces.Skills;
 using Application.AI.Common.Interfaces.Traces;
 using Domain.AI.Agents;
 using Domain.Common.Config.MetaHarness;
 using Domain.Common.MetaHarness;
-using Infrastructure.AI.Skills;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -28,6 +26,12 @@ public sealed class AgentEvaluationService : IEvaluationService
     private readonly IExecutionTraceStore _traceStore;
     private readonly IAgentFactory _agentFactory;
     private readonly ILogger<AgentEvaluationService> _logger;
+
+    // Candidate-proposed scripts are never executed during evaluation — running untrusted
+    // LLM-authored scripts would be an RCE vector. Mirrors AgentExecutionContextFactory.
+    private static readonly AgentFileSkillScriptRunner NoOpScriptRunner =
+        (skill, script, arguments, serviceProvider, cancellationToken) =>
+            Task.FromResult<object?>(null);
 
     public AgentEvaluationService(
         IOptionsMonitor<MetaHarnessConfig> config,
@@ -97,8 +101,6 @@ public sealed class AgentEvaluationService : IEvaluationService
             TaskId = task.TaskId
         };
 
-        var candidateProvider = new CandidateSkillContentProvider(candidate.Snapshot.SkillFileSnapshots);
-
         var metadata = new RunMetadata
         {
             AgentName = "EvaluationAgent",
@@ -108,10 +110,16 @@ public sealed class AgentEvaluationService : IEvaluationService
         ITraceWriter? traceWriter = null;
         var traceCompleted = false;
         TaskEvaluationResult? taskResult = null;
+        string? skillDirectory = null;
 
         try
         {
             traceWriter = await _traceStore.StartRunAsync(scope, metadata, cancellationToken);
+
+            // Materialize the candidate's proposed skills so the eval agent loads them through the
+            // same MAF progressive-disclosure path used in production. Without this, a candidate that
+            // changes only skill files would evaluate identically to its parent.
+            skillDirectory = MaterializeCandidateSkills(candidate.Snapshot, scope.ExecutionRunId);
 
             var context = new AgentExecutionContext
             {
@@ -119,9 +127,9 @@ public sealed class AgentEvaluationService : IEvaluationService
                 Instruction = candidate.Snapshot.SystemPromptSnapshot,
                 DeploymentName = string.IsNullOrEmpty(cfg.EvaluationModelVersion) ? null : cfg.EvaluationModelVersion,
                 TraceScope = scope,
+                AIContextProviders = BuildSkillsProviders(skillDirectory),
                 AdditionalProperties = new Dictionary<string, object>
                 {
-                    [ISkillContentProvider.AdditionalPropertiesKey] = candidateProvider,
                     [ITraceWriter.AdditionalPropertiesKey] = traceWriter
                 }
             };
@@ -159,9 +167,112 @@ public sealed class AgentEvaluationService : IEvaluationService
 
                 await traceWriter.DisposeAsync();
             }
+
+            if (skillDirectory is not null)
+                TryDeleteDirectory(skillDirectory);
         }
 
         return taskResult!;
+    }
+
+    /// <summary>
+    /// Materializes the candidate's skill snapshot to an isolated temp directory so the eval
+    /// agent can load the proposed skills via MAF's <see cref="AgentSkillsProvider"/>. Returns
+    /// <see langword="null"/> when the candidate has no skill files.
+    /// </summary>
+    /// <remarks>
+    /// Snapshot keys originate from LLM-authored proposals and are therefore untrusted: each path
+    /// is resolved and asserted to stay within the temp root to block path-traversal escapes.
+    /// Unchanged files are secret-redacted in the snapshot, but that redaction is constant across a
+    /// candidate and its parent, so the comparative pass-rate signal is preserved; the proposed
+    /// (changed) files are unredacted and faithfully evaluated.
+    /// </remarks>
+    private string? MaterializeCandidateSkills(HarnessSnapshot snapshot, Guid executionRunId)
+    {
+        if (snapshot.SkillFileSnapshots.Count == 0)
+            return null;
+
+        // Canonicalize once so the containment check compares like-for-like (handles symlinked
+        // temp roots on macOS and 8.3 short names on Windows).
+        var root = Path.GetFullPath(
+            Path.Combine(Path.GetTempPath(), "harness-eval-skills", executionRunId.ToString("N")));
+        Directory.CreateDirectory(root);
+
+        try
+        {
+            foreach (var (relativePath, content) in snapshot.SkillFileSnapshots)
+            {
+                var filePath = SafeResolveWithinRoot(root, relativePath);
+                var directory = Path.GetDirectoryName(filePath);
+                if (directory is not null)
+                    Directory.CreateDirectory(directory);
+                File.WriteAllText(filePath, content);
+            }
+        }
+        catch
+        {
+            // A path-traversal rejection (or any write failure) must not leak a partial temp dir,
+            // since the caller never receives the path to clean up.
+            TryDeleteDirectory(root);
+            throw;
+        }
+
+        return root;
+    }
+
+    /// <summary>
+    /// Builds the eval context's progressive-disclosure skills provider over <paramref name="skillDirectory"/>,
+    /// mirroring the production wiring in <c>AgentExecutionContextFactory</c>. Returns <see langword="null"/>
+    /// when there is no skill directory so the eval context carries no provider.
+    /// </summary>
+    private static IList<AIContextProvider>? BuildSkillsProviders(string? skillDirectory)
+    {
+        if (skillDirectory is null)
+            return null;
+
+        var provider = new AgentSkillsProviderBuilder()
+            .UseFileScriptRunner(NoOpScriptRunner)
+            .UseFileSkill(skillDirectory)
+            .Build();
+
+        return [provider];
+    }
+
+    /// <summary>
+    /// Resolves <paramref name="relativePath"/> under the canonical <paramref name="root"/> and asserts
+    /// the result stays within it. Throws on path-traversal attempts in untrusted snapshot keys.
+    /// </summary>
+    /// <remarks>
+    /// Containment is checked via <see cref="Path.GetRelativePath(string, string)"/>, which honors the
+    /// host platform's path-case rules (case-insensitive on Windows, case-sensitive on Linux) — unlike a
+    /// hard-coded ordinal/ignore-case string prefix check, which is wrong on at least one platform.
+    /// </remarks>
+    private static string SafeResolveWithinRoot(string root, string relativePath)
+    {
+        var resolved = Path.GetFullPath(Path.Combine(root, relativePath));
+        var relative = Path.GetRelativePath(root, resolved);
+
+        if (relative == ".."
+            || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || Path.IsPathRooted(relative))
+        {
+            throw new InvalidOperationException(
+                $"Candidate skill path '{relativePath}' resolves outside the eval skill directory.");
+        }
+        return resolved;
+    }
+
+    private void TryDeleteDirectory(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, recursive: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to clean up eval skill directory {Directory}", directory);
+        }
     }
 
     private static (bool Passed, string? FailureReason) Grade(string output, string? pattern)
