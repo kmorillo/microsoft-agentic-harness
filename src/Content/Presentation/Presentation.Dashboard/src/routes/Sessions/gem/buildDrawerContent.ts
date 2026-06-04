@@ -10,16 +10,20 @@ import type {
 
 /**
  * Pointer to the backend record this drawer item maps to. When present, the
- * drawer render site lazily fetches the full body via
- * `GET /api/sessions/:id/messages/:messageId` or
- * `GET /api/sessions/:id/tools/:invocationId` and replaces `body` with the
- * resolved content. When absent (skills / agents / mcp / system), `body`
- * is the only thing the drawer has to show.
+ * drawer render site lazily fetches the full body and replaces `body` with
+ * the resolved content.
+ *
+ * - `message` → `GET /api/sessions/:id/messages/:messageId` — full message content
+ * - `tool` → `GET /api/sessions/:id/tools/:invocationId` — full args + stdout
+ * - `loaded-body` → `GET /api/sessions/:id/turns/:turnIndex/loaded/:loadedIndex/body`
+ *   — captured body for system prompt / skill instructions / tool or MCP schema
+ *   / sub-agent description. Used for categories whose body is captured at
+ *   snapshot time but not pinned to a separate row (no message id, no tool id).
  */
-export interface DrawerIdRef {
-  kind: 'message' | 'tool';
-  id: string;
-}
+export type DrawerIdRef =
+  | { kind: 'message'; id: string }
+  | { kind: 'tool'; id: string }
+  | { kind: 'loaded-body'; turnIndex: number; loadedIndex: number };
 
 export interface DrawerContent {
   /** The body rendered in the drawer. Used as the fallback while a lazy fetch is in flight. */
@@ -42,18 +46,22 @@ interface BuildContext {
   tools: ToolExecutionRecord[];
   /** The snapshot turn this LoadedItem belongs to. */
   turnIndex: number;
+  /**
+   * Position of this item in its snapshot's `loaded[]` array. When provided,
+   * categories without a separate per-record id (system / skills / mcp / agents,
+   * and tools without a matching ToolExecutionRecord) emit an
+   * `idRef: { kind: 'loaded-body', turnIndex, loadedIndex }` so the drawer
+   * renderer can lazily fetch the captured body via the loaded-body endpoint.
+   * `-1` (or omitted) suppresses the loaded-body idRef.
+   */
+  snapshotLoadedIndex?: number;
 }
 
 const NO_CAPTURED_CONTENT =
   'No content captured for this item.';
 
-const CATEGORY_NO_BODY: Record<string, string> =
-  {
-    skills: 'Skill body is not captured by the observability store.',
-    agents: 'Agent manifest body is not captured by the observability store.',
-    mcp: 'MCP descriptor body is not captured by the observability store.',
-    system: 'System prompt body is not captured by the observability store.',
-  };
+const LOADING_BODY =
+  'Loading…';
 
 /**
  * Resolves what to show in the ContextDrawer for a given LoadedItem.
@@ -85,10 +93,21 @@ export function buildDrawerContent(
     case 'mcp':
     case 'system':
     default: {
-      const note = CATEGORY_NO_BODY[item.cat] ?? NO_CAPTURED_CONTENT;
+      // Real body for these categories ships from the loaded-body endpoint
+      // (`/sessions/:id/turns/:turn/loaded/:idx/body`) — the drawer renderer
+      // fetches it on open via the `idRef: { kind: 'loaded-body', ... }`
+      // hint set here. While the fetch is in flight, fall back to the ref
+      // label (if any) plus a short "Loading…" note. When the caller didn't
+      // pass a snapshotLoadedIndex, no idRef is emitted and the fallback
+      // text becomes the final body.
+      const idx = ctx.snapshotLoadedIndex;
+      const hasIdx = typeof idx === 'number' && idx >= 0;
       return {
-        body: item.ref ? `${item.ref}\n\n${note}` : note,
+        body: item.ref ? `${item.ref}\n\n${LOADING_BODY}` : LOADING_BODY,
         lang: 'text',
+        ...(hasIdx
+          ? { idRef: { kind: 'loaded-body' as const, turnIndex: ctx.turnIndex, loadedIndex: idx! } }
+          : {}),
       };
     }
   }
@@ -153,10 +172,22 @@ function buildToolBody(
     source: match?.toolSource ?? null,
   };
 
+  // Tool-invocation detail takes priority when there's a matching execution
+  // (the args + stdout are what an operator cares about). When no invocation
+  // matches — e.g. the tool was loaded but not called this turn — fall back
+  // to the loaded-body idRef so the drawer can show the JSON schema.
+  const idx = ctx.snapshotLoadedIndex;
+  const hasIdx = typeof idx === 'number' && idx >= 0;
+  const idRef: DrawerIdRef | undefined = match
+    ? { kind: 'tool' as const, id: match.id }
+    : hasIdx
+      ? { kind: 'loaded-body' as const, turnIndex: ctx.turnIndex, loadedIndex: idx! }
+      : undefined;
+
   return {
     body: JSON.stringify(card, null, 2),
     lang: 'json',
-    ...(match ? { idRef: { kind: 'tool' as const, id: match.id } } : {}),
+    ...(idRef ? { idRef } : {}),
   };
 }
 

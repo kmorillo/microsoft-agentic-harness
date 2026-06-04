@@ -119,4 +119,16 @@ public sealed class NullObservabilityStore : IObservabilityStore
         IEnumerable<string> conversationIds, CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyDictionary<string, CategoryBreakdown>>(
             new Dictionary<string, CategoryBreakdown>());
+
+    /// <inheritdoc />
+    public Task RecordLoadedBodiesAsync(
+        string conversationId, int turnIndex, IReadOnlyList<LoadedItemBody> bodies,
+        CancellationToken cancellationToken = default)
+        => Task.CompletedTask;
+
+    /// <inheritdoc />
+    public Task<string?> GetLoadedBodyAsync(
+        string conversationId, int turnIndex, int loadedIndex,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<string?>(null);
 }

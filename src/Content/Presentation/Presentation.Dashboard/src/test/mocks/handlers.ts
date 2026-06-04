@@ -359,6 +359,28 @@ export const handlers = [
     });
   }),
 
+  // Loaded-body deep-link. Powers the ContextDrawer's lazy fetch for system /
+  // skills / tools / mcp / agents items — the composed prompt, instructions,
+  // schema, or description captured at snapshot time.
+  http.get(
+    '/api/sessions/:id/turns/:turnIndex/loaded/:loadedIndex/body',
+    ({ params }) => {
+      const { id, turnIndex, loadedIndex } = params as {
+        id: string;
+        turnIndex: string;
+        loadedIndex: string;
+      };
+      // Sentinel: turn -1 always 404s (rows from before body capture).
+      if (turnIndex === '-1') return new HttpResponse(null, { status: 404 });
+      return HttpResponse.json({
+        conversationId: `conv-${id}`,
+        turnIndex: Number(turnIndex),
+        loadedIndex: Number(loadedIndex),
+        body: `Mock body for turn ${turnIndex} loaded[${loadedIndex}].`,
+      });
+    },
+  ),
+
   // File-body deep-link. Now consumed by both the dedicated MessageBodyPage
   // and the ContextDrawer in SessionDetailPage (lazy fetch on drawer open).
   http.get('/api/sessions/:id/messages/:messageId', ({ params }) => {

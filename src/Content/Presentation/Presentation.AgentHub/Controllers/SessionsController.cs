@@ -180,4 +180,44 @@ public sealed class SessionsController : ControllerBase
 
         return Ok(MessageBodyDto.From(record));
     }
+
+    /// <summary>
+    /// Returns the full body text for a single Foresight <c>LoadedItem</c> —
+    /// composed system prompt, skill instructions, tool JSON schema, MCP
+    /// descriptor, or sub-agent description. Scoped to the parent session so
+    /// a forged turn/loaded index from a different session can't leak through.
+    /// Returns 404 when the session doesn't exist, when the snapshot has no
+    /// captured body for that index, or when the row predates body capture.
+    /// </summary>
+    /// <param name="id">Parent session id.</param>
+    /// <param name="turnIndex">Turn the loaded item belongs to.</param>
+    /// <param name="loadedIndex">Position in the snapshot's loaded[] array.</param>
+    /// <param name="ct">Cancellation token.</param>
+    [HttpGet("{id:guid}/turns/{turnIndex:int}/loaded/{loadedIndex:int}/body")]
+    [ProducesResponseType(typeof(LoadedBodyDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<LoadedBodyDto>> GetLoadedBody(
+        Guid id, int turnIndex, int loadedIndex, CancellationToken ct = default)
+    {
+        // Bounds: indexes are non-negative; reject obviously malformed
+        // requests at the boundary before doing the store hit.
+        if (turnIndex < 0 || loadedIndex < 0)
+            return NotFound();
+
+        // Sidecar table is keyed by conversation id, but the public URL is
+        // keyed by session id — resolve the conversation id from the session
+        // first so a forged conversation id from another session can't return
+        // someone else's prompt bodies.
+        var session = await _store.GetSessionByIdAsync(id, ct);
+        if (session is null || string.IsNullOrEmpty(session.ConversationId))
+            return NotFound();
+
+        var body = await _store.GetLoadedBodyAsync(
+            session.ConversationId, turnIndex, loadedIndex, ct);
+        if (body is null)
+            return NotFound();
+
+        return Ok(new LoadedBodyDto(
+            session.ConversationId, turnIndex, loadedIndex, body));
+    }
 }

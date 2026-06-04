@@ -254,4 +254,40 @@ public interface IObservabilityStore
     Task<IReadOnlyDictionary<string, CategoryBreakdown>> GetLatestBreakdownsAsync(
         IEnumerable<string> conversationIds,
         CancellationToken cancellationToken = default);
+
+    // ── Loaded Item Bodies (Foresight sidecar) ──────────────────────────
+
+    /// <summary>
+    /// Persists the per-loaded-item body text for a snapshot turn. Idempotent
+    /// on <c>(ConversationId, TurnIndex, LoadedIndex)</c>: re-emitting a turn's
+    /// bodies overwrites prior rows. Bodies are stored in a sidecar table —
+    /// the parent <c>context_snapshots</c> row stays small so SignalR /
+    /// HTTP payloads aren't bloated by 5-20 KB system prompts that the UI
+    /// only needs on demand.
+    /// </summary>
+    /// <param name="conversationId">Stable conversation identifier.</param>
+    /// <param name="turnIndex">Turn index the bodies belong to.</param>
+    /// <param name="bodies">Bodies to persist. May be empty; callers can skip
+    /// invoking this method entirely when there's nothing to write.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task RecordLoadedBodiesAsync(
+        string conversationId,
+        int turnIndex,
+        IReadOnlyList<LoadedItemBody> bodies,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Retrieves a single loaded-item body. Returns <c>null</c> when no body
+    /// was captured (e.g. <c>messages</c> category items, or rows from before
+    /// the body-capture migration). Powers the drawer's lazy fetch on open.
+    /// </summary>
+    /// <param name="conversationId">Stable conversation identifier.</param>
+    /// <param name="turnIndex">Turn the loaded item belongs to.</param>
+    /// <param name="loadedIndex">Position in the snapshot's <c>Loaded[]</c> array.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<string?> GetLoadedBodyAsync(
+        string conversationId,
+        int turnIndex,
+        int loadedIndex,
+        CancellationToken cancellationToken = default);
 }

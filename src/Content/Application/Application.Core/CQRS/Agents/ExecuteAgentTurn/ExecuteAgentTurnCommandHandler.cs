@@ -193,7 +193,7 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 			// (compute, persist, notify) can never fail the turn.
 			try
 			{
-				var turnLoaded = BuildTurnLoadedItems(
+				var (turnLoaded, turnLoadedBodies) = BuildTurnLoadedItems(
 					request.ConversationId,
 					agentDef,
 					request.UserMessage,
@@ -208,8 +208,15 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 					turnLoaded: turnLoaded,
 					capturedAtUtc: _timeProvider.GetUtcNow());
 
+				// RecordLoadedBodiesAsync writes to the context_snapshot_loaded_bodies
+				// sidecar table — keeps the snapshot row + SignalR wire small (just
+				// labels + token counts) while still making the full prompt / skill /
+				// tool-schema text available to the drawer via the lazy
+				// GET /sessions/:id/turns/:turn/loaded/:idx/body endpoint.
 				await Task.WhenAll(
 					_observabilityStore.RecordContextSnapshotAsync(snapshot, cancellationToken),
+					_observabilityStore.RecordLoadedBodiesAsync(
+						request.ConversationId, request.TurnNumber, turnLoadedBodies, cancellationToken),
 					_snapshotNotifier.NotifyAsync(snapshot, cancellationToken))
 					.ConfigureAwait(false);
 			}
@@ -312,7 +319,7 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 	///   floor of <c>est(name + description)</c> so a schemaless tool still has signal.</item>
 	/// </list>
 	/// </remarks>
-	private IReadOnlyList<LoadedItem> BuildTurnLoadedItems(
+	private (IReadOnlyList<LoadedItem> Items, IReadOnlyList<LoadedItemBody> Bodies) BuildTurnLoadedItems(
 		string conversationId,
 		AgentDefinition? agentDef,
 		string userMessage,
@@ -320,13 +327,17 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 		IReadOnlyList<string> toolsInvoked)
 	{
 		var items = new List<LoadedItem>(8 + toolsInvoked.Count);
+		// Bodies are sparse — only registration items (system / skills / tools /
+		// mcp / sub-agents) carry body text. Messages get their full text via
+		// the separate /messages/:messageId endpoint, so they're skipped here.
+		var bodies = new List<LoadedItemBody>(8);
 
 		var ctx = _agentCache.TryGetContext(conversationId);
 		if (ctx is not null)
 		{
 			var snapshot = BuildRegistrationSnapshot(ctx, agentDef);
 			var delta = _registrationTracker.DiffAndUpdate(conversationId, snapshot);
-			AppendRegistrationItems(items, snapshot, delta);
+			AppendRegistrationItems(items, bodies, snapshot, delta);
 		}
 
 		// Always emit messages — those are the per-turn delta the inspector itemizes.
@@ -350,7 +361,7 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 				Reference: toolName));
 		}
 
-		return items;
+		return (items, bodies);
 	}
 
 	/// <summary>
@@ -410,12 +421,18 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 	}
 
 	/// <summary>
-	/// Emits one <see cref="LoadedItem"/> per registration delta entry into <paramref name="items"/>.
+	/// Emits one <see cref="LoadedItem"/> per registration delta entry into <paramref name="items"/>
+	/// and, in lockstep, one <see cref="LoadedItemBody"/> per item into <paramref name="bodies"/>.
 	/// System tokens = est(instruction) − Σ est(skill.Instructions) so the lane totals add up
 	/// to what the model actually receives without double-counting skill content.
+	/// Body capture pairs each LoadedItem with its actual text (composed system prompt, skill
+	/// instructions, tool JSON schema, MCP descriptor, sub-agent description) so the dashboard
+	/// drawer can render the real content via the lazy
+	/// <c>GET /sessions/:id/turns/:turn/loaded/:idx/body</c> endpoint.
 	/// </summary>
 	private static void AppendRegistrationItems(
 		List<LoadedItem> items,
+		List<LoadedItemBody> bodies,
 		RegistrationSnapshot snapshot,
 		RegistrationDelta delta)
 	{
@@ -429,6 +446,7 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 				Tokens: Math.Max(0, instructionTokens - skillTokens),
 				Category: ContextCategory.System,
 				Reference: null));
+			bodies.Add(new LoadedItemBody(items.Count - 1, snapshot.SystemPromptText));
 		}
 
 		foreach (var skill in delta.NewSkills)
@@ -441,21 +459,33 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 				Tokens: tokens,
 				Category: ContextCategory.Skills,
 				Reference: skill.Id));
+			if (!string.IsNullOrEmpty(skill.InstructionsText))
+				bodies.Add(new LoadedItemBody(items.Count - 1, skill.InstructionsText));
 		}
 
 		foreach (var tool in delta.NewNativeTools)
+		{
 			items.Add(new LoadedItem(
 				What: $"Tool: {tool.Name}",
 				Tokens: EstimateToolTokens(tool),
 				Category: ContextCategory.Tools,
 				Reference: tool.Name));
+			var body = BuildToolBody(tool);
+			if (!string.IsNullOrEmpty(body))
+				bodies.Add(new LoadedItemBody(items.Count - 1, body));
+		}
 
 		foreach (var tool in delta.NewMcpTools)
+		{
 			items.Add(new LoadedItem(
 				What: $"MCP: {tool.Name}",
 				Tokens: EstimateToolTokens(tool),
 				Category: ContextCategory.Mcp,
 				Reference: tool.Name));
+			var body = BuildToolBody(tool);
+			if (!string.IsNullOrEmpty(body))
+				bodies.Add(new LoadedItemBody(items.Count - 1, body));
+		}
 
 		foreach (var peer in delta.NewSubAgents)
 		{
@@ -467,7 +497,22 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 				Tokens: tokens,
 				Category: ContextCategory.Agents,
 				Reference: peer.Id));
+			if (!string.IsNullOrEmpty(peer.Description))
+				bodies.Add(new LoadedItemBody(items.Count - 1, peer.Description));
 		}
+	}
+
+	/// <summary>
+	/// Builds the drawer body text for a tool / MCP-tool registration. Prefers
+	/// the JSON schema (what the LLM actually sees) and falls back to a "Name —
+	/// Description" line so a tool without a serialised schema still has
+	/// something readable to render.
+	/// </summary>
+	private static string BuildToolBody(ToolRegistration tool)
+	{
+		if (!string.IsNullOrEmpty(tool.SchemaText)) return tool.SchemaText;
+		if (!string.IsNullOrEmpty(tool.Description)) return $"{tool.Name} — {tool.Description}";
+		return tool.Name;
 	}
 
 	private static int EstimateToolTokens(ToolRegistration tool)

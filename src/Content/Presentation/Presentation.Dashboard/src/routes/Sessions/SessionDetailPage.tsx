@@ -5,6 +5,7 @@ import {
   fetchSessionDetail,
   fetchMessageBody,
   fetchToolInvocation,
+  fetchLoadedBody,
 } from '@/api/sessions';
 import type { SessionRecord } from '@/api/types';
 import {
@@ -77,16 +78,43 @@ export default function SessionDetailPage() {
   // backend record (messages / tools — not skills / agents / mcp / system).
   const drawerIdRef = gem.drawerItem?.content.idRef;
   const messageBodyQuery = useQuery({
-    queryKey: ['session-message-body', sessionId, drawerIdRef?.id],
-    queryFn: () => fetchMessageBody(sessionId!, drawerIdRef!.id),
+    queryKey: [
+      'session-message-body',
+      sessionId,
+      drawerIdRef?.kind === 'message' ? drawerIdRef.id : null,
+    ],
+    queryFn: () =>
+      fetchMessageBody(sessionId!, (drawerIdRef as { id: string }).id),
     enabled: !!sessionId && drawerIdRef?.kind === 'message',
     staleTime: 60_000,
   });
   const toolDetailQuery = useQuery({
-    queryKey: ['session-tool-invocation', sessionId, drawerIdRef?.id],
-    queryFn: () => fetchToolInvocation(sessionId!, drawerIdRef!.id),
+    queryKey: [
+      'session-tool-invocation',
+      sessionId,
+      drawerIdRef?.kind === 'tool' ? drawerIdRef.id : null,
+    ],
+    queryFn: () =>
+      fetchToolInvocation(sessionId!, (drawerIdRef as { id: string }).id),
     enabled: !!sessionId && drawerIdRef?.kind === 'tool',
     staleTime: 60_000,
+  });
+  const loadedBodyQuery = useQuery({
+    queryKey: [
+      'session-loaded-body',
+      sessionId,
+      drawerIdRef?.kind === 'loaded-body' ? drawerIdRef.turnIndex : null,
+      drawerIdRef?.kind === 'loaded-body' ? drawerIdRef.loadedIndex : null,
+    ],
+    queryFn: () => {
+      const ref = drawerIdRef as { turnIndex: number; loadedIndex: number };
+      return fetchLoadedBody(sessionId!, ref.turnIndex, ref.loadedIndex);
+    },
+    enabled: !!sessionId && drawerIdRef?.kind === 'loaded-body',
+    staleTime: 60_000,
+    // 404 is the expected response for rows that predate body capture — don't
+    // hammer the server retrying that.
+    retry: false,
   });
 
   const drawerBody = useMemo(() => {
@@ -113,12 +141,18 @@ export default function SessionDetailPage() {
       }
     }
 
+    if (drawerIdRef.kind === 'loaded-body') {
+      const body = loadedBodyQuery.data?.body;
+      return typeof body === 'string' && body.length > 0 ? body : fallback;
+    }
+
     return fallback;
   }, [
     gem.drawerItem,
     drawerIdRef,
     messageBodyQuery.data,
     toolDetailQuery.data,
+    loadedBodyQuery.data,
   ]);
 
   if (isLoading) {

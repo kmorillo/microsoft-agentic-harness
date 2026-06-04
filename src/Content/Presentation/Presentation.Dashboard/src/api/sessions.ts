@@ -5,6 +5,7 @@ import type {
   SessionDetail,
   ToolInvocationDetail,
   MessageBody,
+  LoadedBody,
 } from './types';
 
 export async function fetchSessions(
@@ -66,6 +67,25 @@ export async function fetchMessageBody(
 ): Promise<MessageBody> {
   const { data } = await apiClient.get<MessageBody>(
     `/api/sessions/${sessionId}/messages/${messageId}`,
+  );
+  return data;
+}
+
+/**
+ * Loaded-body deep-link
+ * (`GET /api/sessions/:id/turns/:turnIndex/loaded/:loadedIndex/body`).
+ * Returns the captured body text for one Foresight LoadedItem — composed
+ * system prompt, skill instructions, tool JSON schema, MCP descriptor, or
+ * sub-agent description. Backend scopes by parent session, so a forged
+ * (turnIndex, loadedIndex) from another session returns 404.
+ */
+export async function fetchLoadedBody(
+  sessionId: string,
+  turnIndex: number,
+  loadedIndex: number,
+): Promise<LoadedBody> {
+  const { data } = await apiClient.get<LoadedBody>(
+    `/api/sessions/${sessionId}/turns/${turnIndex}/loaded/${loadedIndex}/body`,
   );
   return data;
 }

@@ -152,30 +152,70 @@ describe('buildDrawerContent — tools', () => {
   });
 });
 
-describe('buildDrawerContent — categories without a captured body', () => {
+describe('buildDrawerContent — categories whose body comes from the loaded-body endpoint', () => {
   it.each(['skills', 'agents', 'mcp', 'system'] as const)(
-    'returns a "not captured" note for category %s',
+    'emits a loaded-body idRef and a Loading… fallback for category %s when snapshotLoadedIndex is supplied',
     (cat) => {
       const item: LoadedItem = { what: 'rules/testing', tokens: 1234, cat };
-      const result = buildDrawerContent(item, baseCtx);
+      const result = buildDrawerContent(item, {
+        ...baseCtx,
+        turnIndex: 4,
+        snapshotLoadedIndex: 2,
+      });
       expect(result.lang).toBe('text');
       expect(result.role).toBeUndefined();
-      expect(result.idRef).toBeUndefined();
-      expect(result.body).toContain('not captured');
+      expect(result.idRef).toEqual({
+        kind: 'loaded-body',
+        turnIndex: 4,
+        loadedIndex: 2,
+      });
+      expect(result.body).toContain('Loading');
       // Stale "PR 5" placeholder reference is gone.
       expect(result.body).not.toContain('PR 5');
     },
   );
 
-  it('prepends the ref to the no-body note when available', () => {
+  it.each(['skills', 'agents', 'mcp', 'system'] as const)(
+    'omits the idRef when no snapshotLoadedIndex is supplied (category %s)',
+    (cat) => {
+      const item: LoadedItem = { what: 'rules/testing', tokens: 1234, cat };
+      const result = buildDrawerContent(item, baseCtx);
+      expect(result.idRef).toBeUndefined();
+      expect(result.body).toContain('Loading');
+    },
+  );
+
+  it('prepends the ref to the loading note when available', () => {
     const item: LoadedItem = {
       what: 'Skill X',
       tokens: 500,
       cat: 'skills',
       ref: 'skills/foresight/SKILL.md',
     };
-    const result = buildDrawerContent(item, baseCtx);
+    const result = buildDrawerContent(item, {
+      ...baseCtx,
+      snapshotLoadedIndex: 1,
+    });
     expect(result.body.startsWith('skills/foresight/SKILL.md')).toBe(true);
-    expect(result.body).toContain('not captured');
+    expect(result.body).toContain('Loading');
+  });
+
+  it('emits a loaded-body idRef for a tools-category item with no matching execution', () => {
+    const item: LoadedItem = {
+      what: 'Tool: Read',
+      tokens: 100,
+      cat: 'tools',
+    };
+    const result = buildDrawerContent(item, {
+      ...baseCtx,
+      turnIndex: 1,
+      snapshotLoadedIndex: 3,
+    });
+    // No matching ToolExecutionRecord → loaded-body path takes over.
+    expect(result.idRef).toEqual({
+      kind: 'loaded-body',
+      turnIndex: 1,
+      loadedIndex: 3,
+    });
   });
 });

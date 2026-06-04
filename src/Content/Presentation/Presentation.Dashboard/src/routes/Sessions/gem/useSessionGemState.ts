@@ -145,7 +145,26 @@ export function useSessionGemState({
       source: 'hero' | 'timeline',
       turnIndex: number,
     ): DrawerTarget => {
-      const content = buildDrawerContent(item, { messages, tools, turnIndex });
+      // Resolve the snapshot-relative index so buildDrawerContent can pin a
+      // 'loaded-body' idRef that the renderer hits to fetch the captured body
+      // (composed system prompt, skill instructions, tool/MCP schema,
+      // sub-agent description). Snapshot-relative index ≠ lane-relative
+      // index; the loaded-body endpoint keys by snapshot position.
+      const snapshot = snapshotByTurn.get(turnIndex);
+      const snapshotLoadedIndex = snapshot
+        ? snapshot.loaded.findIndex((li) =>
+            li === item ||
+            (li.what === item.what &&
+              li.cat === item.cat &&
+              (li.ref ?? null) === (item.ref ?? null)))
+        : -1;
+
+      const content = buildDrawerContent(item, {
+        messages,
+        tools,
+        turnIndex,
+        snapshotLoadedIndex,
+      });
       const lane = allLanes[item.cat];
       const idx = lane.indexOf(item);
       // -1 only happens when the clicked item came from a stale snapshot
@@ -163,7 +182,7 @@ export function useSessionGemState({
         turnIndex,
       };
     },
-    [messages, tools, allLanes],
+    [messages, tools, allLanes, snapshotByTurn],
   );
 
   const openDrawer = useCallback(

@@ -198,6 +198,21 @@ export interface MessageBody {
   createdAt: string;
 }
 
+/**
+ * Loaded-body response from
+ * `GET /api/sessions/:id/turns/:turnIndex/loaded/:loadedIndex/body`.
+ * Mirrors `LoadedBodyDto`. Powers the context drawer's lazy fetch for
+ * system / skills / tools / mcp / agents items — the full composed system
+ * prompt, skill instructions, tool schema, MCP descriptor, or sub-agent
+ * description captured at the moment the LoadedItem was emitted.
+ */
+export interface LoadedBody {
+  conversationId: string;
+  turnIndex: number;
+  loadedIndex: number;
+  body: string | null;
+}
+
 export interface SafetyEventRecord {
   id: string;
   sessionId: string;
