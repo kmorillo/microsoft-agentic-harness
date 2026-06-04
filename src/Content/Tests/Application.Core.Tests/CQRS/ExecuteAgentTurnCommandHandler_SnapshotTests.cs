@@ -48,6 +48,8 @@ public class ExecuteAgentTurnCommandHandler_SnapshotTests
         return new ExecuteAgentTurnCommandHandler(
             _agentCache.Object,
             _agentRegistry.Object,
+            new Mock<ISkillMetadataRegistry>().Object,
+            new Application.AI.Common.Services.Context.ConversationRegistrationTracker(),
             _store.Object,
             usageCapture.Object,
             new DefaultContextSnapshotComputer(),

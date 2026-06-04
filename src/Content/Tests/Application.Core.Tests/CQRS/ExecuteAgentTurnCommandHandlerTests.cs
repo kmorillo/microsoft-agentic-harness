@@ -35,6 +35,8 @@ public class ExecuteAgentTurnCommandHandlerTests
         _handler = new ExecuteAgentTurnCommandHandler(
             _agentCache.Object,
             _agentRegistry.Object,
+            new Mock<ISkillMetadataRegistry>().Object,
+            new Application.AI.Common.Services.Context.ConversationRegistrationTracker(),
             new Mock<IObservabilityStore>().Object,
             usageCapture.Object,
             new DefaultContextSnapshotComputer(),

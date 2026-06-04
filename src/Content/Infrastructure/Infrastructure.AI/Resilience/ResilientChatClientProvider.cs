@@ -1,6 +1,7 @@
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Resilience;
 using Domain.AI.Resilience;
+using Domain.Common.Config;
 using Domain.Common.Config.AI.Resilience;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -29,6 +30,7 @@ public sealed class ResilientChatClientProvider : IResilientChatClientProvider
 {
     private readonly IChatClientFactory _chatClientFactory;
     private readonly IOptionsMonitor<ResilienceConfig> _resilienceConfig;
+    private readonly IOptionsMonitor<AppConfig> _appConfig;
     private readonly PollyProviderHealthMonitor _healthMonitor;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<ResilientChatClientProvider> _logger;
@@ -37,18 +39,21 @@ public sealed class ResilientChatClientProvider : IResilientChatClientProvider
     /// <summary>Creates a new resilient chat client provider.</summary>
     /// <param name="chatClientFactory">Factory for creating raw per-provider clients.</param>
     /// <param name="resilienceConfig">Resilience configuration from Options pattern.</param>
+    /// <param name="appConfig">App configuration — used to honor the configured agent framework when resilience is disabled.</param>
     /// <param name="healthMonitor">Concrete health monitor for <see cref="PollyProviderHealthMonitor.ReportStateChange"/> wiring.</param>
     /// <param name="loggerFactory">Logger factory for creating typed loggers for composed clients.</param>
     /// <param name="logger">Logger for chain composition events.</param>
     public ResilientChatClientProvider(
         IChatClientFactory chatClientFactory,
         IOptionsMonitor<ResilienceConfig> resilienceConfig,
+        IOptionsMonitor<AppConfig> appConfig,
         PollyProviderHealthMonitor healthMonitor,
         ILoggerFactory loggerFactory,
         ILogger<ResilientChatClientProvider> logger)
     {
         _chatClientFactory = chatClientFactory;
         _resilienceConfig = resilienceConfig;
+        _appConfig = appConfig;
         _healthMonitor = healthMonitor;
         _loggerFactory = loggerFactory;
         _logger = logger;
@@ -67,17 +72,26 @@ public sealed class ResilientChatClientProvider : IResilientChatClientProvider
         var config = _resilienceConfig.CurrentValue;
         var chain = config.FallbackChain;
 
+        if (!config.Enabled)
+        {
+            // Honor the configured agent framework, not FallbackChain[0]. FallbackChain is purely
+            // a resilience concern; when resilience is off it must not override the primary provider.
+            var framework = _appConfig.CurrentValue.AI?.AgentFramework;
+            var primaryClientType = framework?.ClientType
+                ?? throw new InvalidOperationException(
+                    "AppConfig.AI.AgentFramework.ClientType is not configured.");
+            var primaryDeployment = framework!.DefaultDeployment
+                ?? throw new InvalidOperationException(
+                    "AppConfig.AI.AgentFramework.DefaultDeployment is not configured.");
+            _logger.LogWarning(
+                "Resilience disabled — returning raw client for {ClientType}/{Deployment}",
+                primaryClientType, primaryDeployment);
+            return await _chatClientFactory.GetChatClientAsync(primaryClientType, primaryDeployment);
+        }
+
         if (chain.Length == 0)
             throw new InvalidOperationException(
                 "ResilienceConfig.FallbackChain is empty. Configure at least one provider.");
-
-        if (!config.Enabled)
-        {
-            var primary = chain[0];
-            _logger.LogWarning("Resilience disabled — returning raw client for {DeploymentId}", primary.DeploymentId);
-            return await _chatClientFactory.GetChatClientAsync(
-                primary.ClientType, primary.DeploymentId);
-        }
 
         var providers = new List<ResilientChatClient.ProviderEntry>(chain.Length);
 

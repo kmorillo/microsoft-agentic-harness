@@ -35,7 +35,16 @@ public class ToolChainBuilder : IToolChainBuilder
     }
 
     /// <inheritdoc />
-    public async Task<List<AITool>> BuildToolsAsync(SkillDefinition skill, SkillAgentOptions options)
+    public Task<List<AITool>> BuildToolsAsync(SkillDefinition skill, SkillAgentOptions options)
+        // Public callers don't need MCP attribution — use a throwaway collector so
+        // resolution paths still record where each tool came from but the result is
+        // discarded.
+        => BuildToolsAsync(skill, options, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+
+    private async Task<List<AITool>> BuildToolsAsync(
+        SkillDefinition skill,
+        SkillAgentOptions options,
+        ISet<string> mcpCollector)
     {
         var tools = new List<AITool>();
 
@@ -43,7 +52,10 @@ public class ToolChainBuilder : IToolChainBuilder
         {
             var allMcpTools = await _mcpToolProvider.GetAllToolsAsync();
             foreach (var serverTools in allMcpTools.Values)
+            {
                 tools.AddRange(serverTools);
+                foreach (var t in serverTools) mcpCollector.Add(t.Name);
+            }
 
             if (options.AdditionalTools?.Count > 0)
                 tools.AddRange(options.AdditionalTools);
@@ -69,7 +81,7 @@ public class ToolChainBuilder : IToolChainBuilder
 
         if (skill.ToolDeclarations?.Count > 0)
         {
-            var provisionTasks = skill.ToolDeclarations.Select(ProvisionToolAsync);
+            var provisionTasks = skill.ToolDeclarations.Select(d => ProvisionToolAsync(d, mcpCollector));
             var results = await Task.WhenAll(provisionTasks);
             foreach (var provisioned in results)
             {
@@ -101,11 +113,25 @@ public class ToolChainBuilder : IToolChainBuilder
         SkillAgentOptions options,
         IReadOnlyList<string>? allowedTools = null)
     {
-        var allTools = new List<AITool>();
+        var merged = await BuildMergedToolsWithSourcesAsync(skills, options, allowedTools);
+        return merged.Tools.ToList();
+    }
 
+    /// <inheritdoc />
+    public async Task<MergedToolChain> BuildMergedToolsWithSourcesAsync(
+        IReadOnlyList<SkillDefinition> skills,
+        SkillAgentOptions options,
+        IReadOnlyList<string>? allowedTools = null)
+    {
+        // MCP-sourced tool names accumulate as resolution happens — no extra round trip.
+        // Injected-mode skills contribute every MCP tool; managed-mode skills contribute
+        // only tools whose ToolDeclaration was satisfied by MCP first.
+        var mcpCollector = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var allTools = new List<AITool>();
         foreach (var skill in skills)
         {
-            var skillTools = await BuildToolsAsync(skill, options);
+            var skillTools = await BuildToolsAsync(skill, options, mcpCollector);
             allTools.AddRange(skillTools);
         }
 
@@ -118,7 +144,15 @@ public class ToolChainBuilder : IToolChainBuilder
             deduplicated = deduplicated.Where(t => allowed.Contains(t.Name)).ToList();
         }
 
-        return deduplicated;
+        // Filter MCP names down to what actually survived dedup + AllowedTools so the
+        // panel doesn't claim a tool was MCP-sourced when it was governance-filtered out.
+        var survivingNames = new HashSet<string>(deduplicated.Select(t => t.Name), StringComparer.OrdinalIgnoreCase);
+        var attributedMcp = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in mcpCollector)
+            if (survivingNames.Contains(name))
+                attributedMcp.Add(name);
+
+        return new MergedToolChain(deduplicated, attributedMcp);
     }
 
     internal static List<AITool> ApplyPluginToolBoundary(List<AITool> tools, PluginDeclaration declaration)
@@ -138,7 +172,9 @@ public class ToolChainBuilder : IToolChainBuilder
         return tools;
     }
 
-    private async Task<IEnumerable<AITool>?> ProvisionToolAsync(Domain.AI.Tools.ToolDeclaration declaration)
+    private async Task<IEnumerable<AITool>?> ProvisionToolAsync(
+        Domain.AI.Tools.ToolDeclaration declaration,
+        ISet<string> mcpCollector)
     {
         if (_mcpToolProvider != null)
         {
@@ -148,6 +184,7 @@ public class ToolChainBuilder : IToolChainBuilder
                 if (mcpTools?.Count > 0)
                 {
                     _logger.LogDebug("Resolved tool {ToolName} from MCP server", declaration.Name);
+                    foreach (var t in mcpTools) mcpCollector.Add(t.Name);
                     return mcpTools;
                 }
             }

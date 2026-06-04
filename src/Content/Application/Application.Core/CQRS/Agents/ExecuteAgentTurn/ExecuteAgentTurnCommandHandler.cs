@@ -1,11 +1,13 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Text.Json;
 using Application.AI.Common.Exceptions;
 using Application.AI.Common.Helpers;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Context;
 using Application.AI.Common.OpenTelemetry.Metrics;
 using Application.AI.Common.Services;
+using Domain.AI.Agents;
 using Domain.AI.Context;
 using Domain.AI.Skills;
 using Domain.AI.Telemetry.Conventions;
@@ -25,6 +27,8 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 {
 	private readonly IAgentConversationCache _agentCache;
 	private readonly IAgentMetadataRegistry _agentRegistry;
+	private readonly ISkillMetadataRegistry _skillRegistry;
+	private readonly IConversationRegistrationTracker _registrationTracker;
 	private readonly IObservabilityStore _observabilityStore;
 	private readonly ILlmUsageCapture _usageCapture;
 	private readonly IContextSnapshotComputer _snapshotComputer;
@@ -35,6 +39,8 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 	public ExecuteAgentTurnCommandHandler(
 		IAgentConversationCache agentCache,
 		IAgentMetadataRegistry agentRegistry,
+		ISkillMetadataRegistry skillRegistry,
+		IConversationRegistrationTracker registrationTracker,
 		IObservabilityStore observabilityStore,
 		ILlmUsageCapture usageCapture,
 		IContextSnapshotComputer snapshotComputer,
@@ -44,6 +50,8 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 	{
 		_agentCache = agentCache;
 		_agentRegistry = agentRegistry;
+		_skillRegistry = skillRegistry;
+		_registrationTracker = registrationTracker;
 		_observabilityStore = observabilityStore;
 		_usageCapture = usageCapture;
 		_snapshotComputer = snapshotComputer;
@@ -185,7 +193,12 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 			// (compute, persist, notify) can never fail the turn.
 			try
 			{
-				var turnLoaded = BuildTurnLoadedItems(request.UserMessage, responseText, toolsInvoked);
+				var turnLoaded = BuildTurnLoadedItems(
+					request.ConversationId,
+					agentDef,
+					request.UserMessage,
+					responseText,
+					toolsInvoked);
 				var snapshot = _snapshotComputer.Compute(
 					conversationId: request.ConversationId,
 					turnIndex: request.TurnNumber,
@@ -283,36 +296,50 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 
 
 	/// <summary>
-	/// Builds the per-turn <see cref="LoadedItem"/> delta — the artifacts that
-	/// arrived in the model's context window this turn (user message, assistant
-	/// response, tool invocations).
+	/// Builds the per-turn <see cref="LoadedItem"/> delta — the artifacts that arrived
+	/// in the model's context window this turn. On the first turn (or whenever a
+	/// registration changes mid-conversation) this includes the System prompt, Skills,
+	/// native Tools, MCP Tools, and Sub-agents the registration tracker flags as new.
+	/// Every turn also emits the user/assistant Messages and any tools invoked this turn.
 	/// </summary>
 	/// <remarks>
-	/// User and assistant messages are sized via
-	/// <see cref="TokenEstimationHelper.EstimateTokens(string)"/>.
-	/// Tool entries currently carry 0 tokens — the LLM SDK's tool-call surface
-	/// does not expose result payloads to the handler, so per-tool sizing
-	/// is recorded as 0 and tools register as items only. A follow-up that
-	/// captures tool result text can populate the token field.
+	/// Token accounting matches what the model receives:
+	/// <list type="bullet">
+	///   <item>Skills carry their own <c>Instructions</c> tokens.</item>
+	///   <item>System prompt tokens = est(merged instruction) − Σ est(skill.Instructions)
+	///   so System + Skills sums equal the full system message size without double-counting.</item>
+	///   <item>Tools/MCP tools are sized from their JSON schema (when available) plus a
+	///   floor of <c>est(name + description)</c> so a schemaless tool still has signal.</item>
+	/// </list>
 	/// </remarks>
-	private static IReadOnlyList<LoadedItem> BuildTurnLoadedItems(
+	private IReadOnlyList<LoadedItem> BuildTurnLoadedItems(
+		string conversationId,
+		AgentDefinition? agentDef,
 		string userMessage,
 		string assistantResponse,
 		IReadOnlyList<string> toolsInvoked)
 	{
-		var items = new List<LoadedItem>(2 + toolsInvoked.Count)
+		var items = new List<LoadedItem>(8 + toolsInvoked.Count);
+
+		var ctx = _agentCache.TryGetContext(conversationId);
+		if (ctx is not null)
 		{
-			new(
-				What: "User message",
-				Tokens: TokenEstimationHelper.EstimateTokens(userMessage),
-				Category: ContextCategory.Messages,
-				Reference: null),
-			new(
-				What: "Assistant message",
-				Tokens: TokenEstimationHelper.EstimateTokens(assistantResponse),
-				Category: ContextCategory.Messages,
-				Reference: null),
-		};
+			var snapshot = BuildRegistrationSnapshot(ctx, agentDef);
+			var delta = _registrationTracker.DiffAndUpdate(conversationId, snapshot);
+			AppendRegistrationItems(items, snapshot, delta);
+		}
+
+		// Always emit messages — those are the per-turn delta the inspector itemizes.
+		items.Add(new LoadedItem(
+			What: "User message",
+			Tokens: TokenEstimationHelper.EstimateTokens(userMessage),
+			Category: ContextCategory.Messages,
+			Reference: null));
+		items.Add(new LoadedItem(
+			What: "Assistant message",
+			Tokens: TokenEstimationHelper.EstimateTokens(assistantResponse),
+			Category: ContextCategory.Messages,
+			Reference: null));
 
 		foreach (var toolName in toolsInvoked)
 		{
@@ -324,6 +351,134 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 		}
 
 		return items;
+	}
+
+	/// <summary>
+	/// Projects <see cref="AgentExecutionContext"/> + <see cref="AgentDefinition"/> into the
+	/// shape the tracker diffs against. Splits the agent's tool list into native vs MCP
+	/// using <c>AgentExecutionContext.McpToolNames</c>; resolves skill instructions from
+	/// the registry so per-skill token sizing is accurate.
+	/// </summary>
+	private RegistrationSnapshot BuildRegistrationSnapshot(
+		AgentExecutionContext ctx,
+		AgentDefinition? agentDef)
+	{
+		var skills = new List<SkillRegistration>();
+		if (ctx.SkillIds is not null)
+		{
+			foreach (var id in ctx.SkillIds)
+			{
+				var skill = _skillRegistry.TryGet(id);
+				if (skill is null) continue;
+				skills.Add(new SkillRegistration(skill.Id, skill.Name, skill.Instructions));
+			}
+		}
+
+		var mcpNames = ctx.McpToolNames ?? (IReadOnlySet<string>)new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		var native = new List<ToolRegistration>();
+		var mcp = new List<ToolRegistration>();
+		if (ctx.Tools is not null)
+		{
+			foreach (var tool in ctx.Tools)
+			{
+				var aiFunc = tool as AIFunction;
+				string? schema = aiFunc?.JsonSchema.ToString();
+				var reg = new ToolRegistration(tool.Name, tool.Description, schema);
+				if (mcpNames.Contains(tool.Name)) mcp.Add(reg);
+				else native.Add(reg);
+			}
+		}
+
+		// Sub-agents: only AGENT.md-discoverable peers count for the Agents lane today.
+		// Self is excluded so the agent doesn't show up as a delegation target on itself.
+		var subAgents = new List<AgentRegistration>();
+		if (agentDef is not null)
+		{
+			foreach (var peer in _agentRegistry.GetAll())
+			{
+				if (string.Equals(peer.Id, agentDef.Id, StringComparison.OrdinalIgnoreCase)) continue;
+				subAgents.Add(new AgentRegistration(peer.Id, peer.Name, peer.Description));
+			}
+		}
+
+		return new RegistrationSnapshot(
+			SystemPromptText: ctx.Instruction,
+			Skills: skills,
+			NativeTools: native,
+			McpTools: mcp,
+			SubAgents: subAgents);
+	}
+
+	/// <summary>
+	/// Emits one <see cref="LoadedItem"/> per registration delta entry into <paramref name="items"/>.
+	/// System tokens = est(instruction) − Σ est(skill.Instructions) so the lane totals add up
+	/// to what the model actually receives without double-counting skill content.
+	/// </summary>
+	private static void AppendRegistrationItems(
+		List<LoadedItem> items,
+		RegistrationSnapshot snapshot,
+		RegistrationDelta delta)
+	{
+		if (delta.SystemPromptIsNew && !string.IsNullOrEmpty(snapshot.SystemPromptText))
+		{
+			var instructionTokens = TokenEstimationHelper.EstimateTokens(snapshot.SystemPromptText);
+			var skillTokens = snapshot.Skills.Sum(s =>
+				string.IsNullOrEmpty(s.InstructionsText) ? 0 : TokenEstimationHelper.EstimateTokens(s.InstructionsText));
+			items.Add(new LoadedItem(
+				What: "System prompt",
+				Tokens: Math.Max(0, instructionTokens - skillTokens),
+				Category: ContextCategory.System,
+				Reference: null));
+		}
+
+		foreach (var skill in delta.NewSkills)
+		{
+			var tokens = string.IsNullOrEmpty(skill.InstructionsText)
+				? 0
+				: TokenEstimationHelper.EstimateTokens(skill.InstructionsText);
+			items.Add(new LoadedItem(
+				What: $"Skill: {skill.Name}",
+				Tokens: tokens,
+				Category: ContextCategory.Skills,
+				Reference: skill.Id));
+		}
+
+		foreach (var tool in delta.NewNativeTools)
+			items.Add(new LoadedItem(
+				What: $"Tool: {tool.Name}",
+				Tokens: EstimateToolTokens(tool),
+				Category: ContextCategory.Tools,
+				Reference: tool.Name));
+
+		foreach (var tool in delta.NewMcpTools)
+			items.Add(new LoadedItem(
+				What: $"MCP: {tool.Name}",
+				Tokens: EstimateToolTokens(tool),
+				Category: ContextCategory.Mcp,
+				Reference: tool.Name));
+
+		foreach (var peer in delta.NewSubAgents)
+		{
+			var tokens = string.IsNullOrEmpty(peer.Description)
+				? 0
+				: TokenEstimationHelper.EstimateTokens(peer.Description);
+			items.Add(new LoadedItem(
+				What: $"Agent: {peer.Name}",
+				Tokens: tokens,
+				Category: ContextCategory.Agents,
+				Reference: peer.Id));
+		}
+	}
+
+	private static int EstimateToolTokens(ToolRegistration tool)
+	{
+		// Schema text dominates when present; fall back to name + description so a
+		// tool without a serialised schema (e.g. a non-AIFunction tool) still
+		// reports a non-zero footprint.
+		if (!string.IsNullOrEmpty(tool.SchemaText))
+			return TokenEstimationHelper.EstimateTokens(tool.SchemaText);
+		var fallback = (tool.Name ?? string.Empty) + " " + (tool.Description ?? string.Empty);
+		return TokenEstimationHelper.EstimateTokens(fallback);
 	}
 
 	/// <summary>

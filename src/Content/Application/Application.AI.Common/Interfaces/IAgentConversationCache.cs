@@ -1,3 +1,4 @@
+using Domain.AI.Agents;
 using Domain.AI.Skills;
 using Microsoft.Agents.AI;
 
@@ -24,6 +25,15 @@ public interface IAgentConversationCache
         IReadOnlyList<string> skillIds,
         SkillAgentOptions options,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the <see cref="AgentExecutionContext"/> that was used to build the cached
+    /// agent for <paramref name="conversationId"/>, or <c>null</c> when the conversation
+    /// has no live agent. Used by per-turn observability code (context snapshots) that
+    /// needs to inspect the agent's system prompt, skill list, tools, and MCP attribution
+    /// without rebuilding the context.
+    /// </summary>
+    AgentExecutionContext? TryGetContext(string conversationId);
 
     /// <summary>
     /// Removes the agent for <paramref name="conversationId"/> from the cache.

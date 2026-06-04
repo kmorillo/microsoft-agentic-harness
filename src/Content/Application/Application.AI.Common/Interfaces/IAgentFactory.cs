@@ -8,6 +8,15 @@ using Microsoft.Extensions.AI;
 namespace Application.AI.Common.Interfaces;
 
 /// <summary>
+/// Bundles the constructed <see cref="AIAgent"/> with the
+/// <see cref="AgentExecutionContext"/> it was built from. Returned by
+/// <see cref="IAgentFactory.CreateAgentWithContextFromSkillsAsync"/> so callers can
+/// inspect the context (instruction, skills, tools, MCP attribution) without
+/// rebuilding it.
+/// </summary>
+public sealed record AgentBuildResult(AIAgent Agent, AgentExecutionContext Context);
+
+/// <summary>
 /// Factory for creating configured AI agents with observability, middleware, and tool support.
 /// </summary>
 public interface IAgentFactory
@@ -69,6 +78,18 @@ public interface IAgentFactory
     /// <param name="options">Configuration for resource loading and agent overrides.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<AIAgent> CreateAgentFromSkillsAsync(
+        IReadOnlyList<string> skillIds,
+        SkillAgentOptions options,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Same as <see cref="CreateAgentFromSkillsAsync(IReadOnlyList{string}, SkillAgentOptions, CancellationToken)"/>
+    /// but also returns the <see cref="AgentExecutionContext"/> the agent was built from.
+    /// Callers (e.g. <c>IAgentConversationCache</c>) cache the context so per-turn context
+    /// snapshots can itemize the agent's system prompt, skills, tools, and MCP attribution
+    /// without rebuilding the context.
+    /// </summary>
+    Task<AgentBuildResult> CreateAgentWithContextFromSkillsAsync(
         IReadOnlyList<string> skillIds,
         SkillAgentOptions options,
         CancellationToken cancellationToken = default);

@@ -230,6 +230,16 @@ public class AgentFactory : IAgentFactory
         SkillAgentOptions options,
         CancellationToken cancellationToken = default)
     {
+        var built = await CreateAgentWithContextFromSkillsAsync(skillIds, options, cancellationToken);
+        return built.Agent;
+    }
+
+    /// <inheritdoc />
+    public async Task<AgentBuildResult> CreateAgentWithContextFromSkillsAsync(
+        IReadOnlyList<string> skillIds,
+        SkillAgentOptions options,
+        CancellationToken cancellationToken = default)
+    {
         _logger.LogDebug("Creating agent from {Count} skill(s): {SkillIds}",
             skillIds.Count, string.Join(", ", skillIds));
 
@@ -249,7 +259,7 @@ public class AgentFactory : IAgentFactory
 
         _logger.LogInformation("Created agent {AgentName} from {Count} skill(s): {SkillIds}",
             agentContext.Name, skillIds.Count, string.Join(", ", skillIds));
-        return agent;
+        return new AgentBuildResult(agent, agentContext);
     }
 
     /// <inheritdoc />

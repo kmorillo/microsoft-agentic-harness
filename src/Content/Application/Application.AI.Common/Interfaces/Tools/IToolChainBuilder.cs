@@ -30,4 +30,23 @@ public interface IToolChainBuilder
         IReadOnlyList<SkillDefinition> skills,
         SkillAgentOptions options,
         IReadOnlyList<string>? allowedTools = null);
+
+    /// <summary>
+    /// Same as <see cref="BuildMergedToolsAsync"/>, but also returns the names of tools
+    /// that were sourced from an MCP server. Used by <c>AgentExecutionContextFactory</c>
+    /// to populate <c>AgentExecutionContext.McpToolNames</c> so downstream code can
+    /// attribute each tool to its origin without re-querying the MCP provider.
+    /// </summary>
+    Task<MergedToolChain> BuildMergedToolsWithSourcesAsync(
+        IReadOnlyList<SkillDefinition> skills,
+        SkillAgentOptions options,
+        IReadOnlyList<string>? allowedTools = null);
 }
+
+/// <summary>
+/// Result of <see cref="IToolChainBuilder.BuildMergedToolsWithSourcesAsync"/>:
+/// the resolved tool chain plus the set of tool names attributable to MCP.
+/// </summary>
+public sealed record MergedToolChain(
+    IReadOnlyList<AITool> Tools,
+    IReadOnlySet<string> McpToolNames);

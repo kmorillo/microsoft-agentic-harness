@@ -59,6 +59,23 @@ public class AgentExecutionContext
     public IList<AITool>? Tools { get; set; }
 
     /// <summary>
+    /// Names of the tools in <see cref="Tools"/> that were sourced from an MCP server,
+    /// as opposed to native keyed-DI tools. Populated by <c>ToolChainBuilder</c> as it
+    /// merges MCP tools into the chain so downstream code (per-turn context snapshots,
+    /// governance, telemetry) can attribute each tool to its origin without re-querying
+    /// the MCP provider. Null when no tools came from MCP this build.
+    /// </summary>
+    public IReadOnlySet<string>? McpToolNames { get; set; }
+
+    /// <summary>
+    /// Ids of the skills the agent was constructed with, in the order they were
+    /// composed. Captured by <c>AgentExecutionContextFactory</c> so per-turn context
+    /// snapshots can itemize each skill (name, instruction tokens) without round-tripping
+    /// through the skill registry. Null when the agent was built without skill ids.
+    /// </summary>
+    public IReadOnlyList<string>? SkillIds { get; set; }
+
+    /// <summary>
     /// Middleware types to apply to the agent's chat client pipeline.
     /// </summary>
     public IList<Type>? MiddlewareTypes { get; set; }

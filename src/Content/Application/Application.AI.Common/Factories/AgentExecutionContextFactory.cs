@@ -98,7 +98,8 @@ public class AgentExecutionContextFactory
         var deploymentName = ResolveDeploymentName(primarySkill, options);
         var agentName = options.AgentNameOverride ?? ToAgentName(primarySkill.Name);
         var instruction = BuildMergedInstruction(skills, options);
-        var tools = await _toolChainBuilder.BuildMergedToolsAsync(skills, options, allowedTools);
+        var mergedToolChain = await _toolChainBuilder.BuildMergedToolsWithSourcesAsync(skills, options, allowedTools);
+        var tools = mergedToolChain.Tools.ToList();
         var middlewareTypes = ResolveMiddlewareTypes(primarySkill, options);
         var aiContextProviders = BuildMergedAIContextProviders(skills, options);
         var frameworkType = options.FrameworkType
@@ -181,6 +182,8 @@ public class AgentExecutionContextFactory
             AgentId = options.AgentId ?? primarySkill.AgentId,
             AIAgentFrameworkType = frameworkType,
             Tools = tools,
+            McpToolNames = mergedToolChain.McpToolNames,
+            SkillIds = skills.Select(s => s.Id).ToList(),
             AIContextProviders = aiContextProviders,
             MiddlewareTypes = middlewareTypes,
             TraceScope = traceScope,

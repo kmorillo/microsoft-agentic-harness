@@ -67,6 +67,15 @@ public class AgentPipelineIntegrationTests
             .Returns(new LlmUsageSnapshot(0, 0, 0, 0, null, 0m, 0m, Array.Empty<string>()));
         services.AddScoped<ILlmUsageCapture>(_ => usageCaptureMock.Object);
 
+        // Skill registry + registration tracker — required by the handler's per-turn
+        // context snapshot builder. Skill registry mocked (no skills resolve), matching
+        // the "no manifests" stance of the rest of this pipeline.
+        var skillRegistryMock = new Mock<ISkillMetadataRegistry>();
+        services.AddSingleton(skillRegistryMock.Object);
+        services.AddSingleton<
+            Application.AI.Common.Interfaces.Context.IConversationRegistrationTracker,
+            Application.AI.Common.Services.Context.ConversationRegistrationTracker>();
+
         // Foresight context-snapshot pipeline — pure computer + no-op notifier
         // so the handler's snapshot hook resolves cleanly in this integration test.
         services.AddSingleton<IContextSnapshotComputer, DefaultContextSnapshotComputer>();

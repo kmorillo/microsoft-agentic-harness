@@ -118,6 +118,13 @@ public static class DependencyInjection
         // LLM usage capture — scoped so middleware and handler share the same instance per turn
         services.AddScoped<ILlmUsageCapture, Services.LlmUsageCapture>();
 
+        // Per-conversation tracker of registrations (system prompt, skills, tools, MCP,
+        // sub-agents) already emitted. Drives the per-turn context snapshot deltas so
+        // the dashboard inspector shows what landed in context on each turn.
+        services.AddSingleton<
+            Interfaces.Context.IConversationRegistrationTracker,
+            Services.Context.ConversationRegistrationTracker>();
+
         // Agent conversation cache — reuses the same AIAgent across all turns in a conversation
         services.AddMemoryCache();
         services.AddSingleton<IAgentConversationCache, Services.AgentConversationCache>();
