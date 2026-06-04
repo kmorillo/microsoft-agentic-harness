@@ -1,7 +1,6 @@
 using Application.AI.Common.Factories;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Context;
-using Application.AI.Common.Interfaces.Skills;
 using Application.AI.Common.Interfaces.Tools;
 using Application.AI.Common.Interfaces.Traces;
 using Application.AI.Common.Models;
@@ -37,8 +36,7 @@ public class AgentExecutionContextFactoryTests
         IContextBudgetTracker? budgetTracker = null,
         IMcpToolProvider? mcpToolProvider = null,
         IToolConverter? toolConverter = null,
-        IServiceProvider? serviceProvider = null,
-        ISkillContentProvider? skillContentProvider = null)
+        IServiceProvider? serviceProvider = null)
     {
         var appConfig = new AppConfig
         {
@@ -70,8 +68,7 @@ public class AgentExecutionContextFactoryTests
             toolChainBuilder,
             new SkillPrerequisiteResolver(),
             budgetTracker: budgetTracker,
-            traceStore: traceStore,
-            skillContentProvider: skillContentProvider);
+            traceStore: traceStore);
     }
 
     private static SkillDefinition SimpleSkill(string id = "test-skill", string? name = null) => new()
@@ -589,19 +586,6 @@ public class AgentExecutionContextFactoryTests
         var context = await factory.MapToAgentContextAsync(skill, new SkillAgentOptions());
 
         context.AgentId.Should().Be("skill-agent-id");
-    }
-
-    // --- SkillContentProvider ---
-
-    [Fact]
-    public async Task MapToAgentContext_WithSkillContentProvider_AddsToAdditionalProperties()
-    {
-        var provider = Mock.Of<ISkillContentProvider>();
-        var factory = CreateFactory(skillContentProvider: provider);
-
-        var context = await factory.MapToAgentContextAsync(SimpleSkill(), new SkillAgentOptions());
-
-        context.AdditionalProperties.Should().ContainKey(ISkillContentProvider.AdditionalPropertiesKey);
     }
 
     // --- Description ---

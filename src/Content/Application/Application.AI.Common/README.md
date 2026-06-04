@@ -181,7 +181,7 @@ The interface surface defines the contracts that Infrastructure must implement:
 | **RAG** | `IRagOrchestrator`, `IHybridRetriever`, `IVectorStore`, `IReranker`, `ICragEvaluator`, etc. | Full RAG pipeline (14 interfaces) |
 | **Safety** | `ITextContentSafetyService` | Content screening |
 | **Sandbox** | `ISandboxExecutor`, `ICapabilityEnforcer`, `IProcessResourceLimiter` | Sandboxed tool execution with capability-based permissions |
-| **Skills** | `ISkillContentProvider`, `ISkillCompletionTracker` | Skill resource loading, conversation-scoped prerequisite tracking |
+| **Skills** | `ISkillPrerequisiteResolver`, `ISkillCompletionTracker` | Prerequisite ordering and conversation-scoped completion tracking (SKILL.md content loading is owned by MAF's `AgentSkillsProvider`) |
 | **Tools** | `ITool`, `IToolConverter`, `IToolExecutionStrategy`, `IToolConcurrencyClassifier`, `IFileSystemService` | Tool abstraction and execution |
 | **Traces** | `IExecutionTraceStore`, `ITraceWriter` | Execution trace persistence |
 

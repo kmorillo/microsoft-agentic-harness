@@ -9,7 +9,6 @@ using Application.AI.Common.Interfaces.Hooks;
 using Application.AI.Common.Interfaces.MetaHarness;
 using Application.AI.Common.Interfaces.Plugins;
 using Application.AI.Common.Interfaces.Prompts;
-using Application.AI.Common.Interfaces.Skills;
 using Application.AI.Common.Interfaces.Memory;
 using Application.AI.Common.Interfaces.Routing;
 using Application.AI.Common.Interfaces.Tools;
@@ -134,11 +133,6 @@ public static partial class DependencyInjection
         services.AddSingleton<ISkillMetadataRegistry, SkillMetadataRegistry>();
         services.AddSingleton<AgentMetadataParser>();
         services.AddSingleton<IAgentMetadataRegistry, AgentMetadataRegistry>();
-
-        // Default filesystem implementation for normal agent runs.
-        // CandidateSkillContentProvider is NOT registered here; the evaluator constructs it
-        // directly with a HarnessCandidate snapshot for candidate-isolated evaluation.
-        services.AddTransient<ISkillContentProvider, FileSystemSkillContentProvider>();
 
         // --- Plugins ---
 

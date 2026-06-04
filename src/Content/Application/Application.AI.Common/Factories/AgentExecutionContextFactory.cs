@@ -41,7 +41,6 @@ public class AgentExecutionContextFactory
     private readonly ISkillPrerequisiteResolver _prerequisiteResolver;
     private readonly IContextBudgetTracker? _budgetTracker;
     private readonly IExecutionTraceStore? _traceStore;
-    private readonly ISkillContentProvider? _skillContentProvider;
     private readonly IAgentConfigReporter? _agentConfigReporter;
     private readonly IResilientChatClientProvider? _resilientChatClientProvider;
 
@@ -54,7 +53,6 @@ public class AgentExecutionContextFactory
         ISkillPrerequisiteResolver prerequisiteResolver,
         IContextBudgetTracker? budgetTracker = null,
         IExecutionTraceStore? traceStore = null,
-        ISkillContentProvider? skillContentProvider = null,
         IAgentConfigReporter? agentConfigReporter = null,
         IResilientChatClientProvider? resilientChatClientProvider = null)
     {
@@ -66,7 +64,6 @@ public class AgentExecutionContextFactory
         _prerequisiteResolver = prerequisiteResolver;
         _budgetTracker = budgetTracker;
         _traceStore = traceStore;
-        _skillContentProvider = skillContentProvider;
         _agentConfigReporter = agentConfigReporter;
         _resilientChatClientProvider = resilientChatClientProvider;
     }
@@ -141,10 +138,6 @@ public class AgentExecutionContextFactory
         var prerequisiteMap = _prerequisiteResolver.BuildPrerequisiteMap(skills, tools);
         if (prerequisiteMap.HasAnyPrerequisites)
             additionalProps[SkillPrerequisiteMap.AdditionalPropertiesKey] = prerequisiteMap;
-
-        // Expose candidate skill content provider so evaluation contexts can inject candidate content
-        if (_skillContentProvider != null)
-            additionalProps[ISkillContentProvider.AdditionalPropertiesKey] = _skillContentProvider;
 
         // Stash resilient chat client for transparent fallback when resilience is enabled
         if (_resilientChatClientProvider is not null)

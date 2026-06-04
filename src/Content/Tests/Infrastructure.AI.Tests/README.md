@@ -64,8 +64,6 @@ Files mirror the infrastructure namespace structure: `Agents/`, `Compaction/Stra
 | `ToolSchemasSectionProviderTests` | Tool schema prompt section | 3 | Unit |
 | `Sha256PromptCacheTrackerTests` | SHA-256 prompt change detection | 4 | Unit |
 | `PatternSecretRedactorTests` | Secret pattern redaction | 4 | Unit |
-| `CandidateSkillContentProviderTests` | Candidate skill content loading | 3 | Unit |
-| `SkillContentProviderTests` | Skill SKILL.md content loading | 4 | Unit |
 | `SkillMetadataParserTests` | SKILL.md YAML+markdown parsing | 5 | Unit |
 | `SkillMetadataRegistryTests` | Skill registry discovery and caching | 5 | Unit |
 | `SkillParserExtensionTests` | Parser extension points | 3 | Unit |
