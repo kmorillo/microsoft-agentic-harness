@@ -1,0 +1,1327 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Patterns &amp; Technologies — Agentic Harness Reference</title>
+        <meta name="description" content="Exhaustive catalogue of every architectural pattern, AI/RAG subsystem, governance behaviour, framework and dependency used in the Microsoft Agentic Harness — with source paths." />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+        <link rel="stylesheet" href="../assets/css/styles.css" />
+    </head>
+    <body>
+        <a href="#main" class="skip-link">Skip to content</a>
+        <div class="app">
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <a class="sidebar-brand" href="index.html">
+                        <span class="sidebar-brand-mark">AH</span>
+                        <span>
+                            <span class="sidebar-brand-text">Agentic Harness</span><br />
+                            <span class="sidebar-brand-sub">Reference</span>
+                        </span>
+                    </a>
+                </div>
+                <nav class="sidebar-nav" aria-label="Reference navigation">
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Reference</div>
+                        <a class="sidebar-link" href="index.html"><span class="sidebar-link-num">00</span> Overview</a>
+                        <a class="sidebar-link" href="patterns-and-technologies.html"><span class="sidebar-link-num">01</span> Patterns &amp; Technologies</a>
+                    </div>
+                    <div class="sidebar-group">
+                        <div class="sidebar-group-title">Other Guides</div>
+                        <a class="sidebar-link" href="../onboarding/index.html">&#8592; Developer Onboarding</a>
+                        <a class="sidebar-link" href="../architecture/index.html">&#8592; Architecture Guide</a>
+                        <a class="sidebar-link" href="../agentic-harness-course/index.html">&#8592; Interactive Course</a>
+                    </div>
+                </nav>
+            </aside>
+
+            <main id="main" class="content-wrap">
+                <div class="content">
+                    <span class="eyebrow">Reference · 01</span>
+                    <h1 class="page-title">Patterns &amp; Technologies — The Deep Dive</h1>
+                    <p class="page-lead">
+                        Every architectural pattern, AI/RAG subsystem, governance behaviour, framework, NuGet and npm
+                        dependency the harness ships with — catalogued in one page, cross-linked to the file that
+                        implements it. Twelve marquee patterns get a code block; the rest get a sentence and a path.
+                        This is the page you scroll once and bookmark.
+                    </p>
+
+                    <div class="callout callout-info">
+                        <span class="callout-icon">i</span>
+                        <div class="callout-body">
+                            <div class="callout-title">Looking for the gentle intro?</div>
+                            <p style="margin: 0">
+                                The onboarding guide has a focused six-pattern primer at
+                                <a href="../onboarding/09-patterns.html">Patterns You'll Use Daily</a>. Read that
+                                first if you're new — then come back here for the encyclopedic version.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h2 id="how-to-read">How to read this page</h2>
+                    <p>
+                        Every entry follows the same shape — pattern name, one or two sentences of "what it is and how
+                        the harness uses it", and a file path you can paste into your editor. The twelve patterns you'll
+                        meet most often have a code block underneath. Use the table of contents on the right to jump.
+                    </p>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- 1. ARCHITECTURAL PATTERNS -->
+                    <!-- ================================================================== -->
+                    <h2 id="architectural">1 · Architectural patterns</h2>
+                    <p>
+                        The bones. These are the patterns that recur in nearly every file — internalize them and the
+                        rest of the catalogue becomes a remix of these primitives.
+                    </p>
+
+                    <h3 id="clean-architecture">Clean Architecture (four layers)</h3>
+                    <p>
+                        Domain → Application → Infrastructure → Presentation with strict inward-only dependencies.
+                        Domain types are pure C# records; Application defines interfaces and CQRS handlers; Infrastructure
+                        implements interfaces against EF Core / Azure / graph backends; Presentation hosts the API,
+                        SignalR hub, console UI, and the React dashboard.
+                    </p>
+                    <ul>
+                        <li><code>src/Content/Domain/</code> — entities, value objects, domain rules</li>
+                        <li><code>src/Content/Application/</code> — interfaces, CQRS, MediatR behaviours</li>
+                        <li><code>src/Content/Infrastructure/</code> — EF Core, AI clients, graph backends, observability</li>
+                        <li><code>src/Content/Presentation/</code> — AgentHub (ASP.NET Core), Dashboard (React), ConsoleUI, LoggerUI</li>
+                    </ul>
+
+                    <h3 id="cqrs-mediatr">CQRS with MediatR (marquee pattern · 1 of 12)</h3>
+                    <p>
+                        Every command and query flows through MediatR. Handlers stay focused on their one job; cross-cutting
+                        concerns are pulled into pipeline behaviours that wrap the handler in registration order. The
+                        ordering matters — early behaviours run outermost, so a behaviour registered first sees the
+                        request first and the response last.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · IPipelineBehavior shape</span></div>
+                        <pre><code>public sealed class MyBehavior&lt;TRequest, TResponse&gt; : IPipelineBehavior&lt;TRequest, TResponse&gt;
+{
+    public async Task&lt;TResponse&gt; Handle(
+        TRequest request,
+        RequestHandlerDelegate&lt;TResponse&gt; next,
+        CancellationToken ct)
+    {
+        // pre-process — can short-circuit by returning early
+        var response = await next();          // call inner behaviour / handler
+        // post-process — can transform the response
+        return response;
+    }
+}</code></pre>
+                    </div>
+
+                    <p>The behaviours registered by the harness, in execution order (outermost first):</p>
+                    <ol>
+                        <li><code>UnhandledExceptionBehavior</code> — top-level safety net, structured log + rethrow</li>
+                        <li><code>AgentContextPropagationBehavior</code> — copies agent/conversation IDs into ambient OTel baggage</li>
+                        <li><code>HookBehavior</code> — fires pre/post hooks declared by plugins</li>
+                        <li><code>AuditTrailBehavior</code> — JSONL audit log of every command</li>
+                        <li><code>PromptInjectionBehavior</code> — guards against user-prompted system-prompt overrides</li>
+                        <li><code>ContentSafetyBehavior</code> — runs Azure Content Safety (or mock) on inputs &amp; outputs</li>
+                        <li><code>GovernancePolicyBehavior</code> — enforces autonomy tier (Manual/Supervised/Autonomous)</li>
+                        <li><code>ToolPermissionBehavior</code> — gates tool calls against plugin AllowedTools/DeniedTools</li>
+                        <li><code>TokenBudgetBehavior</code> — enforces per-conversation token spend</li>
+                        <li><code>ToolOutputCompressionBehavior</code> — compresses large tool outputs by content type</li>
+                        <li><code>RetrievalAuditBehavior</code> — captures RAG retrievals for evaluation replay</li>
+                        <li><code>KnowledgeExtractionBehavior</code> — extracts facts from conversation into the knowledge graph</li>
+                        <li><code>PromptUsageTrackingBehavior</code> — records prompt cache hit/miss for cost analysis</li>
+                        <li><code>ResponseSanitizationBehavior</code> — masks PII/secrets before returning to client</li>
+                    </ol>
+                    <p>All behaviour files live under <code>src/Content/Application/Application.AI.Common/MediatRBehaviors/</code>.</p>
+
+                    <h3 id="result-pattern">Result&lt;T&gt; (marquee pattern · 2 of 12)</h3>
+                    <p>
+                        Expected failures (validation, missing records, business-rule rejections) return
+                        <code>Result&lt;T&gt;</code> rather than throwing. Exceptions are reserved for truly exceptional
+                        conditions — bad config at startup, infrastructure outages, programming errors.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · src/Content/Domain/Domain.Common/Result.cs</span></div>
+                        <pre><code>public sealed record Result&lt;T&gt;
+{
+    public bool IsSuccess { get; }
+    public T? Value { get; }
+    public string? Error { get; }
+    public IReadOnlyList&lt;string&gt; ValidationErrors { get; }
+
+    public static Result&lt;T&gt; Success(T value)                                =&gt; new(true, value, null, []);
+    public static Result&lt;T&gt; Fail(string error)                              =&gt; new(false, default, error, []);
+    public static Result&lt;T&gt; ValidationFailure(IReadOnlyList&lt;string&gt; errors) =&gt; new(false, default, null, errors);
+}</code></pre>
+                    </div>
+
+                    <h3 id="factories">Factory pattern (marquee pattern · 3 of 12)</h3>
+                    <p>
+                        When constructing a service needs multiple dependencies, config lookups, or decoration steps,
+                        the harness uses a factory instead of expanding everyone's constructor. The big three:
+                    </p>
+                    <div class="def"><div class="def-term"><code>AgentFactory</code></div><div class="def-desc">Builds a fully-configured <code>AIAgent</code> — loads skills, resolves tools, wires content safety and OTel, applies function-invocation limits. <code>src/Content/Application/Application.AI.Common/Factories/AgentFactory.cs</code></div></div>
+                    <div class="def"><div class="def-term"><code>ChatClientFactory</code></div><div class="def-desc">Builds an LLM <code>IChatClient</code> per <code>ClientType</code> — Azure OpenAI, OpenAI, AI Foundry, OpenRouter, Azure AI Inference. Decorates with retries, timeouts, observability, content safety. Split into a Providers partial. <code>src/Content/Infrastructure/Infrastructure.AI/Factories/ChatClientFactory.cs</code></div></div>
+                    <div class="def"><div class="def-term"><code>AgentExecutionContextFactory</code></div><div class="def-desc">Builds the per-turn execution context — conversation IDs, OTel session, ambient services. <code>src/Content/Application/Application.AI.Common/Factories/AgentExecutionContextFactory.cs</code></div></div>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · sketch of the ChatClientFactory shape</span></div>
+                        <pre><code>public IChatClient Create(ClientType type, ChatClientOptions opts)
+{
+    IChatClient inner = type switch
+    {
+        ClientType.AzureOpenAI       =&gt; BuildAzureOpenAI(opts),
+        ClientType.OpenAI            =&gt; BuildOpenAI(opts),
+        ClientType.AzureAIInference  =&gt; BuildAzureAIInference(opts),
+        ClientType.OpenRouter        =&gt; BuildOpenRouter(opts),
+        ClientType.Echo              =&gt; new EchoChatClient(),       // tests
+        _ =&gt; throw new InvalidOperationException($"Unknown client type {type}")
+    };
+
+    // every client gets the same decoration stack — order matters
+    return inner
+        .WithResilience(_resilienceBuilder)            // Polly retries + circuit breaker
+        .WithContentSafety(_contentSafety)             // input/output moderation
+        .WithUsageTracking(_usageMetrics)              // OTel token counters
+        .WithLogging(_logger);                         // structured request/response log
+}</code></pre>
+                    </div>
+
+                    <div class="callout callout-tip">
+                        <span class="callout-icon">✓</span>
+                        <div class="callout-body">
+                            <div class="callout-title">The rule</div>
+                            <p style="margin: 0">
+                                Never construct an <code>AIAgent</code>, <code>IChatClient</code>, or
+                                <code>AgentExecutionContext</code> directly. <strong>Always go through the
+                                factory.</strong> Otherwise you lose content safety, OTel, function limits, and config
+                                consistency — and these are exactly the things tests catch you forgetting.
+                            </p>
+                        </div>
+                    </div>
+
+                    <h3 id="keyed-di">Strategy via keyed DI (marquee pattern · 4 of 12)</h3>
+                    <p>
+                        Whenever the harness has multiple implementations of the same interface that need to coexist —
+                        rerankers, chunkers, graph backends, sandbox executors, chat clients, audit sinks — it registers
+                        them with a string key and resolves them lazily.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · keyed registration &amp; resolution</span></div>
+                        <pre><code>// registration (DependencyInjection.cs)
+services.AddKeyedSingleton&lt;IReranker, AzureSemanticReranker&gt;("AzureSemantic");
+services.AddKeyedSingleton&lt;IReranker, CrossEncoderReranker&gt;("CrossEncoder");
+services.AddKeyedSingleton&lt;IReranker, NoOpReranker&gt;("NoOp");
+
+// resolution (at runtime, based on config)
+var rerankerKey = _cfg.CurrentValue.Rag.Reranker;       // e.g. "AzureSemantic"
+var reranker    = _sp.GetRequiredKeyedService&lt;IReranker&gt;(rerankerKey);</code></pre>
+                    </div>
+
+                    <p>Used throughout the harness for:</p>
+                    <ul>
+                        <li><strong>Tools</strong> — keyed by tool name (<code>"file_system"</code>, <code>"calculation_engine"</code>)</li>
+                        <li><strong>Chat clients</strong> — keyed by <code>ClientType</code></li>
+                        <li><strong>Rerankers</strong> — <code>AzureSemantic</code>, <code>CrossEncoder</code>, <code>NoOp</code></li>
+                        <li><strong>Chunking strategies</strong> — <code>StructureAware</code>, <code>FixedSize</code>, <code>Semantic</code></li>
+                        <li><strong>Graph backends</strong> — <code>Neo4j</code>, <code>Kuzu</code>, <code>PostgreSql</code>, <code>InMemory</code></li>
+                        <li><strong>Sandbox executors</strong> — <code>Process</code>, <code>Docker</code></li>
+                        <li><strong>Plan step executors</strong> — keyed by <code>StepType</code> enum</li>
+                        <li><strong>Compaction strategies</strong> — <code>Full</code>, <code>Partial</code>, <code>Micro</code></li>
+                        <li><strong>Prompt section providers</strong> — keyed by section name</li>
+                    </ul>
+
+                    <h3 id="decorator">Decorator (marquee pattern · 5 of 12)</h3>
+                    <p>
+                        Cross-cutting concerns that can't be expressed as MediatR behaviours — because they apply to
+                        long-lived service instances rather than per-request flows — are layered via decorators. The
+                        canonical case is <code>ResilientChatClient</code>, which wraps a raw <code>IChatClient</code>
+                        with a Polly pipeline (retry → circuit breaker → timeout → fallback to next provider).
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · src/Content/Infrastructure/Infrastructure.AI/Resilience/ResilientChatClient.cs</span></div>
+                        <pre><code>public sealed class ResilientChatClient(IChatClient inner, ResiliencePipeline pipeline) : IChatClient
+{
+    public Task&lt;ChatResponse&gt; GetResponseAsync(IList&lt;ChatMessage&gt; messages, ChatOptions? opts, CancellationToken ct)
+        =&gt; pipeline.ExecuteAsync(async token =&gt; await inner.GetResponseAsync(messages, opts, token), ct).AsTask();
+
+    // streaming + dispose pass through to inner ...
+}</code></pre>
+                    </div>
+
+                    <p>Other decorator instances in the harness:</p>
+                    <ul>
+                        <li><code>ComplianceAwareGraphStore</code> wraps any <code>IGraphStore</code> with retention enforcement &amp; erasure orchestration</li>
+                        <li><code>TenantIsolatedGraphStore</code> wraps a graph store with scope-validation calls</li>
+                        <li><code>MarkdownCheckpointDecorator</code> wraps the JSON checkpoint state manager with a Markdown side-write for humans</li>
+                        <li><code>CompositeStateManager</code> wraps multiple state managers behind a single interface</li>
+                    </ul>
+
+                    <h3 id="composite">Composite (DAG plans, marquee pattern · 6 of 12)</h3>
+                    <p>
+                        A <code>Plan</code> is a directed acyclic graph of <code>PlanStep</code> nodes — every node has
+                        a <code>StepType</code> (<code>LlmCall</code>, <code>ToolUse</code>, <code>HumanGate</code>,
+                        <code>ConditionalBranch</code>, <code>SubPlanInvocation</code>, <code>RetrievalPlan</code>) and
+                        zero or more inbound dependency edges. <code>PlanExecutor</code> walks the DAG topologically
+                        with bounded concurrency.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · plan execution sketch</span></div>
+                        <pre><code>// PlanExecutor.Scheduling.cs — bounded-concurrency walk of the DAG
+while (!queue.IsEmpty)
+{
+    var batch = queue.PopReady(maxConcurrency: _opts.MaxParallelSteps);
+    var tasks = batch.Select(step =&gt;
+    {
+        var executor = _stepExecutors.GetRequiredKeyedService&lt;IPlanStepExecutor&gt;(step.Type);
+        return executor.ExecuteAsync(step, ctx, ct);
+    });
+    await Task.WhenAll(tasks);
+    await _stateStore.CheckpointAsync(plan, ct);     // resume-safe between batches
+}</code></pre>
+                    </div>
+
+                    <ul>
+                        <li>Core: <code>src/Content/Infrastructure/Infrastructure.AI/Planner/PlanExecutor.cs</code></li>
+                        <li>Partials: <code>.Scheduling.cs</code>, <code>.Recovery.cs</code>, <code>.Summary.cs</code></li>
+                        <li>Step executors: <code>Planner/StepExecutors/*.cs</code> — one file per <code>StepType</code></li>
+                        <li>State store: <code>Planner/EfCorePlanStateStore.cs</code> (+ <code>.Reads.cs</code>, <code>.Mappers.cs</code>)</li>
+                    </ul>
+
+                    <h3 id="options-pattern">Options pattern with IOptionsMonitor (marquee pattern · 7 of 12)</h3>
+                    <p>
+                        All configuration is strongly typed (<code>AppConfig</code>, <code>RagConfig</code>,
+                        <code>SandboxConfig</code>, etc.) and injected via <code>IOptionsMonitor&lt;T&gt;</code> rather
+                        than raw <code>IConfiguration</code>. <code>IOptionsMonitor</code> picks up
+                        <code>appsettings.json</code> changes without restart; <code>IOptions</code> snapshots once.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · idiomatic config access</span></div>
+                        <pre><code>public class MyService(IOptionsMonitor&lt;AppConfig&gt; cfg) : IMyService
+{
+    private AppConfig Cfg =&gt; cfg.CurrentValue;            // resolves fresh each call
+
+    public void DoThing()
+    {
+        var budget = Cfg.Agent.DefaultTokenBudget;        // use locally; don't cache across methods
+        // ...
+    }
+}</code></pre>
+                    </div>
+
+                    <h3 id="partial-classes">Partial class splitting</h3>
+                    <p>
+                        When a class genuinely needs to be large (the executor for a DAG of step types; the EF Core
+                        state store with reads, writes, and mappers; the Kuzu backend with CRUD and community queries),
+                        the harness splits it across partial files by responsibility — never by line count alone.
+                    </p>
+                    <ul>
+                        <li><code>PlanExecutor.cs</code> + <code>.Scheduling.cs</code> + <code>.Recovery.cs</code> + <code>.Summary.cs</code></li>
+                        <li><code>EfCorePlanStateStore.cs</code> + <code>.Reads.cs</code> + <code>.Mappers.cs</code></li>
+                        <li><code>KuzuGraphBackend.cs</code> + <code>.Crud.cs</code> + <code>.Community.cs</code></li>
+                        <li><code>LeidenCommunityDetector.cs</code> + <code>.Algorithm.cs</code> + <code>.GraphConstruction.cs</code></li>
+                        <li><code>ChatClientFactory.cs</code> + <code>.Providers.cs</code></li>
+                        <li><code>RagOrchestrator.cs</code> + <code>.MultiHop.cs</code></li>
+                        <li><code>DependencyInjection.cs</code> + <code>.Ingestion.cs</code>, <code>.Retrieval.cs</code>, <code>.GraphRag.cs</code>, <code>.Evaluation.cs</code> (Infrastructure.AI.RAG)</li>
+                    </ul>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- 2. AI / AGENT PATTERNS -->
+                    <!-- ================================================================== -->
+                    <h2 id="ai-agent">2 · AI / agent patterns</h2>
+                    <p>
+                        The patterns that make this a <em>harness</em> rather than "an app that calls an LLM." Skills,
+                        plugins, tools, manifests, the conversation cache — the structures that let multiple agents,
+                        each with their own capability surface, share one runtime.
+                    </p>
+
+                    <h3 id="skills-dual-mode">Skills system — dual mode &amp; prerequisites (marquee pattern · 8 of 12)</h3>
+                    <p>
+                        Skills are Markdown files (<code>SKILL.md</code>) that declare instructions, tool dependencies,
+                        and optional prerequisites. Agents are <em>multi-skill</em> by default — they compose
+                        instructions and tools from every skill loaded for the turn. Skills run in one of two modes:
+                    </p>
+                    <div class="def"><div class="def-term"><strong>Managed mode</strong></div><div class="def-desc">The harness resolves each declared tool — preferring an MCP server that exposes it, falling back to keyed DI. Used by skills that should work even if their plugin's MCP server is offline.</div></div>
+                    <div class="def"><div class="def-term"><strong>Injected mode</strong></div><div class="def-desc">The skill receives <em>all</em> tools from its owning plugin's MCP servers, plus the keyed-DI fallbacks. Used by plugins that ship a curated tool surface as a coherent set.</div></div>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">Markdown · src/.../Agents/Skills/&lt;skill&gt;/SKILL.md</span></div>
+                        <pre><code>---
+name: file_navigation
+description: Read files, list directories, search by glob
+mode: Managed
+prerequisites: []
+tools:
+  - file_system
+  - glob_search
+---
+
+You can read and search the filesystem. Prefer `glob_search` when you don't
+know the exact filename. Cite file paths in `path:line` form.</code></pre>
+                    </div>
+
+                    <ul>
+                        <li>Resolver: <code>src/Content/Application/Application.AI.Common/Services/Skills/SkillPrerequisiteResolver.cs</code></li>
+                        <li>Completion tracker: <code>.../Services/Skills/InMemorySkillCompletionTracker.cs</code></li>
+                        <li>Content providers: <code>Infrastructure.AI/Skills/FileSystemSkillContentProvider.cs</code>, <code>CandidateSkillContentProvider.cs</code></li>
+                        <li>Metadata: <code>Infrastructure.AI/Skills/SkillMetadataRegistry.cs</code></li>
+                        <li>Graph amendment: <code>Infrastructure.AI.KnowledgeGraph/Skills/GraphSkillAmendmentProvider.cs</code> (skills updated by learnings)</li>
+                    </ul>
+
+                    <h3 id="plugin-system">Plugin system &amp; boundary governance</h3>
+                    <p>
+                        Plugins are filesystem directories with a <code>plugin.json</code> manifest declaring the skills
+                        the plugin contributes, any MCP servers it brings, and a governance block
+                        (<code>AllowedTools</code>, <code>DeniedTools</code>, <code>AutonomyLevel</code>). The
+                        <code>PluginPermissionRuleProvider</code> turns those declarations into MediatR rules — and
+                        <code>DeniedTools</code> is bypass-immune: it can't be overridden by auto-approve modes.
+                    </p>
+                    <ul>
+                        <li>Manifest reader: <code>Infrastructure.AI/Plugins/PluginManifestReader.cs</code> (verify path — see "Locating plugin internals" note below)</li>
+                        <li>Permissions: <code>Application.Core/Permissions/PluginPermissionRuleProvider.cs</code></li>
+                        <li>Declaration types: <code>Domain.Common/Config/AI/Plugins/PluginDeclaration.cs</code></li>
+                    </ul>
+
+                    <h3 id="agent-manifest">Agent manifest (AGENT.md)</h3>
+                    <p>
+                        Agents declare themselves in <code>AGENT.md</code> — name, system-prompt fragments, the skills
+                        they load, the MCP servers they connect to, the decision frameworks they follow. The
+                        <code>AgentMetadataRegistry</code> parses these at startup; the <code>AgentFactory</code>
+                        consumes them at turn-construction time.
+                    </p>
+
+                    <h3 id="tool-keyed-di">Tool registration via keyed DI</h3>
+                    <p>
+                        Tools register as <code>AddKeyedSingleton&lt;ITool&gt;("name", impl)</code>. The skill declares
+                        what it needs by name; the harness resolves at execution time. Different agents can mount
+                        different implementations under the same key — the LLM only ever sees the schema, never the
+                        construction details.
+                    </p>
+                    <ul>
+                        <li>Implementations: <code>Infrastructure.AI/Tools/*.cs</code> (FileSystemTool, ReadHistoryTool, DocumentIngestTool, EchoCalculateTool, EchoLookupTool, ...)</li>
+                        <li>Schema generation: tools expose <code>JsonSchema</code> via Microsoft.Extensions.AI's <code>AITool</code> conversion</li>
+                    </ul>
+
+                    <h3 id="tool-output-compression">Tool output compression</h3>
+                    <p>
+                        Large tool outputs flood context windows fast. <code>ToolOutputCompressionBehavior</code>
+                        detects content type (JSON, plain text, log lines, structured table) and applies a type-specific
+                        strategy: drop deep nesting, summarise repetitive rows, gzip-and-pointer for truly large blobs.
+                        <code>src/Content/Application/Application.AI.Common/MediatRBehaviors/ToolOutputCompressionBehavior.cs</code>
+                    </p>
+
+                    <h3 id="content-safety">Content safety middleware</h3>
+                    <p>
+                        Both input prompts and model outputs flow through <code>ContentSafetyBehavior</code> — Azure AI
+                        Content Safety in production, a structured-log fake in dev (<code>StructuredLogContentSafetyService</code>).
+                        Severity thresholds are per-category and configurable.
+                    </p>
+
+                    <h3 id="conversation-cache">Conversation cache</h3>
+                    <p>
+                        <code>AgentConversationCache</code> keeps reconstructed <code>ChatClientAgent</code> instances
+                        warm per <code>(conversationId, skillIds)</code>. Cuts LLM-state reconstruction overhead between
+                        turns; background sync to a persistent store survives restarts.
+                        <code>src/Content/Application/Application.AI.Common/Services/AgentConversationCache.cs</code>
+                    </p>
+
+                    <h3 id="agent-execution-context">Agent execution context</h3>
+                    <p>
+                        A scoped <code>AgentExecutionContext</code> rides every turn — agent ID, conversation ID,
+                        loaded skills, resolved tools, OTel session, ambient cancellation token. Behaviours and step
+                        executors pull from it instead of threading 12 parameters everywhere.
+                        <code>src/Content/Domain/Domain.AI/Agents/AgentExecutionContext.cs</code>
+                    </p>
+
+                    <h3 id="prompt-composition">Prompt composition &amp; caching</h3>
+                    <p>
+                        System prompts are assembled section-by-section through keyed <code>IPromptSectionProvider</code>
+                        implementations (identity, permission rules, session state, tool schemas), memoized by
+                        <code>MemoizedPromptComposer</code>, and cache-tracked via <code>Sha256PromptCacheTracker</code>
+                        so the harness can measure how often Anthropic / OpenAI prompt caching actually hits.
+                    </p>
+                    <ul>
+                        <li><code>Infrastructure.AI/Prompts/Sections/AgentIdentitySectionProvider.cs</code></li>
+                        <li><code>.../Sections/PermissionRulesSectionProvider.cs</code></li>
+                        <li><code>.../Sections/SessionStateSectionProvider.cs</code></li>
+                        <li><code>.../Sections/ToolSchemasSectionProvider.cs</code></li>
+                        <li><code>.../MemoizedPromptComposer.cs</code> + <code>InMemoryPromptSectionCache.cs</code></li>
+                    </ul>
+
+                    <h3 id="compaction">Context compaction</h3>
+                    <p>
+                        When a conversation approaches the model's context window, <code>ContextCompactionService</code>
+                        invokes one of three strategies keyed by state: <code>Full</code> (rewrite the whole transcript),
+                        <code>Partial</code> (summarise older turns), or <code>Micro</code> (drop redundant tool
+                        outputs). <code>AutoCompactStateMachine</code> picks the right strategy.
+                    </p>
+
+                    <h3 id="subagents">Subagent dispatch &amp; mailbox</h3>
+                    <p>
+                        Agents can dispatch <em>subagents</em> for parallel sub-tasks. <code>SubagentToolResolver</code>
+                        exposes a subagent as a callable tool to its parent; <code>InMemoryAgentMailbox</code> routes
+                        messages; <code>BuiltInSubagentProfiles</code> ships ready-made profiles (planner, architect,
+                        explorer, ...). Delegation transcripts persist via <code>JsonlDelegationStore</code>.
+                    </p>
+
+                    <h3 id="a2a">A2A hosting</h3>
+                    <p>
+                        <code>A2AAgentHost</code> exposes an agent over the Agent-to-Agent protocol — peer agents from
+                        other systems can call this harness's agents as ordinary remote endpoints.
+                        <code>src/Content/Infrastructure/Infrastructure.AI/A2A/A2AAgentHost.cs</code>
+                    </p>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- 3. RAG PATTERNS -->
+                    <!-- ================================================================== -->
+                    <h2 id="rag">3 · RAG (Retrieval-Augmented Generation) patterns</h2>
+                    <p>
+                        A full pipeline: ingest → chunk → enrich → embed → retrieve (dense + sparse + graph + SQL + web)
+                        → rank → evaluate → assemble. Every stage has a swappable implementation and an evaluation
+                        hook. Live under <code>src/Content/Infrastructure/Infrastructure.AI.RAG/</code>.
+                    </p>
+
+                    <h3 id="chunking">Chunking — three strategies</h3>
+                    <ul>
+                        <li><code>StructureAwareChunker</code> — respects Markdown headings, code fences, list boundaries (<code>Ingestion/StructureAwareChunker.cs</code>)</li>
+                        <li><code>FixedSizeChunker</code> — token-count splits with configurable overlap (<code>Ingestion/FixedSizeChunker.cs</code>)</li>
+                        <li><code>SemanticChunker</code> — cluster adjacent sentences by embedding similarity, split at low-similarity boundaries (<code>Ingestion/SemanticChunker.cs</code>)</li>
+                        <li>Resolver: <code>Ingestion/ChunkingStrategyResolver.cs</code></li>
+                    </ul>
+
+                    <h3 id="contextual-enrichment">Contextual chunk enrichment</h3>
+                    <p>
+                        Implements the Anthropic "contextual retrieval" pattern: before embedding, prepend each chunk
+                        with a short LLM-generated description of how the chunk relates to the parent document. Boosts
+                        recall on ambiguous queries.
+                        <code>Ingestion/ContextualChunkEnricher.cs</code>
+                    </p>
+
+                    <h3 id="raptor">RAPTOR hierarchical summarisation</h3>
+                    <p>
+                        Recursive Abstractive Processing for Tree-Organized Retrieval — leaf chunks summarise upward
+                        into intermediate nodes, then a root. Retrieval can target any level: the leaves for citations,
+                        the root for "what is this whole document about?".
+                        <code>Ingestion/RaptorSummarizer.cs</code>
+                    </p>
+
+                    <h3 id="hybrid-retrieval">Hybrid retrieval + Reciprocal Rank Fusion (marquee pattern · 9 of 12)</h3>
+                    <p>
+                        Dense (embedding) and sparse (BM25) retrievals run in parallel; their ranked result lists fuse
+                        via Reciprocal Rank Fusion, which scores each candidate by the sum of <code>1 / (k + rank)</code>
+                        across all source lists. Captures both semantic and keyword matches without trusting either
+                        one alone.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · sketch of HybridRetriever</span></div>
+                        <pre><code>var (dense, sparse) = await Task.WhenAll(
+    _vectorStore.SearchAsync(queryEmbedding, k: _opts.DenseK, ct),
+    _bm25Store.SearchAsync(query, k: _opts.SparseK, ct));
+
+// RRF: each candidate gets sum of 1 / (k + rank_in_list) across lists
+var fused = ReciprocalRankFusion.Fuse(
+    new[] { dense.Results, sparse.Results },
+    k: _opts.RrfK);
+
+return fused.Take(_opts.FinalK).ToImmutableArray();</code></pre>
+                    </div>
+
+                    <ul>
+                        <li>Hybrid wrapper: <code>Retrieval/HybridRetriever.cs</code></li>
+                        <li>Iterative variant (multi-hop): <code>Retrieval/IterativeRetriever.cs</code></li>
+                        <li>Feedback-weighted scorer: <code>Retrieval/FeedbackWeightedScorer.cs</code></li>
+                    </ul>
+
+                    <h3 id="query-transformation">Query transformation</h3>
+                    <ul>
+                        <li><code>RagFusionTransformer</code> — generates N paraphrases of the query, retrieves with each, fuses results (<code>QueryTransform/RagFusionTransformer.cs</code>)</li>
+                        <li><code>HydeTransformer</code> — generates a hypothetical answer, embeds <em>that</em> as the search vector (<code>QueryTransform/HydeTransformer.cs</code>)</li>
+                        <li><code>QueryDecomposer</code> — breaks complex queries into sub-questions for multi-hop (<code>QueryTransform/QueryDecomposer.cs</code>)</li>
+                        <li><code>LlmQueryClassifier</code> — labels query as simple / moderate / complex (<code>QueryTransform/LlmQueryClassifier.cs</code>)</li>
+                        <li><code>QueryRouter</code> — routes by classification to the cheapest pipeline that can handle it (<code>QueryTransform/QueryRouter.cs</code>)</li>
+                    </ul>
+
+                    <h3 id="rerankers">Rerankers (keyed strategy)</h3>
+                    <ul>
+                        <li><code>AzureSemanticReranker</code> — Azure AI Search's L2 semantic reranker (<code>Retrieval/AzureSemanticReranker.cs</code>)</li>
+                        <li><code>CrossEncoderReranker</code> — transformer-based pairwise scoring (<code>Retrieval/CrossEncoderReranker.cs</code>)</li>
+                        <li><code>NoOpReranker</code> — identity, for benchmarking (<code>Retrieval/NoOpReranker.cs</code>)</li>
+                    </ul>
+
+                    <h3 id="vector-bm25-stores">Vector &amp; BM25 stores</h3>
+                    <ul>
+                        <li>Dense: <code>FaissVectorStore.cs</code> (local), <code>AzureAISearchVectorStore.cs</code> (managed)</li>
+                        <li>Sparse: <code>SqliteFts5Store.cs</code> (local), <code>AzureAISearchBm25Store.cs</code> (managed)</li>
+                        <li>Factory: <code>Retrieval/VectorStoreFactory.cs</code></li>
+                    </ul>
+
+                    <h3 id="crag">CRAG (Corrective RAG) evaluation (marquee pattern · 10 of 12)</h3>
+                    <p>
+                        Every retrieval is scored for sufficiency before assembly. The <code>CragEvaluator</code> returns
+                        one of <strong>Accept</strong> (chunks are good enough — assemble), <strong>Refine</strong>
+                        (decent but rerun with a transformed query), or <strong>Reject</strong> (none of these chunks
+                        help — fall through to web search or escalate). Thresholds are configurable.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · sketch of the CRAG decision</span></div>
+                        <pre><code>var quality = await _retrievalQualityEvaluator.ScoreAsync(query, chunks, ct);
+
+return quality.MaxScore switch
+{
+    var s when s &gt;= _opts.AcceptThreshold =&gt; CragDecision.Accept(chunks),
+    var s when s &gt;= _opts.RefineThreshold =&gt; CragDecision.Refine(chunks, suggestedQuery),
+    _                                       =&gt; CragDecision.Reject(reason: quality.RejectionReason)
+};</code></pre>
+                    </div>
+
+                    <ul>
+                        <li>Evaluator: <code>Evaluation/CragEvaluator.cs</code></li>
+                        <li>Sufficiency: <code>Evaluation/SufficiencyEvaluator.cs</code> (used by multi-hop "do we have enough yet?" loop)</li>
+                        <li>Retrieval quality: <code>Evaluation/RetrievalQualityEvaluator.cs</code></li>
+                        <li>Faithfulness: <code>Evaluation/AnswerFaithfulnessEvaluator.cs</code> (detects hallucination by scoring answer against source chunks)</li>
+                    </ul>
+
+                    <h3 id="assembly">Assembly — token budget, pointer expansion, citations</h3>
+                    <ul>
+                        <li><code>RagContextAssembler</code> — packs chunks into the context window under a token budget, attaches citation IDs (<code>Assembly/RagContextAssembler.cs</code>)</li>
+                        <li><code>PointerChunkExpander</code> — when a chunk is selected, optionally pull in its sibling or parent chunks for surrounding context (<code>Assembly/PointerChunkExpander.cs</code>)</li>
+                        <li><code>CitationTracker</code> — maintains chunk → source mapping so the model can cite faithfully (<code>Assembly/CitationTracker.cs</code>)</li>
+                    </ul>
+
+                    <h3 id="multi-source">Multi-source orchestration</h3>
+                    <p>
+                        <code>MultiSourceOrchestrator</code> runs vector, BM25, graph, SQL, and web retrievals in
+                        parallel, scored against a per-source cost budget. <code>RetrievalDecisionGate</code> applies
+                        quality gates at each stage; <code>RetrievalCostTracker</code> records the spend.
+                    </p>
+                    <ul>
+                        <li><code>Orchestration/RagOrchestrator.cs</code> (+ <code>.MultiHop.cs</code> partial)</li>
+                        <li><code>Orchestration/MultiSourceOrchestrator.cs</code></li>
+                        <li><code>Orchestration/VectorRetrievalSource.cs</code></li>
+                        <li><code>Orchestration/GraphRetrievalSource.cs</code></li>
+                        <li><code>SqlDatabase/SqlDatabaseRetrievalSource.cs</code></li>
+                        <li><code>WebSearch/WebSearchRetrievalSource.cs</code> (Bing-backed by default)</li>
+                        <li><code>Orchestration/RetrievalDecisionGate.cs</code></li>
+                        <li><code>Orchestration/RetrievalCostTracker.cs</code></li>
+                    </ul>
+
+                    <h3 id="text-to-sql">Text-to-SQL retrieval</h3>
+                    <p>
+                        Structured-data retrieval: <code>TextToSqlGenerator</code> turns a natural-language question
+                        into SQL, <code>JsonSqlQueryTemplateStore</code> + <code>SqlQueryTemplateMatcher</code> match
+                        against curated templates first, and <code>SafeSqlQueryExecutor</code> runs the result against
+                        a read-only connection with parameter binding.
+                    </p>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- 4. KNOWLEDGE GRAPH -->
+                    <!-- ================================================================== -->
+                    <h2 id="knowledge-graph">4 · Knowledge graph patterns</h2>
+                    <p>
+                        A production-grade graph layer, inspired by Cognee — entity extraction, community detection,
+                        feedback learning, cross-session memory, provenance, compliance, and multi-tenant isolation.
+                        Lives under <code>src/Content/Infrastructure/Infrastructure.AI.KnowledgeGraph/</code> with a
+                        sibling <code>Infrastructure.AI.RAG/GraphRag/</code> for the GraphRAG-specific code.
+                    </p>
+
+                    <h3 id="graph-backends">Graph backends — four implementations</h3>
+                    <ul>
+                        <li><code>Neo4jGraphStore</code> — production graph DB via Neo4j driver (<code>Neo4j/Neo4jGraphStore.cs</code>)</li>
+                        <li><code>KuzuGraphBackend</code> — embedded analytical graph DB; split into <code>.Crud.cs</code> + <code>.Community.cs</code> partials (<code>Infrastructure.AI.RAG/GraphRag/KuzuGraphBackend.cs</code>)</li>
+                        <li><code>PostgreSqlGraphStore</code> — relational backend with graph extensions (<code>PostgreSql/PostgreSqlGraphStore.cs</code>)</li>
+                        <li><code>InMemoryGraphStore</code> — fast dev/test backend (<code>InMemory/InMemoryGraphStore.cs</code>)</li>
+                    </ul>
+
+                    <h3 id="leiden">Leiden community detection</h3>
+                    <p>
+                        Partitions the graph into communities for hierarchical retrieval. The implementation is split
+                        across three partials by concern — the algorithm itself, graph construction, and the public
+                        detector interface.
+                    </p>
+                    <ul>
+                        <li><code>Infrastructure.AI.RAG/GraphRag/LeidenCommunityDetector.cs</code></li>
+                        <li><code>.../LeidenCommunityDetector.Algorithm.cs</code></li>
+                        <li><code>.../LeidenCommunityDetector.GraphConstruction.cs</code></li>
+                    </ul>
+
+                    <h3 id="feedback-search">Feedback-weighted search</h3>
+                    <p>
+                        Every retrieval gets a quality score; <code>GraphFeedbackStore</code> persists it on the
+                        nodes/edges that participated. Future retrievals blend semantic relevance with these historical
+                        weights — chunks that have helped before float upward; chunks that misled get pushed down.
+                        <code>LlmFeedbackDetector</code> derives the quality score from the conversation turn.
+                    </p>
+                    <ul>
+                        <li><code>Feedback/GraphFeedbackStore.cs</code></li>
+                        <li><code>Feedback/LlmFeedbackDetector.cs</code></li>
+                        <li>Scorer: <code>Infrastructure.AI.RAG/Retrieval/FeedbackWeightedScorer.cs</code></li>
+                    </ul>
+
+                    <h3 id="cross-session">Cross-session knowledge persistence</h3>
+                    <p>
+                        Four verbs: <code>Remember</code>, <code>Recall</code>, <code>Forget</code>, <code>Improve</code>.
+                        <code>KnowledgeMemoryService</code> coordinates fast reads from <code>InMemorySessionCache</code>
+                        with background sync to the persistent <code>CrossSessionMemoryStore</code>.
+                        <code>ConversationFactExtractor</code> mines facts from each conversation for storage.
+                    </p>
+                    <ul>
+                        <li><code>Memory/KnowledgeMemoryService.cs</code></li>
+                        <li><code>Memory/InMemorySessionCache.cs</code></li>
+                        <li><code>Memory/ConversationFactExtractor.cs</code></li>
+                        <li><code>Infrastructure.AI.RAG/GraphRag/CrossSessionMemoryStore.cs</code></li>
+                    </ul>
+
+                    <h3 id="memory-decay">Memory decay tiers</h3>
+                    <p>
+                        Three tiers with configurable exponential half-lives: <strong>CRITICAL</strong> (never decay),
+                        <strong>STANDARD</strong> (slow decay), <strong>EPHEMERAL</strong> (fast decay). Scheduled
+                        pruning removes anything below threshold.
+                        <code>Infrastructure.AI.RAG/GraphRag/MemoryDecayService.cs</code>
+                    </p>
+
+                    <h3 id="provenance">Entity-level provenance</h3>
+                    <p>
+                        <code>DefaultProvenanceStamper</code> stamps every node and every edge with source pipeline,
+                        task ID, and timestamp at the moment of write. Enables audit trails, debugging, and compliance.
+                        <code>Provenance/DefaultProvenanceStamper.cs</code>
+                    </p>
+
+                    <h3 id="compliance">Compliance-aware store &amp; right-to-erasure</h3>
+                    <p>
+                        <code>ComplianceAwareGraphStore</code> wraps any backend with retention enforcement
+                        (<code>ConfigRetentionPolicyProvider</code>) and an erasure surface
+                        (<code>DefaultErasureOrchestrator</code>). Erasure produces a signed <code>ErasureReceipt</code>
+                        you can show to a regulator. <code>RetentionEnforcementService</code> runs as a background
+                        sweep.
+                    </p>
+
+                    <h3 id="multi-tenant">Multi-tenant knowledge isolation</h3>
+                    <p>
+                        <code>TenantIsolatedGraphStore</code> wraps every read/write with a call to
+                        <code>KnowledgeScopeValidator</code>; the scope (user → dataset → owner) flows from
+                        <code>KnowledgeScopeAccessor</code>. Multiple agents on shared infrastructure cannot see each
+                        other's data — and the validator is a single chokepoint to audit.
+                    </p>
+                    <ul>
+                        <li><code>Scoping/TenantIsolatedGraphStore.cs</code></li>
+                        <li><code>Scoping/KnowledgeScopeValidator.cs</code></li>
+                        <li><code>Scoping/KnowledgeScopeAccessor.cs</code></li>
+                    </ul>
+
+                    <h3 id="graph-audit">Graph audit sinks</h3>
+                    <p>
+                        Every graph mutation flows to an audit sink — <code>StructuredLoggingAuditSink</code> for
+                        production, <code>NoOpAuditSink</code> for dev. The interface lets you bolt on Sentinel,
+                        Splunk, or a custom append-only ledger without touching the store.
+                    </p>
+
+                    <h3 id="graph-skill-effectiveness">Skill effectiveness tracking on the graph</h3>
+                    <p>
+                        <code>GraphSkillEffectivenessTracker</code> records which skills helped which turns;
+                        <code>GraphSkillAmendmentProvider</code> uses those records to propose skill amendments via
+                        the learnings system. Skills get better over time without manual edits.
+                    </p>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- 5. GOVERNANCE & RESILIENCE -->
+                    <!-- ================================================================== -->
+                    <h2 id="governance">5 · Governance &amp; resilience patterns</h2>
+                    <p>
+                        The "things that prevent the agent from quietly going wrong" layer. Drift detection,
+                        learnings, escalation, autonomy tiers, circuit breakers, fallbacks.
+                    </p>
+
+                    <h3 id="drift-detection">Drift detection — EWMA</h3>
+                    <p>
+                        Exponentially Weighted Moving Average baselines for quality signals (faithfulness scores, tool
+                        success rates, escalation rates). <code>EwmaDriftScorer</code> computes the current value;
+                        <code>DriftSeverityClassifier</code> labels it; <code>DriftEscalationBridge</code> escalates
+                        on threshold breach.
+                    </p>
+                    <ul>
+                        <li><code>Infrastructure.AI/DriftDetection/DefaultDriftDetectionService.cs</code></li>
+                        <li><code>.../EwmaDriftScorer.cs</code></li>
+                        <li><code>.../DriftSeverityClassifier.cs</code></li>
+                        <li><code>.../GraphEwmaStateStore.cs</code> · <code>InMemoryDriftBaselineStore.cs</code> · <code>GraphDriftBaselineStore.cs</code></li>
+                        <li><code>.../CompositeDriftNotifier.cs</code> · <code>DriftEscalationBridge.cs</code></li>
+                    </ul>
+
+                    <h3 id="learnings">Learnings store with decay</h3>
+                    <p>
+                        CQRS-based knowledge capture: lessons learned from a turn are persisted with an exponential-decay
+                        score; <code>LearningsPruningBackgroundService</code> removes expired entries;
+                        <code>LearningsDriftBridge</code> triggers re-learning when drift is detected.
+                    </p>
+                    <ul>
+                        <li><code>Infrastructure.AI/Learnings/DefaultLearningDecayService.cs</code></li>
+                        <li><code>.../LearningsPruningBackgroundService.cs</code></li>
+                        <li><code>.../LearningsDriftBridge.cs</code></li>
+                        <li>Store: <code>Infrastructure.AI.KnowledgeGraph/Learnings/GraphLearningsStore.cs</code> · <code>InMemoryLearningsStore.cs</code></li>
+                    </ul>
+
+                    <h3 id="escalation">Escalation workflows</h3>
+                    <p>
+                        Multi-approver workflows with three composition modes — <strong>AllOf</strong> (every approver
+                        must say yes), <strong>AnyOf</strong> (one is enough), <strong>Quorum</strong> (majority).
+                        Audit trail is JSONL; notifiers ship for Slack and Teams (no-op variants for dev).
+                    </p>
+                    <ul>
+                        <li><code>Infrastructure.AI/Escalation/DefaultEscalationService.cs</code></li>
+                        <li><code>.../CompositeEscalationNotifier.cs</code></li>
+                        <li><code>.../NoOpSlackNotifier.cs</code> · <code>NoOpTeamsNotifier.cs</code></li>
+                    </ul>
+
+                    <h3 id="autonomy-tiers">Autonomy tiers</h3>
+                    <p>
+                        Three levels enforced by <code>GovernancePolicyBehavior</code>: <strong>Manual</strong>
+                        (human approves every action), <strong>Supervised</strong> (auto-approve low-risk, escalate
+                        high-risk), <strong>Autonomous</strong> (no gates, full audit). Tier resolves per-plugin,
+                        per-skill, or per-tool via <code>DefaultAutonomyTierResolver</code>.
+                    </p>
+
+                    <h3 id="polly">Resilience pipeline (Polly)</h3>
+                    <p>
+                        <code>ProviderResiliencePipelineBuilder</code> assembles retry + circuit breaker + timeout +
+                        fallback into a single Polly pipeline per provider. Default circuit breaker: 30s open after
+                        repeated failures, 120s half-open probe; default retry: exponential 1s → 60s.
+                        <code>ResilientChatClient</code> applies the pipeline transparently.
+                    </p>
+                    <ul>
+                        <li><code>Infrastructure.AI/Resilience/ProviderResiliencePipelineBuilder.cs</code></li>
+                        <li><code>.../ResilientChatClient.cs</code></li>
+                        <li><code>.../ProviderCapabilityRegistry.cs</code></li>
+                        <li><code>.../LlmRetryQueue.cs</code></li>
+                    </ul>
+
+                    <h3 id="provider-fallback">Provider fallback chains</h3>
+                    <p>
+                        If Azure OpenAI fails the circuit breaker, the pipeline falls through to Anthropic, then to a
+                        local echo client (in dev) or escalation (in prod). The dashboard tracks "intended provider"
+                        versus "effective provider" so the operator can see how often fallbacks are firing.
+                    </p>
+
+                    <h3 id="response-sanitizers">Response sanitisers</h3>
+                    <p>
+                        <code>ResponseSanitizationBehavior</code> masks PII / secrets in outbound responses;
+                        <code>PatternSecretRedactor</code> applies a configurable regex set (JWT, API keys, connection
+                        strings) before logs or wire payloads ever touch storage.
+                    </p>
+
+                    <h3 id="hooks">Hooks system</h3>
+                    <p>
+                        Plugin-declared <strong>pre/post hooks</strong> fire around tool calls and pipeline phases.
+                        <code>InMemoryHookRegistry</code> holds the declarations; <code>CompositeHookExecutor</code>
+                        invokes them in declared order with cancellation support. Used by safety gates, observability
+                        spans, and policy enforcement.
+                    </p>
+
+                    <h3 id="safety-gates">Safety gates &amp; denial tracking</h3>
+                    <p>
+                        <code>SafetyGateRegistry</code> holds named gates a plugin can flip
+                        (<code>before_write</code>, <code>before_shell</code>, etc.); <code>InMemoryDenialTracker</code>
+                        records every denial so operators can see what the harness is blocking and why.
+                    </p>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- 6. PLAN EXECUTION -->
+                    <!-- ================================================================== -->
+                    <h2 id="plan-execution">6 · Plan execution patterns</h2>
+                    <p>
+                        Long-running multi-step work — research, planning, codegen pipelines — runs as a
+                        <code>Plan</code>: a DAG of <code>PlanStep</code> nodes with checkpoint/resume, error recovery,
+                        and per-step observability. Lives in <code>Infrastructure.AI/Planner/</code>.
+                    </p>
+
+                    <h3 id="plan-executor">DAG executor (marquee pattern · 11 of 12)</h3>
+                    <p>
+                        <code>PlanExecutor</code> walks the DAG in topological order with bounded concurrency, checkpointing
+                        to EF Core between batches. Each step resolves its keyed <code>IPlanStepExecutor</code> based
+                        on <code>StepType</code>. Recovery, scheduling, and summary live in partial classes.
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · step executor interface</span></div>
+                        <pre><code>public interface IPlanStepExecutor
+{
+    StepType Type { get; }                       // keyed-DI registration key
+    Task&lt;StepResult&gt; ExecuteAsync(PlanStep step, PlanExecutionContext ctx, CancellationToken ct);
+}</code></pre>
+                    </div>
+
+                    <ul>
+                        <li>Core: <code>Planner/PlanExecutor.cs</code></li>
+                        <li>Scheduling: <code>Planner/PlanExecutor.Scheduling.cs</code></li>
+                        <li>Recovery: <code>Planner/PlanExecutor.Recovery.cs</code></li>
+                        <li>Summary: <code>Planner/PlanExecutor.Summary.cs</code></li>
+                        <li>Plan generation: <code>Planner/LlmPlanGeneratorService.cs</code></li>
+                        <li>Plan validation: <code>Planner/PlanValidator.cs</code></li>
+                        <li>Plan output mapping: <code>Planner/LlmPlanOutputMapper.cs</code></li>
+                    </ul>
+
+                    <h3 id="checkpoint-resume">Checkpoint &amp; resume</h3>
+                    <p>
+                        <code>EfCorePlanStateStore</code> persists plan + step state to SQLite (or any EF Core
+                        provider). The store is split across <code>.cs</code> (writes), <code>.Reads.cs</code>, and
+                        <code>.Mappers.cs</code> partials. Versions are auto-incremented by the
+                        <code>SqliteVersionInterceptor</code> on save.
+                    </p>
+
+                    <h3 id="error-recovery">Error recovery</h3>
+                    <p>
+                        Three per-step policies declared in the plan: <strong>Retry</strong> (bounded exponential
+                        backoff), <strong>Escalate</strong> (raise a HumanGate), <strong>Skip</strong> (mark N/A,
+                        continue downstream). Logic lives in <code>PlanExecutor.Recovery.cs</code>.
+                    </p>
+
+                    <h3 id="step-executors">Step executors (keyed by StepType)</h3>
+                    <ul>
+                        <li><code>LlmCallStepExecutor</code> — invokes an LLM through the factory, streams tokens (<code>StepExecutors/LlmCallStepExecutor.cs</code>)</li>
+                        <li><code>ToolUseStepExecutor</code> — runs a single tool through the sandbox (<code>StepExecutors/ToolUseStepExecutor.cs</code>)</li>
+                        <li><code>HumanGateStepExecutor</code> — pauses execution, awaits human approval (<code>StepExecutors/HumanGateStepExecutor.cs</code>)</li>
+                        <li><code>ConditionalBranchStepExecutor</code> — evaluates condition, routes to next (<code>StepExecutors/ConditionalBranchStepExecutor.cs</code>)</li>
+                        <li><code>SubPlanStepExecutor</code> — nests another plan inside this step (<code>StepExecutors/SubPlanStepExecutor.cs</code>)</li>
+                        <li><code>RetrievalPlanStepExecutor</code> — invokes the RAG pipeline as a planned step (<code>StepExecutors/RetrievalPlanStepExecutor.cs</code>)</li>
+                    </ul>
+
+                    <h3 id="plan-summary">Step summary &amp; observation</h3>
+                    <p>
+                        Every step emits an <code>ObservationOutput</code> (structured result + metadata). The
+                        <code>PlanExecutor.Summary.cs</code> partial aggregates them into observation trees that feed
+                        the knowledge graph and the trace exporter.
+                    </p>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- 7. SANDBOX -->
+                    <!-- ================================================================== -->
+                    <h2 id="sandbox">7 · Sandbox &amp; isolation patterns</h2>
+                    <p>
+                        Tool execution is closed-by-default: a tool runs only inside a sandbox executor, the executor
+                        enforces resource limits, and every call is signed for audit.
+                    </p>
+
+                    <h3 id="process-sandbox">Process sandbox (Windows Job Objects)</h3>
+                    <p>
+                        <code>ProcessSandboxExecutor</code> spawns tools as subprocesses with JSON-over-stdin/stdout
+                        I/O. On Windows it wraps each child in a Job Object via <code>WindowsJobObjectManager</code>
+                        + <code>WindowsProcessResourceLimiter</code> to enforce CPU, memory, and handle limits. Other
+                        platforms fall through to <code>NoOpProcessResourceLimiter</code> (execution still works,
+                        limits log a warning).
+                    </p>
+                    <ul>
+                        <li><code>Infrastructure.AI/Sandbox/ProcessSandboxExecutor.cs</code></li>
+                        <li><code>.../WindowsJobObjectManager.cs</code></li>
+                        <li><code>.../WindowsProcessResourceLimiter.cs</code></li>
+                        <li><code>.../NoOpProcessResourceLimiter.cs</code></li>
+                    </ul>
+
+                    <h3 id="docker-sandbox">Docker sandbox</h3>
+                    <p>
+                        <code>DockerSandboxExecutor</code> pulls a per-tool container image, spins up a container
+                        with strict CPU/memory limits, communicates via JSON, and tears down. Strongest isolation;
+                        cost is image-pull latency.
+                        <code>Infrastructure.AI/Sandbox/DockerSandboxExecutor.cs</code>
+                    </p>
+
+                    <h3 id="hmac-attestation">HMAC attestation (marquee pattern · 12 of 12)</h3>
+                    <p>
+                        Every sandboxed execution is signed by <code>HmacAttestationService</code>: input hash, output
+                        hash (on success) or reason (on failure), and a timestamp, signed with a per-deployment HMAC
+                        key. Attestations persist via <code>EfCoreAttestationStore</code> and can be verified
+                        out-of-band — useful when a regulator asks "did this agent really call that tool with that
+                        input?".
+                    </p>
+
+                    <div class="code-block">
+                        <div class="code-block-header"><span class="code-block-lang">C# · attestation flow sketch</span></div>
+                        <pre><code>var inputHash  = ComputeSha256(canonicalJson(input));
+var outputHash = result.IsSuccess ? ComputeSha256(canonicalJson(result.Value)) : null;
+
+var attestation = new AttestationRecord(
+    ToolName:   step.ToolName,
+    InputHash:  inputHash,
+    OutputHash: outputHash,
+    Outcome:    result.IsSuccess ? Outcome.Success : Outcome.Failure,
+    Reason:     result.IsSuccess ? null : result.Error,
+    Timestamp:  _clock.UtcNow);
+
+attestation = attestation with { Signature = _hmac.Sign(attestation, _keyOptions.CurrentKey) };
+await _store.SaveAsync(attestation, ct);</code></pre>
+                    </div>
+
+                    <ul>
+                        <li><code>Infrastructure.AI/Attestation/HmacAttestationService.cs</code></li>
+                        <li><code>.../EfCoreAttestationStore.cs</code></li>
+                        <li><code>.../AttestationKeyOptions.cs</code> + <code>AttestationKeyOptionsValidator.cs</code></li>
+                    </ul>
+
+                    <h3 id="tool-permission-gate">Tool permission gate</h3>
+                    <p>
+                        <code>ToolPermissionBehavior</code> (MediatR) is the first line of defence — it checks the
+                        invoking plugin's <code>AllowedTools</code>/<code>DeniedTools</code> against the requested
+                        tool. <code>ThreePhasePermissionResolver</code> applies "default deny" → "plugin allow" →
+                        "user deny" precedence; <code>GlobPatternMatcher</code> supports wildcard rules.
+                    </p>
+
+                    <h3 id="secret-redaction">Secret redaction</h3>
+                    <p>
+                        <code>PatternSecretRedactor</code> scans every outbound payload (logs, responses, tool inputs)
+                        against a configurable pattern set (JWT, AWS keys, GitHub PATs, Azure connection strings) and
+                        replaces matches before the data leaves the process.
+                    </p>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- 8. CROSS-CUTTING INFRASTRUCTURE -->
+                    <!-- ================================================================== -->
+                    <h2 id="infrastructure">8 · Cross-cutting infrastructure</h2>
+
+                    <h3 id="fluentvalidation">FluentValidation auto-discovery</h3>
+                    <p>
+                        Every DTO has an <code>AbstractValidator&lt;T&gt;</code>; the DI bootstrap scans assemblies and
+                        registers them all. Validation runs as the outermost MediatR behaviour; failures short-circuit
+                        with a <code>Result&lt;T&gt;.ValidationFailure(errors)</code>.
+                    </p>
+
+                    <h3 id="automapper">AutoMapper profiles</h3>
+                    <p>
+                        Entity ↔ DTO mapping. Profiles auto-registered via DI scanning. Used heavily in the API layer
+                        and in the EF Core state stores (entity ↔ plan model).
+                    </p>
+
+                    <h3 id="ef-core">EF Core + IDbContextFactory</h3>
+                    <p>
+                        Every consumer takes <code>IDbContextFactory&lt;TDbContext&gt;</code> rather than the context
+                        directly — short-lived contexts per unit of work, no captive dependency issues.
+                        <code>SqliteVersionInterceptor</code> auto-increments entity <code>Version</code> on save.
+                    </p>
+
+                    <h3 id="logging">Structured logging</h3>
+                    <p>
+                        All logs flow through <code>ILogger&lt;T&gt;</code> as JSONL. Providers:
+                        <code>NamedPipeLoggerProvider</code> streams to LoggerUI in dev;
+                        <code>FileLoggerProvider</code> + <code>StructuredJsonLoggerProvider</code> persist to ndjson
+                        files; Application Insights in production.
+                    </p>
+
+                    <h3 id="otel">OpenTelemetry instrumentation</h3>
+                    <p>
+                        Spans propagate via W3C TraceContext. The GenAI semantic conventions
+                        (<code>gen_ai.system</code>, <code>gen_ai.request.model</code>,
+                        <code>gen_ai.usage.input_tokens</code>, etc.) are mapped through a single registry to avoid
+                        drift between subsystems.
+                    </p>
+                    <ul>
+                        <li><code>Application.AI.Common/OpenTelemetry/Conventions/GenAiSemconvRegistry.cs</code> (single source of truth)</li>
+                        <li><code>.../AiTelemetryConfigurator.cs</code></li>
+                        <li>Blueprint: <code>documentation/blueprints/agentic-harness-observability.md</code></li>
+                    </ul>
+
+                    <h3 id="metrics">Metrics inventory</h3>
+                    <ul>
+                        <li><code>BudgetMetrics</code> — token spend, cost tracking</li>
+                        <li><code>LlmUsageMetrics</code> — prompt / completion / cached tokens, per provider</li>
+                        <li><code>ToolExecutionMetrics</code> — count, latency, error rate per tool</li>
+                        <li><code>ContentSafetyMetrics</code> — violation counts by category &amp; severity</li>
+                        <li><code>DriftMetrics</code> — current vs. baseline quality scores</li>
+                        <li><code>EscalationMetrics</code> — approvals, timeouts, rejections</li>
+                        <li><code>ResilienceMetrics</code> — circuit-breaker state, retries, fallbacks</li>
+                    </ul>
+                    <p>All under <code>src/Content/Application/Application.AI.Common/OpenTelemetry/Metrics/</code>.</p>
+
+                    <h3 id="exporters">Observability exporters (multi-backend)</h3>
+                    <ul>
+                        <li><strong>Grafana Tempo</strong> — traces in local dev (docker-compose)</li>
+                        <li><strong>Prometheus</strong> — metrics scrape endpoint</li>
+                        <li><strong>Azure Monitor</strong> — production OTLP destination</li>
+                        <li><strong>SignalRSpanExporter</strong> — custom exporter that streams spans to the dashboard hub without back-pressure</li>
+                    </ul>
+                    <p>Lives in <code>src/Content/Infrastructure/Infrastructure.Observability/</code>.</p>
+
+                    <h3 id="signalr">SignalR AgentHub (real-time telemetry)</h3>
+                    <p>
+                        Long-running agent turns stream their span data, log lines, and partial responses through a
+                        SignalR hub to the React dashboard. Resilience config: 120-second timeouts, 30-second keepalive,
+                        infinite exponential-backoff reconnect — tuned for LLM workloads where a single turn can take
+                        minutes.
+                    </p>
+                    <ul>
+                        <li><code>src/Content/Presentation/Presentation.AgentHub/Telemetry/SignalRSpanExporter.cs</code></li>
+                    </ul>
+
+                    <h3 id="auth">Authentication &amp; authorisation</h3>
+                    <p>
+                        <code>DevAuthHandler</code> mints a test JWT with roles in development — gated by a
+                        double-check (config flag + presence of an Azure SPA client ID) so it can't accidentally ship
+                        to prod. Production uses Azure AD / Entra ID with full JWT validation
+                        (<code>ValidateLifetime=true</code>, <code>ClockSkew=Zero</code>). Rate limiting per identity.
+                    </p>
+
+                    <h3 id="mcp">MCP server</h3>
+                    <p>
+                        ASP.NET Core endpoints under <code>/mcp/...</code> expose the harness's tools, prompts, and
+                        resources to other agents over the Model Context Protocol. JWT-authenticated; tools surface
+                        through the same keyed-DI registrations the harness uses internally.
+                    </p>
+
+                    <h3 id="budget-tracking">Budget tracking</h3>
+                    <p>
+                        Cumulative token spend per conversation, observable via <code>BudgetMetrics</code> +
+                        <code>TokenBudgetBehavior</code>. Threshold breaches trigger escalation; the dashboard renders
+                        live spend.
+                    </p>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- 9. FRONTEND -->
+                    <!-- ================================================================== -->
+                    <h2 id="frontend">9 · Frontend patterns (Presentation.Dashboard)</h2>
+                    <p>
+                        The dashboard is a Vite-built React SPA living at
+                        <code>src/Content/Presentation/Presentation.Dashboard/</code>. It renders live agent telemetry,
+                        budget/cost panes, evaluation runs, the catalog inspector, and the context-window inspector.
+                    </p>
+
+                    <h3 id="frontend-stack">Stack</h3>
+                    <ul>
+                        <li><strong>React 19</strong> + <strong>TypeScript ~6.0</strong></li>
+                        <li><strong>Vite 8</strong> — dev server on <code>:5174</code>, proxies to AgentHub; <code>npm run dev:all</code> launches both</li>
+                        <li><strong>Tailwind CSS 4</strong> (with <code>@tailwindcss/vite</code>) + <code>tw-animate-css</code></li>
+                        <li><strong>Radix UI primitives</strong> (<code>react-dialog</code>, <code>react-select</code>) + <strong>shadcn/ui</strong> patterns</li>
+                        <li><strong>Zustand</strong> — global client state</li>
+                        <li><strong>TanStack Query</strong> — server-state cache, fetching, mutations</li>
+                        <li><strong>Recharts</strong> — telemetry &amp; budget charts</li>
+                        <li><strong>@microsoft/signalr</strong> — real-time stream from AgentHub</li>
+                        <li><strong>@azure/msal-browser</strong> + <strong>@azure/msal-react</strong> — Entra ID auth</li>
+                        <li><strong>axios</strong> + <strong>date-fns</strong> + <strong>lucide-react</strong> icons + <strong>class-variance-authority</strong> / <strong>clsx</strong> / <strong>tailwind-merge</strong> for component variants</li>
+                    </ul>
+
+                    <h3 id="frontend-auth">Auth gating</h3>
+                    <p>
+                        Dev mode is unlocked when <code>VITE_AZURE_SPA_CLIENT_ID</code> is absent — no separate
+                        <code>IS_AUTH_DISABLED</code> env var. Presence of the client ID flips the SPA into MSAL mode.
+                    </p>
+
+                    <h3 id="frontend-signalr">SignalR contract discipline</h3>
+                    <p>
+                        Client <code>.on()</code> handlers must match server <code>SendAsync(event, new { ... })</code>
+                        property names exactly. This is a recurring bug class — when changing telemetry events,
+                        update both sides in the same diff.
+                    </p>
+
+                    <h3 id="frontend-testing">Frontend testing</h3>
+                    <ul>
+                        <li><strong>Vitest 4</strong> — unit &amp; integration tests</li>
+                        <li><strong>@testing-library/react</strong> + <strong>jest-dom</strong> + <strong>user-event</strong></li>
+                        <li><strong>msw</strong> — HTTP mocking</li>
+                        <li><strong>jsdom</strong> — DOM environment</li>
+                        <li><strong>@vitest/coverage-v8</strong> — coverage</li>
+                        <li><strong>Playwright 1.59</strong> — E2E (<code>test:e2e</code>, <code>test:e2e:headed</code>, <code>test:e2e:debug</code>)</li>
+                    </ul>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- 10. TECH STACK INVENTORY -->
+                    <!-- ================================================================== -->
+                    <h2 id="tech-stack">10 · Tech stack inventory</h2>
+
+                    <h3 id="dotnet-packages">.NET / NuGet packages</h3>
+
+                    <p><strong>Agent &amp; LLM</strong></p>
+                    <ul>
+                        <li><code>Microsoft.Agents.AI</code> — Microsoft Agent Framework core</li>
+                        <li><code>Microsoft.Extensions.AI</code> — provider-agnostic AI abstractions</li>
+                        <li><code>Azure.AI.Agents.Persistent</code> — AI Foundry persistent agents</li>
+                        <li><code>Azure.AI.OpenAI</code> — Azure OpenAI client</li>
+                        <li><code>Anthropic.SDK</code> — Anthropic direct API</li>
+                    </ul>
+
+                    <p><strong>RAG &amp; knowledge</strong></p>
+                    <ul>
+                        <li><code>ManagedCode.GraphRag</code> — GraphRAG building blocks</li>
+                        <li><code>Azure.Search.Documents</code> — Azure AI Search (dense + BM25 + semantic ranker)</li>
+                        <li>FAISS bindings — local vector store</li>
+                        <li><code>Neo4j.Driver</code> — Neo4j graph database</li>
+                        <li>Kuzu — embedded analytical graph DB</li>
+                        <li><code>Npgsql</code> — PostgreSQL (with optional graph extensions)</li>
+                        <li>SQLite FTS5 — local BM25 index</li>
+                    </ul>
+
+                    <p><strong>Resilience</strong></p>
+                    <ul>
+                        <li><code>Polly</code> + <code>Polly.Extensions.Http</code> — circuit breakers, retry, fallback, timeout</li>
+                    </ul>
+
+                    <p><strong>Observability</strong></p>
+                    <ul>
+                        <li><code>OpenTelemetry.Api</code>, <code>OpenTelemetry.Extensions.Hosting</code></li>
+                        <li><code>OpenTelemetry.Exporter.Prometheus.AspNetCore</code></li>
+                        <li><code>OpenTelemetry.Exporter.OpenTelemetryProtocol</code> (OTLP — Tempo, Azure Monitor)</li>
+                        <li><code>Azure.Monitor.OpenTelemetry.AspNetCore</code></li>
+                        <li><code>OpenTelemetry.Instrumentation.AspNetCore</code> + <code>.Http</code> + <code>.EntityFrameworkCore</code></li>
+                    </ul>
+
+                    <p><strong>Persistence</strong></p>
+                    <ul>
+                        <li><code>Microsoft.EntityFrameworkCore</code> + <code>.Sqlite</code> + <code>.InMemory</code></li>
+                        <li><code>Microsoft.EntityFrameworkCore.Tools</code> + <code>.Design</code> (migrations)</li>
+                    </ul>
+
+                    <p><strong>Sandboxing &amp; tooling</strong></p>
+                    <ul>
+                        <li><code>Docker.DotNet</code> — Docker client for the container sandbox</li>
+                        <li>Win32 P/Invoke for Job Objects (Windows-only resource limits)</li>
+                    </ul>
+
+                    <p><strong>API &amp; messaging</strong></p>
+                    <ul>
+                        <li><code>MediatR</code> — CQRS bus + pipeline behaviours</li>
+                        <li><code>FluentValidation</code> + <code>FluentValidation.AspNetCore</code></li>
+                        <li><code>AutoMapper</code> + <code>AutoMapper.Extensions.Microsoft.DependencyInjection</code></li>
+                        <li><code>Microsoft.AspNetCore.SignalR</code></li>
+                        <li><code>Microsoft.AspNetCore.Authentication.JwtBearer</code> + Microsoft Identity Web for Entra ID</li>
+                    </ul>
+
+                    <p><strong>Console &amp; UI</strong></p>
+                    <ul>
+                        <li><code>Spectre.Console</code> — TUI rendering in ConsoleUI</li>
+                    </ul>
+
+                    <p><strong>Testing</strong></p>
+                    <ul>
+                        <li><code>xunit</code> + <code>xunit.runner.visualstudio</code></li>
+                        <li><code>Microsoft.NET.Test.Sdk</code></li>
+                        <li><code>Moq</code> + <code>Microsoft.Extensions.TimeProvider.Testing</code></li>
+                        <li><code>FluentAssertions</code></li>
+                        <li><code>Microsoft.AspNetCore.Mvc.Testing</code> — WebApplicationFactory</li>
+                        <li><code>coverlet.collector</code> — coverage</li>
+                        <li><code>Xunit.SkippableFact</code> — conditional skips (e.g. credentialled Azure tests)</li>
+                    </ul>
+
+                    <h3 id="frontend-deps">Frontend npm dependencies</h3>
+                    <p>Covered in detail under <a href="#frontend-stack">§9 Frontend stack</a>. Highlights: React 19, Vite 8, Tailwind 4, Zustand, TanStack Query, Radix/shadcn, Recharts, MSAL, @microsoft/signalr. Test stack: Vitest 4, Testing Library, msw, Playwright.</p>
+
+                    <h3 id="infra">Infrastructure / Azure</h3>
+                    <ul>
+                        <li><strong>Compute</strong> — Azure Container Apps (validated deployment topology), with Neo4j-on-AKS</li>
+                        <li><strong>AI</strong> — Azure OpenAI, Azure AI Foundry (persistent agents), Azure AI Inference, OpenRouter as alternate provider</li>
+                        <li><strong>Retrieval</strong> — Azure AI Search (dense + sparse + semantic reranker), Bing Web Search</li>
+                        <li><strong>Graph</strong> — Neo4j (AKS), PostgreSQL (managed), Kuzu (in-pod)</li>
+                        <li><strong>State</strong> — SQLite (local), PostgreSQL (managed) for plan state &amp; observability</li>
+                        <li><strong>Observability</strong> — Application Insights, Azure Monitor; Grafana + Tempo + Prometheus for local dev</li>
+                        <li><strong>Identity</strong> — Microsoft Entra ID (Azure AD)</li>
+                        <li><strong>Secrets</strong> — User Secrets (dev), Azure Key Vault (prod)</li>
+                        <li><strong>IaC</strong> — Bicep (planned for the validated topology)</li>
+                        <li><strong>Deployment</strong> — GitHub Actions (<code>.github/workflows/pages.yml</code> publishes the three docs sites on push to main)</li>
+                    </ul>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- 11. TESTING -->
+                    <!-- ================================================================== -->
+                    <h2 id="testing">11 · Testing patterns</h2>
+
+                    <h3 id="xunit">xUnit conventions</h3>
+                    <p>
+                        Test classes named <code>*Tests</code>; methods named
+                        <code>MethodName_Scenario_ExpectedResult</code>. <code>[Fact]</code> for single cases,
+                        <code>[Theory]</code> with <code>[InlineData]</code> for parameterised. One test project per
+                        source project under <code>src/Content/Tests/&lt;project&gt;.Tests/</code>.
+                    </p>
+
+                    <h3 id="integration">WebApplicationFactory integration tests</h3>
+                    <p>
+                        <code>TestWebApplicationFactory&lt;Program&gt;</code> spins up the full host in-process. A
+                        <code>TestAuthHandler</code> mints test-user JWTs; an in-memory EF Core provider replaces
+                        SQLite; MediatR mocks provide deterministic agent responses (no real LLM calls).
+                    </p>
+
+                    <h3 id="moq">Moq usage</h3>
+                    <p>
+                        Reserved for external services — <code>IChatClient</code>, HTTP handlers, <code>TimeProvider</code>,
+                        third-party APIs. Never used for value objects, DTOs, or the thing under test.
+                    </p>
+
+                    <h3 id="time">Time mocking</h3>
+                    <p>
+                        <code>Microsoft.Extensions.TimeProvider.Testing</code>'s <code>FakeTimeProvider</code> for any
+                        code involving timestamps, decay, or scheduled work — drift baselines, memory decay, learnings
+                        pruning all need this.
+                    </p>
+
+                    <h3 id="coverage">Coverage</h3>
+                    <p>
+                        <code>coverlet.collector</code> generates Cobertura XML during <code>dotnet test --collect:"XPlat Code Coverage"</code>;
+                        target is 80% on new code. CI gates on the threshold.
+                    </p>
+
+                    <h3 id="frontend-tests">Frontend testing</h3>
+                    <p>
+                        Covered in <a href="#frontend-testing">§9 Frontend testing</a>: Vitest + Testing Library + msw
+                        for unit/integration, Playwright for E2E. Tests live alongside source under
+                        <code>Presentation.Dashboard/src/</code>; E2E under <code>Presentation.Dashboard/tests/e2e/</code>.
+                    </p>
+
+                    <hr />
+
+                    <!-- ================================================================== -->
+                    <!-- FOOTER -->
+                    <!-- ================================================================== -->
+                    <h2 id="where-next">Where to go from here</h2>
+                    <div class="card-grid">
+                        <a class="card" href="../onboarding/09-patterns.html">
+                            <span class="card-num">↩ Intro</span>
+                            <div class="card-title">Patterns You'll Use Daily</div>
+                            <p class="card-desc">The six-pattern primer in the onboarding guide. Read first if any of the above felt dense.</p>
+                        </a>
+                        <a class="card" href="../onboarding/04-message-journey.html">
+                            <span class="card-num">↩ Narrative</span>
+                            <div class="card-title">A Message's Journey</div>
+                            <p class="card-desc">Watch most of the above patterns fire in sequence for a single user prompt.</p>
+                        </a>
+                        <a class="card" href="../architecture/index.html">
+                            <span class="card-num">→ Operations</span>
+                            <div class="card-title">Architecture Guide</div>
+                            <p class="card-desc">Where these patterns run in Azure — topology, networking, costs, scaling.</p>
+                        </a>
+                    </div>
+
+                    <div class="page-nav">
+                        <a class="page-nav-link page-nav-prev" href="index.html">
+                            <div class="page-nav-label">← Previous</div>
+                            <div class="page-nav-title">00 · Reference Overview</div>
+                        </a>
+                        <div></div>
+                    </div>
+                </div>
+                <aside class="toc" aria-label="On this page"><div class="toc-title">On this page</div><ul class="toc-list"></ul></aside>
+            </main>
+        </div>
+        <script src="../assets/js/main.js"></script>
+    </body>
+</html>
