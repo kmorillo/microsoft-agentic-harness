@@ -82,7 +82,7 @@ public class DependencyInjectionTests
     }
 
     [Fact]
-    public void AddApplicationAIDependencies_RegistersThirteenPipelineBehaviors()
+    public void AddApplicationAIDependencies_RegistersFourteenPipelineBehaviors()
     {
         var services = CreateServicesWithAIDependencies();
 
@@ -91,7 +91,7 @@ public class DependencyInjectionTests
                         d.ServiceType.GetGenericTypeDefinition() == typeof(MediatR.IPipelineBehavior<,>))
             .ToList();
 
-        behaviors.Should().HaveCount(13);
+        behaviors.Should().HaveCount(14);
         behaviors.Should().OnlyContain(d => d.Lifetime == ServiceLifetime.Transient);
     }
 
@@ -115,6 +115,18 @@ public class DependencyInjectionTests
         descriptor.Should().NotBeNull();
         descriptor!.Lifetime.Should().Be(ServiceLifetime.Singleton);
         descriptor.ImplementationType.Should().Be(typeof(SkillPrerequisiteResolver));
+    }
+
+    [Fact]
+    public void AddApplicationAIDependencies_RegistersAmbientRequestScope_AsSingleton()
+    {
+        var services = CreateServicesWithAIDependencies();
+
+        var descriptor = services.FirstOrDefault(d =>
+            d.ServiceType == typeof(Application.AI.Common.Interfaces.IAmbientRequestScope));
+        descriptor.Should().NotBeNull();
+        descriptor!.Lifetime.Should().Be(ServiceLifetime.Singleton);
+        descriptor.ImplementationType.Should().Be(typeof(Application.AI.Common.Services.AmbientRequestScope));
     }
 
     [Fact]

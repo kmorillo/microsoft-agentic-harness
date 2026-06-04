@@ -75,6 +75,9 @@ public static class DependencyInjection
         // behaviors so they wrap as the outermost layer
         services
             .AddTransient(typeof(IPipelineBehavior<,>), typeof(UnhandledExceptionBehavior<,>))
+            // Establish the request scope ambient for the whole pipeline so singleton-cached agents'
+            // context providers (e.g. memory recall) resolve the correct request-scoped services.
+            .AddTransient(typeof(IPipelineBehavior<,>), typeof(AmbientRequestScopeBehavior<,>))
             .AddTransient(typeof(IPipelineBehavior<,>), typeof(AgentContextPropagationBehavior<,>))
             .AddTransient(typeof(IPipelineBehavior<,>), typeof(AuditTrailBehavior<,>))
             .AddTransient(typeof(IPipelineBehavior<,>), typeof(ContentSafetyBehavior<,>))
@@ -128,6 +131,10 @@ public static class DependencyInjection
         // Agent conversation cache — reuses the same AIAgent across all turns in a conversation
         services.AddMemoryCache();
         services.AddSingleton<IAgentConversationCache, Services.AgentConversationCache>();
+
+        // Ambient bridge so singleton-cached agents' context providers can resolve the current
+        // request's scoped services (e.g. tenant-aware IKnowledgeMemory) per invocation.
+        services.AddSingleton<Interfaces.IAmbientRequestScope, Services.AmbientRequestScope>();
 
         // Skill completion tracking — conversation-scoped prerequisite state
         services.AddSingleton<ISkillCompletionTracker, InMemorySkillCompletionTracker>();

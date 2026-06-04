@@ -15,6 +15,7 @@ using Domain.Common.Config.AI;
 using Domain.Common.MetaHarness;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -315,6 +316,23 @@ public class AgentExecutionContextFactory
 
             _logger.LogDebug("Wired ToolPermissionFilter with {Count} allowed tool(s) from {SkillCount} skill(s)",
                 allAllowedTools.Count, skills.Count);
+        }
+
+        // Cross-session memory recall. The provider resolves tenant-aware IKnowledgeMemory per
+        // invocation from the current request scope (via IAmbientRequestScope), so it is safe to
+        // attach to a singleton-cached agent.
+        if (_appConfig.CurrentValue.AI?.KnowledgeBridge?.Enabled == true)
+        {
+            var ambientScope = _serviceProvider.GetService<IAmbientRequestScope>();
+            if (ambientScope is not null)
+            {
+                providers.Add(new Services.Agent.KnowledgeMemoryContextProvider(
+                    ambientScope,
+                    _appConfig,
+                    _loggerFactory.CreateLogger<Services.Agent.KnowledgeMemoryContextProvider>()));
+
+                _logger.LogDebug("Wired KnowledgeMemoryContextProvider for cross-session recall");
+            }
         }
 
         return providers.Count > 0 ? providers : null;

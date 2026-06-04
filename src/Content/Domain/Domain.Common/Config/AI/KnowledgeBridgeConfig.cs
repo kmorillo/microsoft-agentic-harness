@@ -8,10 +8,19 @@ namespace Domain.Common.Config.AI;
 public sealed class KnowledgeBridgeConfig
 {
     /// <summary>
-    /// Master toggle. When false, <c>KnowledgeExtractionBehavior</c> passes through
-    /// with zero overhead — no LLM calls, no background tasks.
+    /// Master toggle for cross-session memory (both fact extraction via <c>KnowledgeExtractionBehavior</c>
+    /// and recall via <c>KnowledgeMemoryContextProvider</c>). When false, both pass through with zero
+    /// overhead — no LLM calls, no background tasks, no recalled context.
     /// </summary>
-    public bool Enabled { get; set; } = true;
+    /// <remarks>
+    /// <strong>Opt-in by default.</strong> Memory is scoped per user/tenant via <c>IKnowledgeScope</c>,
+    /// but that scope is only populated when the host calls <c>KnowledgeScopeAccessor.SetScope(...)</c>
+    /// from its authenticated request context. Until that wiring exists, all conversations share a single
+    /// default tenant, so enabling memory in a multi-user deployment would let one user's remembered facts
+    /// surface for another. Leave this <see langword="false"/> until per-user scope is wired (or for a
+    /// single-tenant deployment, set it <see langword="true"/> deliberately).
+    /// </remarks>
+    public bool Enabled { get; set; } = false;
 
     /// <summary>
     /// Minimum LLM confidence (0.0–1.0) required to persist an extracted fact.
