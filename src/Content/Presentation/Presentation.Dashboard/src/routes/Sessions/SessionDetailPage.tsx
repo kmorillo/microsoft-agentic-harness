@@ -1,7 +1,11 @@
 import { useEffect, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { fetchSessionDetail } from '@/api/sessions';
+import {
+  fetchSessionDetail,
+  fetchMessageBody,
+  fetchToolInvocation,
+} from '@/api/sessions';
 import type { SessionRecord } from '@/api/types';
 import {
   subscribeToConversationSnapshots,
@@ -64,6 +68,58 @@ export default function SessionDetailPage() {
     messages: data?.messages ?? [],
     tools: data?.tools ?? [],
   });
+
+  // Lazy-fetch the full body for the open drawer item. The drawer renders the
+  // static preview/card from buildDrawerContent immediately; once the per-record
+  // detail lands, we override `body` with contentFull (messages) or the
+  // metadata card augmented with args + stdout (tools). Queries are gated on
+  // the drawerItem.idRef so they fire only when the item maps to a real
+  // backend record (messages / tools — not skills / agents / mcp / system).
+  const drawerIdRef = gem.drawerItem?.content.idRef;
+  const messageBodyQuery = useQuery({
+    queryKey: ['session-message-body', sessionId, drawerIdRef?.id],
+    queryFn: () => fetchMessageBody(sessionId!, drawerIdRef!.id),
+    enabled: !!sessionId && drawerIdRef?.kind === 'message',
+    staleTime: 60_000,
+  });
+  const toolDetailQuery = useQuery({
+    queryKey: ['session-tool-invocation', sessionId, drawerIdRef?.id],
+    queryFn: () => fetchToolInvocation(sessionId!, drawerIdRef!.id),
+    enabled: !!sessionId && drawerIdRef?.kind === 'tool',
+    staleTime: 60_000,
+  });
+
+  const drawerBody = useMemo(() => {
+    const fallback = gem.drawerItem?.content.body ?? '';
+    if (!gem.drawerItem || !drawerIdRef) return fallback;
+
+    if (drawerIdRef.kind === 'message') {
+      const full = messageBodyQuery.data?.contentFull;
+      return typeof full === 'string' && full.length > 0 ? full : fallback;
+    }
+
+    if (drawerIdRef.kind === 'tool' && toolDetailQuery.data) {
+      // Re-serialise the JSON card with args + stdout so the drawer's `json`
+      // syntax styling continues to apply. The base card is already a JSON
+      // string in `fallback`; parse, augment, re-stringify.
+      try {
+        const card = JSON.parse(fallback) as Record<string, unknown>;
+        card['args'] = toolDetailQuery.data.args ?? null;
+        card['stdout'] = toolDetailQuery.data.stdout ?? null;
+        card['callId'] = toolDetailQuery.data.callId ?? null;
+        return JSON.stringify(card, null, 2);
+      } catch {
+        return fallback;
+      }
+    }
+
+    return fallback;
+  }, [
+    gem.drawerItem,
+    drawerIdRef,
+    messageBodyQuery.data,
+    toolDetailQuery.data,
+  ]);
 
   if (isLoading) {
     return (
@@ -154,7 +210,7 @@ export default function SessionDetailPage() {
         name={gem.drawerItem?.name ?? ''}
         path={gem.drawerItem?.path ?? ''}
         role={gem.drawerItem?.content.role}
-        body={gem.drawerItem?.content.body ?? ''}
+        body={drawerBody}
         lang={gem.drawerItem?.content.lang}
         onPrev={() => gem.walkDrawer(-1)}
         onNext={() => gem.walkDrawer(1)}

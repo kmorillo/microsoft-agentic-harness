@@ -8,13 +8,31 @@ import type {
   DrawerRole,
 } from '@/components/context/ContextDrawer';
 
+/**
+ * Pointer to the backend record this drawer item maps to. When present, the
+ * drawer render site lazily fetches the full body via
+ * `GET /api/sessions/:id/messages/:messageId` or
+ * `GET /api/sessions/:id/tools/:invocationId` and replaces `body` with the
+ * resolved content. When absent (skills / agents / mcp / system), `body`
+ * is the only thing the drawer has to show.
+ */
+export interface DrawerIdRef {
+  kind: 'message' | 'tool';
+  id: string;
+}
+
 export interface DrawerContent {
-  /** The body rendered in the drawer. May be a placeholder for PR 5. */
+  /** The body rendered in the drawer. Used as the fallback while a lazy fetch is in flight. */
   body: string;
   /** Optional role banner — only present for message items. */
   role?: DrawerRole;
   /** Drives lightweight syntax styling inside the drawer. */
   lang: DrawerLang;
+  /**
+   * Set when the item maps to a backend record. The drawer renderer fetches
+   * the full body for this ref on open and overrides `body` once loaded.
+   */
+  idRef?: DrawerIdRef;
 }
 
 interface BuildContext {
@@ -26,25 +44,32 @@ interface BuildContext {
   turnIndex: number;
 }
 
-const PR5_PLACEHOLDER =
-  'Full content for this item will be available once the ' +
-  '`/api/sessions/{id}/files/{idx}` endpoint ships in PR 5.';
+const NO_CAPTURED_CONTENT =
+  'No content captured for this item.';
 
-const TRUNCATED_FOOTER =
-  '\n\n— Truncated. Full body endpoint pending in PR 5.';
+const CATEGORY_NO_BODY: Record<string, string> =
+  {
+    skills: 'Skill body is not captured by the observability store.',
+    agents: 'Agent manifest body is not captured by the observability store.',
+    mcp: 'MCP descriptor body is not captured by the observability store.',
+    system: 'System prompt body is not captured by the observability store.',
+  };
 
 /**
- * Resolves what to show in the ContextDrawer for a given LoadedItem. Encodes
- * the per-category rules confirmed by the PR 4 plan:
+ * Resolves what to show in the ContextDrawer for a given LoadedItem.
  *
- * - `messages` → `SessionMessageRecord.contentPreview` text + truncation note.
- *   Role banner reflects the message role (`user` / `assistant` / `tool`).
- * - `tools`    → synthetic metadata card (name / status / duration / size)
- *   rendered as JSON so the drawer's lightweight syntax tints the keys.
- * - `skills` / `agents` / `mcp` / `system` → PR 5 placeholder.
+ * - `messages` → `SessionMessageRecord.contentPreview` (as the loading
+ *   fallback) plus an `idRef` so the drawer renderer can fetch
+ *   `contentFull` from `/api/sessions/:id/messages/:messageId` on open.
+ *   Role banner reflects the message role.
+ * - `tools` → synthetic metadata card (name / status / duration / size)
+ *   as JSON, plus an `idRef` so the drawer renderer can swap in the full
+ *   args + stdout from `/api/sessions/:id/tools/:invocationId`.
+ * - `skills` / `agents` / `mcp` / `system` → static "no body captured"
+ *   note. The observability store does not currently record full bodies
+ *   for these categories; the drawer shows the ref and label only.
  *
- * Pure function — easy to test, easy to swap content sources in PR 5 by
- * editing this one file.
+ * Pure function — easy to test, easy to change content sources.
  */
 export function buildDrawerContent(
   item: LoadedItem,
@@ -59,13 +84,13 @@ export function buildDrawerContent(
     case 'agents':
     case 'mcp':
     case 'system':
-    default:
+    default: {
+      const note = CATEGORY_NO_BODY[item.cat] ?? NO_CAPTURED_CONTENT;
       return {
-        body: item.ref
-          ? `${item.ref}\n\n${PR5_PLACEHOLDER}`
-          : PR5_PLACEHOLDER,
+        body: item.ref ? `${item.ref}\n\n${note}` : note,
         lang: 'text',
       };
+    }
   }
 }
 
@@ -87,11 +112,20 @@ function buildMessageBody(
   const role = (match?.role as DrawerRole | undefined) ?? roleHint ?? 'user';
   const preview = match?.contentPreview?.trim();
 
-  const body = preview
-    ? `${preview}${TRUNCATED_FOOTER}`
-    : `${item.what}\n\n${PR5_PLACEHOLDER}`;
+  if (match) {
+    return {
+      body: preview ?? `${item.what}\n\n${NO_CAPTURED_CONTENT}`,
+      role,
+      lang: 'text',
+      idRef: { kind: 'message', id: match.id },
+    };
+  }
 
-  return { body, role, lang: 'text' };
+  return {
+    body: `${item.what}\n\n${NO_CAPTURED_CONTENT}`,
+    role,
+    lang: 'text',
+  };
 }
 
 function buildToolBody(
@@ -117,13 +151,12 @@ function buildToolBody(
     resultSize: match?.resultSize ?? null,
     errorType: match?.errorType ?? null,
     source: match?.toolSource ?? null,
-    note:
-      'Tool stdout/args drilldown ships in PR 6. This card shows metadata only.',
   };
 
   return {
     body: JSON.stringify(card, null, 2),
     lang: 'json',
+    ...(match ? { idRef: { kind: 'tool' as const, id: match.id } } : {}),
   };
 }
 

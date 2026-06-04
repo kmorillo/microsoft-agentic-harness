@@ -336,7 +336,7 @@ export const handlers = [
     );
   }),
 
-  // PR 6 deferreds: tool-invocation deep-link
+  // Tool-invocation deep-link.
   http.get('/api/sessions/:id/tools/:invocationId', ({ params }) => {
     const { id, invocationId } = params as { id: string; invocationId: string };
     if (invocationId === '00000000-0000-0000-0000-000000000404') {
@@ -359,7 +359,8 @@ export const handlers = [
     });
   }),
 
-  // PR 6 deferreds: file-body deep-link
+  // File-body deep-link. Now consumed by both the dedicated MessageBodyPage
+  // and the ContextDrawer in SessionDetailPage (lazy fetch on drawer open).
   http.get('/api/sessions/:id/messages/:messageId', ({ params }) => {
     const { id, messageId } = params as { id: string; messageId: string };
     if (messageId === '00000000-0000-0000-0000-000000000404') {

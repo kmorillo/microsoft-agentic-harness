@@ -8,10 +8,10 @@ import { EmptyState } from '@/components/panels/EmptyState';
 import { Pill } from '@/components/primitives/Pill';
 
 /**
- * Per-invocation deep-link — PR 6 deferred completion. Renders a single
- * tool execution's metadata, the LLM-supplied arguments, and the stdout
- * payload that was returned to the model. Data shape mirrors
- * `ToolExecutionRecord` from `GET /api/sessions/:id/tools/:invocationId`.
+ * Per-invocation deep-link. Renders a single tool execution's metadata, the
+ * LLM-supplied arguments, and the stdout payload that was returned to the
+ * model. Data shape mirrors `ToolExecutionRecord` from
+ * `GET /api/sessions/:id/tools/:invocationId`.
  *
  * Args and stdout are rendered inside a `<pre>` so JSON / multi-line tool
  * output preserves whitespace. React already escapes string children, so

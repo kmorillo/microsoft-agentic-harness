@@ -7,10 +7,10 @@ import { LoadingSkeleton } from '@/components/panels/LoadingSkeleton';
 import { EmptyState } from '@/components/panels/EmptyState';
 
 /**
- * File-body deep-link — PR 6 deferred completion. Renders the full content
- * of a single session message captured before the 500-char preview
- * truncation. Body is from `GET /api/sessions/:id/messages/:messageId`;
- * server scopes the lookup to the parent session id.
+ * File-body deep-link. Renders the full content of a single session message
+ * captured before the 500-char preview truncation. Body is from
+ * `GET /api/sessions/:id/messages/:messageId`; server scopes the lookup
+ * to the parent session id.
  *
  * Falls back gracefully when the row predates the `content_full` column
  * (the deep-link existed before the schema migration was applied) by
