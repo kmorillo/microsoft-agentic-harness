@@ -1,5 +1,6 @@
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Resilience;
+using Domain.Common.Config;
 using Domain.Common.Config.AI;
 using Domain.Common.Config.AI.Resilience;
 using FluentAssertions;
@@ -106,48 +107,91 @@ public sealed class ResilientChatClientProviderTests : IAsyncDisposable
     {
         var rawClient = CreateMockChatClient();
         _chatClientFactory
-            .Setup(f => f.GetChatClientAsync(AIAgentFrameworkClientType.AzureOpenAI, "gpt-4o", It.IsAny<CancellationToken>()))
+            .Setup(f => f.GetChatClientAsync(AIAgentFrameworkClientType.OpenAI, "anthropic/claude-sonnet-4.6", It.IsAny<CancellationToken>()))
             .ReturnsAsync(rawClient);
 
         var config = new ResilienceConfig
         {
             Enabled = false,
+            // FallbackChain[0] points at AzureOpenAI to prove the disabled path
+            // ignores it and honors AgentFramework instead.
             FallbackChain =
             [
                 new FallbackProviderConfig { ClientType = AIAgentFrameworkClientType.AzureOpenAI, DeploymentId = "gpt-4o" }
             ]
         };
-        var sut = CreateProvider(config);
+        var appConfig = CreateAppConfig(AIAgentFrameworkClientType.OpenAI, "anthropic/claude-sonnet-4.6");
+        var sut = CreateProvider(config, appConfig);
 
         var client = await sut.GetResilientChatClientAsync();
 
         client.Should().BeSameAs(rawClient);
         client.Should().NotBeOfType<ResilientChatClient>();
+        _chatClientFactory.Verify(
+            f => f.GetChatClientAsync(AIAgentFrameworkClientType.AzureOpenAI, It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "Disabled path must not resolve FallbackChain[0] — that's a resilience-only concern.");
     }
 
     [Fact]
-    public async Task GetResilientChatClientAsync_Disabled_EmptyChain_ThrowsInvalidOperation()
+    public async Task GetResilientChatClientAsync_Disabled_EmptyChain_UsesAgentFramework()
+    {
+        var rawClient = CreateMockChatClient();
+        _chatClientFactory
+            .Setup(f => f.GetChatClientAsync(AIAgentFrameworkClientType.OpenAI, "anthropic/claude-sonnet-4.6", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(rawClient);
+
+        var config = new ResilienceConfig { Enabled = false, FallbackChain = [] };
+        var appConfig = CreateAppConfig(AIAgentFrameworkClientType.OpenAI, "anthropic/claude-sonnet-4.6");
+        var sut = CreateProvider(config, appConfig);
+
+        var client = await sut.GetResilientChatClientAsync();
+
+        client.Should().BeSameAs(rawClient);
+    }
+
+    [Fact]
+    public async Task GetResilientChatClientAsync_Disabled_MissingDeployment_ThrowsInvalidOperation()
     {
         var config = new ResilienceConfig { Enabled = false, FallbackChain = [] };
-        var sut = CreateProvider(config);
+        var appConfig = CreateAppConfig(AIAgentFrameworkClientType.OpenAI, deployment: null);
+        var sut = CreateProvider(config, appConfig);
 
         var act = () => sut.GetResilientChatClientAsync();
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*FallbackChain*empty*");
+            .WithMessage("*DefaultDeployment*");
     }
 
-    private ResilientChatClientProvider CreateProvider(ResilienceConfig config)
+    private ResilientChatClientProvider CreateProvider(ResilienceConfig config, AppConfig? appConfig = null)
     {
         var configMonitor = Mock.Of<IOptionsMonitor<ResilienceConfig>>(
             m => m.CurrentValue == config);
+        var appConfigMonitor = Mock.Of<IOptionsMonitor<AppConfig>>(
+            m => m.CurrentValue == (appConfig ?? CreateAppConfig(AIAgentFrameworkClientType.AzureOpenAI, "gpt-4o")));
 
         return new ResilientChatClientProvider(
             _chatClientFactory.Object,
             configMonitor,
+            appConfigMonitor,
             _healthMonitor,
             _loggerFactory,
             _logger);
+    }
+
+    private static AppConfig CreateAppConfig(AIAgentFrameworkClientType clientType, string? deployment)
+    {
+        return new AppConfig
+        {
+            AI = new AIConfig
+            {
+                AgentFramework = new AgentFrameworkConfig
+                {
+                    ClientType = clientType,
+                    DefaultDeployment = deployment!
+                }
+            }
+        };
     }
 
     private void SetupFactoryDefaults()
