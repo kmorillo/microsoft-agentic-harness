@@ -59,6 +59,14 @@ public static partial class DependencyInjection
         // Echo tools — deterministic tools for E2E testing pipeline verification
         services.AddKeyedSingleton<ITool>(EchoLookupTool.ToolName, (_, _) => new EchoLookupTool());
         services.AddKeyedSingleton<ITool>(EchoCalculateTool.ToolName, (_, _) => new EchoCalculateTool());
+
+        // Delegation tool — lets a skill hand a self-contained subtask to the capability-matching
+        // supervisor, which selects, runs, and governs (autonomy tiers, depth limits, audit) a
+        // best-fit subagent. Opt-in per skill via SKILL.md allowed-tools.
+        services.AddKeyedSingleton<ITool>(DelegateToSubagentTool.ToolName, (sp, _) =>
+            new DelegateToSubagentTool(
+                sp.GetRequiredService<Application.AI.Common.Interfaces.Agents.ISupervisor>(),
+                sp.GetRequiredService<ILogger<DelegateToSubagentTool>>()));
     }
 
     /// <summary>
