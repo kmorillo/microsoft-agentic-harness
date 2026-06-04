@@ -61,12 +61,13 @@ public class MetricsIntegrationFactory : TestWebApplicationFactory
             });
 
             // Mock IAgentFactory: returns a canned AIAgent that produces a fixed response.
-            // CRITICAL: mock BOTH the singular CreateAgentFromSkillAsync (used by
-            // direct skill-id callers) AND the plural CreateAgentFromSkillsAsync (used
-            // by AgentConversationCache.GetOrCreateAsync — the path that the
-            // ExecuteAgentTurnCommandHandler actually drives). Moq returns null for
-            // unmocked overloads, which gets cached as a null AIAgent and NREs at
-            // agent.RunAsync downstream.
+            // CRITICAL: AgentConversationCache.GetOrCreateAsync — the path the
+            // ExecuteAgentTurnCommandHandler actually drives — calls
+            // CreateAgentWithContextFromSkillsAsync (agent + execution context), so that
+            // overload MUST be mocked or Moq returns a null AgentBuildResult and the
+            // handler NREs at built.Agent, failing the turn. The singular/plural
+            // CreateAgentFromSkill(s)Async overloads are also mocked for direct skill-id
+            // callers (tools, other tests).
             var mockAgentFactory = new Mock<IAgentFactory>();
             mockAgentFactory
                 .Setup(f => f.CreateAgentFromSkillAsync(
@@ -85,6 +86,14 @@ public class MetricsIntegrationFactory : TestWebApplicationFactory
                     It.IsAny<SkillAgentOptions>(),
                     It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new StubAIAgent("Integration test response."));
+            mockAgentFactory
+                .Setup(f => f.CreateAgentWithContextFromSkillsAsync(
+                    It.IsAny<IReadOnlyList<string>>(),
+                    It.IsAny<SkillAgentOptions>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new AgentBuildResult(
+                    new StubAIAgent("Integration test response."),
+                    new AgentExecutionContext { Name = "metrics-test-agent" }));
             services.RemoveAll<IAgentFactory>();
             services.AddSingleton(mockAgentFactory.Object);
 
