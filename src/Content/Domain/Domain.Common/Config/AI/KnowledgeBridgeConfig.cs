@@ -13,12 +13,14 @@ public sealed class KnowledgeBridgeConfig
     /// overhead — no LLM calls, no background tasks, no recalled context.
     /// </summary>
     /// <remarks>
-    /// <strong>Opt-in by default.</strong> Memory is scoped per user/tenant via <c>IKnowledgeScope</c>,
-    /// but that scope is only populated when the host calls <c>KnowledgeScopeAccessor.SetScope(...)</c>
-    /// from its authenticated request context. Until that wiring exists, all conversations share a single
-    /// default tenant, so enabling memory in a multi-user deployment would let one user's remembered facts
-    /// surface for another. Leave this <see langword="false"/> until per-user scope is wired (or for a
-    /// single-tenant deployment, set it <see langword="true"/> deliberately).
+    /// <strong>Opt-in by default (secure-by-default template posture).</strong> Memory is scoped per
+    /// user/tenant: remembered facts are namespaced by the authenticated identity, which the host
+    /// establishes automatically via <c>KnowledgeScopeMiddleware</c> (HTTP) and
+    /// <c>KnowledgeScopeHubFilter</c> (SignalR) from the <c>oid</c>/<c>tid</c> claims. With that wiring
+    /// in place it is safe to enable in a multi-user deployment — one user can no longer recall another's
+    /// facts. It ships <see langword="false"/> so a cloned template never turns on a user-data feature
+    /// implicitly; set it <see langword="true"/> deliberately once you have confirmed your auth provider
+    /// supplies a stable user identity (and, for multi-tenant, a tenant claim).
     /// </remarks>
     public bool Enabled { get; set; } = false;
 

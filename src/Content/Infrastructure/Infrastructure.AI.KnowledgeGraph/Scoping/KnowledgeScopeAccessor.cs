@@ -6,31 +6,39 @@ using Microsoft.Extensions.Options;
 namespace Infrastructure.AI.KnowledgeGraph.Scoping;
 
 /// <summary>
-/// Scoped <see cref="IKnowledgeScope"/> implementation that composes agent identity
-/// from <see cref="IAgentExecutionContext"/> with knowledge-specific scope properties
-/// (user, tenant, dataset) from configuration defaults.
+/// <see cref="IKnowledgeScope"/> implementation that composes agent identity from
+/// <see cref="IAgentExecutionContext"/> with <em>ambient</em> knowledge-specific scope
+/// properties (user, tenant, dataset) established at the request entry point.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <see cref="AgentId"/> and <see cref="ConversationId"/> are delegated from
-/// <see cref="IAgentExecutionContext"/>. Tenant and dataset properties default to
-/// <c>GraphRagConfig.DefaultTenantId</c> / <c>GraphRagConfig.DefaultDatasetId</c>
-/// and can be overridden via <see cref="SetScope"/>.
+/// <see cref="AgentId"/> and <see cref="ConversationId"/> are delegated from the scoped
+/// <see cref="IAgentExecutionContext"/> — so a sub-agent running in a child scope correctly
+/// reports its own agent/conversation. User/tenant/dataset, by contrast, are stored in an
+/// <see cref="AsyncLocal{T}"/> set once by <see cref="SetScope"/> at the entry point
+/// (<c>KnowledgeScopeMiddleware</c> / <c>KnowledgeScopeHubFilter</c>).
 /// </para>
 /// <para>
-/// Registered as <c>Scoped</c> so each request gets its own scope instance.
+/// Ambient (rather than per-instance) storage is deliberate: the orchestrator and the DAG plan
+/// executor run sub-agents in fresh child DI scopes, and the conversation-to-knowledge write runs
+/// on a post-turn background task after the request scope is disposed. An <see cref="AsyncLocal{T}"/>
+/// flows the human caller's identity into all of those execution contexts, so memory written/recalled
+/// from a sub-agent or a background continuation is attributed to the right user/tenant instead of
+/// silently falling back to the shared default namespace. This mirrors the
+/// <c>IAmbientRequestScope</c> bridge used for the same caching/child-scope reasons.
+/// </para>
+/// <para>
+/// Tenant and dataset fall back to <c>GraphRagConfig.DefaultTenantId</c> /
+/// <c>GraphRagConfig.DefaultDatasetId</c> when the ambient scope is unset (single-tenant deployment,
+/// anonymous request, or background work outside any request).
 /// </para>
 /// </remarks>
-public sealed class KnowledgeScopeAccessor : IKnowledgeScope
+public sealed class KnowledgeScopeAccessor : IKnowledgeScope, IKnowledgeScopeWriter
 {
+    private static readonly AsyncLocal<ScopeIdentity?> s_identity = new();
+
     private readonly IAgentExecutionContext _agentContext;
     private readonly IOptionsMonitor<AppConfig> _configMonitor;
-
-    private string? _userId;
-    private string? _tenantId;
-    private string? _datasetId;
-    private string? _datasetName;
-    private string? _datasetOwnerId;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="KnowledgeScopeAccessor"/> class.
@@ -49,21 +57,21 @@ public sealed class KnowledgeScopeAccessor : IKnowledgeScope
     }
 
     /// <inheritdoc />
-    public string? UserId => _userId;
+    public string? UserId => s_identity.Value?.UserId;
 
     /// <inheritdoc />
     public string? TenantId =>
-        _tenantId ?? _configMonitor.CurrentValue.AI.Rag.GraphRag.DefaultTenantId;
+        s_identity.Value?.TenantId ?? _configMonitor.CurrentValue.AI.Rag.GraphRag.DefaultTenantId;
 
     /// <inheritdoc />
     public string? DatasetId =>
-        _datasetId ?? _configMonitor.CurrentValue.AI.Rag.GraphRag.DefaultDatasetId;
+        s_identity.Value?.DatasetId ?? _configMonitor.CurrentValue.AI.Rag.GraphRag.DefaultDatasetId;
 
     /// <inheritdoc />
-    public string? DatasetName => _datasetName;
+    public string? DatasetName => s_identity.Value?.DatasetName;
 
     /// <inheritdoc />
-    public string? DatasetOwnerId => _datasetOwnerId;
+    public string? DatasetOwnerId => s_identity.Value?.DatasetOwnerId;
 
     /// <inheritdoc />
     public string? AgentId => _agentContext.AgentId;
@@ -72,8 +80,9 @@ public sealed class KnowledgeScopeAccessor : IKnowledgeScope
     public string? ConversationId => _agentContext.ConversationId;
 
     /// <summary>
-    /// Sets the knowledge scope properties for this request. Call once per request,
-    /// typically from middleware or a pipeline behavior.
+    /// Establishes the ambient knowledge scope for the current async execution context. Call once per
+    /// request from authenticated entry-point middleware or a hub filter; the value flows to child
+    /// scopes and background continuations of that request.
     /// </summary>
     /// <param name="userId">The authenticated user ID.</param>
     /// <param name="tenantId">The tenant ID (overrides config default).</param>
@@ -87,10 +96,13 @@ public sealed class KnowledgeScopeAccessor : IKnowledgeScope
         string? datasetName = null,
         string? datasetOwnerId = null)
     {
-        _userId = userId;
-        _tenantId = tenantId;
-        _datasetId = datasetId;
-        _datasetName = datasetName;
-        _datasetOwnerId = datasetOwnerId;
+        s_identity.Value = new ScopeIdentity(userId, tenantId, datasetId, datasetName, datasetOwnerId);
     }
+
+    private sealed record ScopeIdentity(
+        string? UserId,
+        string? TenantId,
+        string? DatasetId,
+        string? DatasetName,
+        string? DatasetOwnerId);
 }
