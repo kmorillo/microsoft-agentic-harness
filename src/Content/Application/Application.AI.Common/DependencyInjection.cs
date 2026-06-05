@@ -1,4 +1,5 @@
 using System.Reflection;
+using Application.AI.Common.Extensions;
 using Application.AI.Common.Factories;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Agent;
@@ -138,6 +139,9 @@ public static class DependencyInjection
 
         // Skill completion tracking — conversation-scoped prerequisite state
         services.AddSingleton<ISkillCompletionTracker, InMemorySkillCompletionTracker>();
+
+        // Skill-training subsystem (PatchApplier, GateEvaluator, schedulers, checkpoint store, ...)
+        services.AddSkillTrainingDependencies();
 
         return services;
     }
