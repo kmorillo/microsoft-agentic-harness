@@ -61,6 +61,13 @@ public sealed class ComplianceAwareGraphStore : IKnowledgeGraphStore
     private string? CurrentUserId =>
         _ambientScope.Current?.GetService<IKnowledgeScope>()?.UserId;
 
+    /// <summary>
+    /// The tenant of the caller in flight on the current async context, or <see langword="null"/>
+    /// for background/system work outside any request scope (such writes stay global/untenanted).
+    /// </summary>
+    private string? CurrentTenantId =>
+        _ambientScope.Current?.GetService<IKnowledgeScope>()?.TenantId;
+
     /// <inheritdoc />
     public async Task AddNodesAsync(
         IReadOnlyList<GraphNode> nodes,
@@ -68,7 +75,8 @@ public sealed class ComplianceAwareGraphStore : IKnowledgeGraphStore
     {
         var now = _timeProvider.GetUtcNow();
         var ownerId = CurrentUserId;
-        var stamped = nodes.Select(n => StampNode(n, now)).ToList();
+        var tenantId = CurrentTenantId;
+        var stamped = nodes.Select(n => StampNode(n, now, tenantId)).ToList();
 
         await _inner.AddNodesAsync(stamped, cancellationToken);
 
@@ -89,9 +97,11 @@ public sealed class ComplianceAwareGraphStore : IKnowledgeGraphStore
         CancellationToken cancellationToken = default)
     {
         var now = _timeProvider.GetUtcNow();
+        var tenantId = CurrentTenantId;
         var stamped = edges.Select(e => e with
         {
-            CreatedAt = e.CreatedAt ?? now
+            CreatedAt = e.CreatedAt ?? now,
+            TenantId = e.TenantId ?? tenantId
         }).ToList();
 
         await _inner.AddEdgesAsync(stamped, cancellationToken);
@@ -192,18 +202,20 @@ public sealed class ComplianceAwareGraphStore : IKnowledgeGraphStore
         CancellationToken cancellationToken = default)
         => _inner.GetAllNodesAsync(cancellationToken);
 
-    // Stamps temporal metadata only. OwnerId is intentionally NOT defaulted here: ownership is
+    // Stamps temporal metadata and the tenant. OwnerId is intentionally NOT defaulted: ownership is
     // authoritative from the writer (KnowledgeMemoryService sets OwnerId = the user; shared
-    // subsystems — corpus ingestion, learnings, skill memory — leave it null on purpose so the
-    // records stay globally visible). Defaulting a null owner to the current user would silently
-    // privatize shared knowledge once TenantIsolatedGraphStore is active.
-    private GraphNode StampNode(GraphNode node, DateTimeOffset now)
+    // subsystems — corpus ingestion, learnings, skill memory — leave it null on purpose so records
+    // stay shared WITHIN their tenant). TenantId, by contrast, IS defaulted to the caller's tenant:
+    // that is what scopes a tenant's ingested corpus to that tenant. A write with no tenant context
+    // (background/system, CurrentTenantId == null) stays global, visible across all tenants.
+    private GraphNode StampNode(GraphNode node, DateTimeOffset now, string? tenantId)
     {
         var policy = _retentionProvider.GetPolicy(node.Type);
         return node with
         {
             CreatedAt = node.CreatedAt ?? now,
-            ExpiresAt = node.ExpiresAt ?? (policy.AllowIndefinite ? null : now + policy.RetentionPeriod)
+            ExpiresAt = node.ExpiresAt ?? (policy.AllowIndefinite ? null : now + policy.RetentionPeriod),
+            TenantId = node.TenantId ?? tenantId
         };
     }
 

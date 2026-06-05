@@ -14,13 +14,15 @@ namespace Infrastructure.AI.KnowledgeGraph.Scoping;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Isolation is <strong>per record, by owner</strong> — not an all-or-nothing gate. A node is
-/// visible when it is unowned (<see cref="GraphNode.OwnerId"/> is <see langword="null"/>, i.e.
-/// shared/ingested corpus) or when the caller owns it
-/// (<see cref="IKnowledgeScopeValidator.CanAccessDataset"/>). A user therefore only ever sees
-/// their own remembered facts plus the shared corpus, never another user's memory — even within
-/// the same tenant. True tenant-level corpus partitioning requires a <c>TenantId</c> on the node
-/// model and is deferred to a later change; until then, unowned corpus is shared across tenants.
+/// Isolation is <strong>per record, by tenant and owner</strong> — not an all-or-nothing gate. A
+/// node is visible only when its tenant matches (<see cref="GraphNode.TenantId"/> is
+/// <see langword="null"/> = global, or equals the caller's tenant via
+/// <see cref="IKnowledgeScopeValidator.ValidateAccess"/>) AND its owner matches
+/// (<see cref="GraphNode.OwnerId"/> is <see langword="null"/> = shared within the tenant, or the
+/// caller owns it via <see cref="IKnowledgeScopeValidator.CanAccessDataset"/>). A user therefore
+/// sees their tenant's shared corpus plus their own remembered facts, never another tenant's data
+/// and never another user's memory within the tenant. Global (null-tenant) records — e.g. system
+/// reference data — remain visible to everyone.
 /// </para>
 /// <para>
 /// Registered as a <c>Singleton</c> wrapping the singleton backend, so it cannot capture the
@@ -81,9 +83,9 @@ public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
         var scope = CurrentScope;
         if (scope is null) return _inner.AddNodesAsync(nodes, cancellationToken);
 
-        // Fresh nodes arrive unowned and are stamped with the owner by the inner
-        // ComplianceAwareGraphStore; only reject nodes that already carry a foreign owner.
-        var permitted = nodes.Where(n => CanAccess(n.OwnerId, scope)).ToList();
+        // Fresh nodes arrive unowned/untenanted and are stamped by the inner
+        // ComplianceAwareGraphStore; only reject nodes that already carry a foreign tenant/owner.
+        var permitted = nodes.Where(n => CanAccess(n.TenantId, n.OwnerId, scope)).ToList();
         if (permitted.Count != nodes.Count)
         {
             _logger.LogWarning(
@@ -104,7 +106,7 @@ public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
         var scope = CurrentScope;
         if (scope is null) return _inner.AddEdgesAsync(edges, cancellationToken);
 
-        var permitted = edges.Where(e => CanAccess(e.OwnerId, scope)).ToList();
+        var permitted = edges.Where(e => CanAccess(e.TenantId, e.OwnerId, scope)).ToList();
         return permitted.Count == 0
             ? Task.CompletedTask
             : _inner.AddEdgesAsync(permitted, cancellationToken);
@@ -118,7 +120,7 @@ public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
         var node = await _inner.GetNodeAsync(nodeId, cancellationToken);
         var scope = CurrentScope;
         if (node is null || scope is null) return node;
-        return CanAccess(node.OwnerId, scope) ? node : null;
+        return CanAccess(node.TenantId, node.OwnerId, scope) ? node : null;
     }
 
     /// <inheritdoc />
@@ -136,11 +138,11 @@ public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
         // shared entities it connects to. (GetTripletsAsync needs no seed guard — the seed always
         // appears as a triplet endpoint and is dropped by the both-endpoints-visible filter.)
         var seed = await _inner.GetNodeAsync(nodeId, cancellationToken);
-        if (seed is null || !CanAccess(seed.OwnerId, scope))
+        if (seed is null || !CanAccess(seed.TenantId, seed.OwnerId, scope))
             return [];
 
         var neighbors = await _inner.GetNeighborsAsync(nodeId, maxDepth, cancellationToken);
-        return neighbors.Where(n => CanAccess(n.OwnerId, scope)).ToList();
+        return neighbors.Where(n => CanAccess(n.TenantId, n.OwnerId, scope)).ToList();
     }
 
     /// <inheritdoc />
@@ -154,7 +156,8 @@ public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
 
         // A triplet is visible only when both endpoints are visible to the caller.
         return triplets
-            .Where(t => CanAccess(t.Source.OwnerId, scope) && CanAccess(t.Target.OwnerId, scope))
+            .Where(t => CanAccess(t.Source.TenantId, t.Source.OwnerId, scope)
+                     && CanAccess(t.Target.TenantId, t.Target.OwnerId, scope))
             .ToList();
     }
 
@@ -169,9 +172,9 @@ public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
         // Existence must mirror visibility: a node the caller cannot read does not exist for them.
         // This trades the backend's cheap existence probe for a full node fetch to read OwnerId;
         // acceptable for typical use, but bulk ingestion dedup on a large backend would want an
-        // owner-aware NodeExists primitive on IKnowledgeGraphStore (deferred with the TenantId work).
+        // tenant/owner-aware NodeExists primitive on IKnowledgeGraphStore would avoid the full fetch.
         var node = await _inner.GetNodeAsync(nodeId, cancellationToken);
-        return node is not null && CanAccess(node.OwnerId, scope);
+        return node is not null && CanAccess(node.TenantId, node.OwnerId, scope);
     }
 
     /// <inheritdoc />
@@ -188,7 +191,7 @@ public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
 
         var node = await _inner.GetNodeAsync(nodeId, cancellationToken);
         if (node is null) return;
-        if (!CanAccess(node.OwnerId, scope))
+        if (!CanAccess(node.TenantId, node.OwnerId, scope))
         {
             _logger.LogWarning(
                 "Tenant isolation: blocked delete of foreign node {NodeId} for User={UserId}",
@@ -203,8 +206,9 @@ public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
     public Task DeleteEdgeAsync(
         string edgeId,
         CancellationToken cancellationToken = default)
-        // Edges expose no owner lookup; edge-level isolation is deferred with the TenantId model
-        // change. Edges carry no user-memory content, so this delegates unfiltered.
+        // The store exposes no get-edge-by-id, so an edge's tenant/owner can't be checked on delete.
+        // Edges carry no user-memory content (they connect entity nodes), so this delegates unfiltered;
+        // an edge-by-id lookup primitive would be needed to gate it.
         => _inner.DeleteEdgeAsync(edgeId, cancellationToken);
 
     /// <inheritdoc />
@@ -219,7 +223,7 @@ public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
         // proper fix is an owner-scoped count primitive on IKnowledgeGraphStore (deferred with the
         // TenantId work); until then, prefer not to poll this on large multi-tenant graphs.
         var all = await _inner.GetAllNodesAsync(cancellationToken);
-        return all.Count(n => CanAccess(n.OwnerId, scope));
+        return all.Count(n => CanAccess(n.TenantId, n.OwnerId, scope));
     }
 
     /// <inheritdoc />
@@ -252,12 +256,25 @@ public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
     {
         var scope = CurrentScope;
         if (scope is null) return nodes;
-        return nodes.Where(n => CanAccess(n.OwnerId, scope)).ToList();
+        return nodes.Where(n => CanAccess(n.TenantId, n.OwnerId, scope)).ToList();
     }
 
     /// <summary>
-    /// A record is accessible when it is unowned (shared corpus) or the caller owns it.
+    /// A record is accessible to the caller when BOTH hold:
+    /// <list type="bullet">
+    ///   <item><b>tenant</b>: the record is global (<paramref name="tenantId"/> is null) or belongs
+    ///   to the caller's tenant (<see cref="IKnowledgeScopeValidator.ValidateAccess"/>);</item>
+    ///   <item><b>owner</b>: the record is shared within the tenant (<paramref name="ownerId"/> is
+    ///   null — e.g. corpus/learnings) or the caller owns it
+    ///   (<see cref="IKnowledgeScopeValidator.CanAccessDataset"/> — e.g. their memory).</item>
+    /// </list>
+    /// So a user sees their tenant's shared corpus plus their own memory, never another tenant's
+    /// data and never another user's memory within the tenant.
     /// </summary>
-    private bool CanAccess(string? ownerId, IKnowledgeScope scope)
-        => ownerId is null || _validator.CanAccessDataset(scope, ownerId);
+    private bool CanAccess(string? tenantId, string? ownerId, IKnowledgeScope scope)
+    {
+        var tenantOk = tenantId is null || _validator.ValidateAccess(scope, tenantId);
+        var ownerOk = ownerId is null || _validator.CanAccessDataset(scope, ownerId);
+        return tenantOk && ownerOk;
+    }
 }

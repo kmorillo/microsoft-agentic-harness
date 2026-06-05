@@ -75,7 +75,8 @@ public sealed class KnowledgeMemoryService : IKnowledgeMemory
             Type = entityType,
             Properties = new Dictionary<string, string> { ["content"] = content },
             ChunkIds = [],
-            OwnerId = _scope.UserId
+            OwnerId = _scope.UserId,
+            TenantId = _scope.TenantId
         };
 
         // Fast path for any same-scope recall within this request.

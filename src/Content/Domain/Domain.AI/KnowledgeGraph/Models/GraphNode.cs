@@ -77,4 +77,14 @@ public record GraphNode
     /// Used for right-to-erasure cascading: erasing an owner deletes all their nodes.
     /// </summary>
     public string? OwnerId { get; init; }
+
+    /// <summary>
+    /// The tenant that owns this node, enforced by <c>TenantIsolatedGraphStore</c> for
+    /// multi-tenant isolation. <see langword="null"/> means the node is global — visible
+    /// across all tenants (e.g. shared reference data ingested by system/background work).
+    /// A non-null value scopes the node to that tenant: only callers in the same tenant can
+    /// read it. Stamped on write from the caller's <c>IKnowledgeScope.TenantId</c> by
+    /// <c>ComplianceAwareGraphStore</c> (or set explicitly by the writer, e.g. memory).
+    /// </summary>
+    public string? TenantId { get; init; }
 }
