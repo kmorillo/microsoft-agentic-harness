@@ -150,6 +150,34 @@ Eval tasks are simple JSON files you drop in `eval/tasks/`:
 
 After a run, the winning candidate's skill files land in `.meta-harness/optimizations/{run-id}/_proposed/`. Promoting them is a single copy command.
 
+### Skill Training: Optimizing One Skill Document Like Neural-Net Weights
+
+Where Meta-Harness rewrites whole skill files based on causal traces, **Skill Training** optimizes a single skill document via bounded gradient-style edits — a port of [microsoft/SkillOpt](https://github.com/microsoft/SkillOpt) into the harness. The skill document is the trainable state of a frozen agent: an optimizer model proposes structured `Append | InsertAfter | Replace | Delete` edits against it, candidates are scored on a validation split, and only edits that strictly improve the gate score are accepted.
+
+The training loop runs six stages per step inside `TrainSkillCommandHandler`:
+
+1. **Rollout** — run the current skill against a train batch via `IRolloutRunner`.
+2. **Reflect** — `IPatchProposer` (the "optimizer" agent) reads the trajectories and emits a `Patch` of proposed edits.
+3. **Aggregate** — `IPatchAggregator` deduplicates equivalent edits across rollouts and sums their `SupportCount`.
+4. **Select** — `IEditSelector` clips to the LR budget; `CosineScheduler` / `LinearScheduler` / `ConstantScheduler` decay it over training.
+5. **Apply** — the pure `PatchApplier` walks the patch over the markdown and returns a `PatchApplyReport` (which edits landed, which failed).
+6. **Gate** — `GateEvaluator` rolls out the candidate on the val split, projects `(hard, soft)` onto the configured `GateMetric` (`Hard | Soft | Mixed`), and decides `AcceptNewBest | Accept | Reject`. Ties Reject.
+
+Two epoch-boundary mechanisms run between epochs:
+
+**SlowUpdate** does a paired longitudinal comparison of the prior-epoch skill's val rollouts vs the current skill's, classifying each item into improved/regressed/persistent_fail/stable_success and synthesizing guidance for the next epoch — the same anti-forgetting mechanism SkillOpt uses to detect catastrophic regression.
+
+**MetaSkillUpdate** accumulates a cross-epoch strategy memory through `IKnowledgeMemory.RememberAsync` under a stable key (`skill-training/meta/{skillId}/{runId}`) and re-injects it as context on subsequent reflection steps.
+
+Operational invariants worth knowing:
+- `Result.Fail` codes are stable, scrubbed strings (`skill_training.reflect.proposer_call_failed`, `…persist_failed`) — raw exception text only flows to structured logs, never into orchestrator surfaces.
+- `Replace` with empty `Content` is rejected as a failed edit — the optimizer must use `Delete` explicitly. This keeps the audit trail honest about what the LLM actually intended.
+- `HasChanges` on `PatchApplyReport` is computed against content equality, not applied-edit count — identity no-ops don't trigger spurious gating or checkpoints.
+- Skill content is capped at 256KB per field (`MaxSkillLength`); gate scores are finite-checked to fail fast on NaN aggregations.
+- `IPatchProposer` and `IRolloutRunner` ship with `NotConfigured*` fail-fast defaults — template consumers replace them with agent-backed Infrastructure implementations before invoking `TrainSkillCommand`.
+
+`InMemorySkillTrainingCheckpointStore` keeps the best + most-recent 64 checkpoints per run; durable EF Core storage is the natural next step. `Presentation.ConsoleUI/Examples/SkillTrainingExample.cs` wires deterministic stubs and runs the full loop without engaging any LLM, useful for verifying the state machine and as a starting point for real proposer + runner integration.
+
 ### Planner: DAG-Based Task Decomposition
 
 The orchestrator can decompose a task into sub-agents, but those sub-agents still work in a flat loop. The planner adds structure: it turns a high-level goal into a directed acyclic graph (DAG) where each node is an executable step with explicit dependencies, and the executor runs them with bounded concurrency while respecting those edges.
@@ -297,6 +325,7 @@ src/
 │       ├── KnowledgeGraph/             GraphNode, GraphEdge, Community, MemoryRecord, Provenance
 │       ├── Governance/                 AutonomyLevel, AutonomyTierPolicy
 │       ├── Orchestration/              AgentCandidate, AgentSelection, DelegationRecord
+│       ├── SkillTraining/              Edit, Patch, GateResult, RolloutResult, SkillTrainingCheckpoint, TrainSkillConfig
 │       └── Permissions/                SafetyGate
 │
 ├── Content/Application/
@@ -317,6 +346,9 @@ src/
 │   │   ├── Interfaces/Governance/      IAutonomyTierResolver, ISafetyGateRegistry
 │   │   ├── Models/Context/             ContextModels (tier enums, budget types)
 │   │   ├── OpenTelemetry/              RagIngestionMetrics, RagRetrievalMetrics
+│   │   ├── Interfaces/SkillTraining/   IGateEvaluator, IPatchProposer, IPatchAggregator, IEditSelector, ILrScheduler, IRolloutRunner, ISkillTrainingCheckpointStore
+│   │   ├── Services/SkillTraining/     PatchApplier, GateEvaluator, PatchAggregator, TopKEditSelector, schedulers (Cosine/Linear/Constant), InMemoryCheckpointStore, NotConfigured proposer/runner
+│   │   ├── CQRS/SkillTraining/         TrainSkill, GateCandidateSkill, ReflectOnFailures, SlowUpdate, MetaSkillUpdate
 │   │   └── Services/                   ContextBudgetTracker, TieredContextAssembler, AIToolConverter
 │   └── Application.Core/
 │       ├── Agents/Skills/              SKILL.md files per agent
@@ -519,6 +551,8 @@ The ConsoleUI launches an interactive [Spectre.Console](https://spectreconsole.n
 **For structured execution:** The **Plan Execution** pipeline lets you create a multi-step plan from a natural-language goal, validate its DAG structure, and execute it with dependency ordering, bounded concurrency, and checkpoint/resume. Steps that fail retry automatically or escalate to a human gate. Interrupt a running plan and resume it later — the SQLite checkpoint store picks up exactly where it left off.
 
 **For self-improvement:** The **Meta-Harness Optimizer** runs the propose→evaluate loop against your own skill files. Drop eval tasks in `eval/tasks/`, run `--example optimize`, and it will suggest targeted improvements to your agent's skills based on causal trace analysis.
+
+**For skill-document optimization:** The **Skill Training Demo** runs the SkillOpt-style training loop (rollout → reflect → aggregate → select → apply → gate) end-to-end against deterministic stubs — no LLM calls required. It demonstrates the per-step audit trail, patience-based early stop, and epoch-boundary mechanisms; use it as a starting point for plugging in real `IPatchProposer` + `IRolloutRunner` implementations.
 
 ---
 

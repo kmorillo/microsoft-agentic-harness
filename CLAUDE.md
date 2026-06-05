@@ -31,6 +31,9 @@ The harness includes a full RAG pipeline (`Infrastructure.AI.RAG`) and a product
 - **Autonomy Tiers**: Manual/Supervised/Autonomous enforcement via MediatR pipeline behavior, response sanitizers
 - **Resilience**: Polly circuit breakers, provider fallback chains, health state tracking
 
+### Skill Training (SkillOpt port)
+Single-skill-document optimizer modeled on [microsoft/SkillOpt](https://github.com/microsoft/SkillOpt). 6-stage loop (rollout → reflect → aggregate → select → apply → gate) in `Application.AI.Common/CQRS/SkillTraining/TrainSkill/`. Bounded `Edit{Op,Target,Content}` operations (Append/InsertAfter/Replace/Delete) against the SKILL.md, validated by a gate that uses Hard/Soft/Mixed metric projection and strict-greater accept semantics. Epoch boundary runs SlowUpdate (paired longitudinal forgetting detection) and MetaSkillUpdate (cross-epoch strategy memory via `IKnowledgeMemory`). Pure components (`PatchApplier`, `GateEvaluator`, `PatchAggregator`, `TopKEditSelector`, 3 LR schedulers) are stateless. `IPatchProposer` + `IRolloutRunner` ship with `NotConfigured*` fail-fast defaults — consumers replace with agent-backed Infrastructure impls.
+
 ## Stack
 - C# .NET 10, Clean Architecture, CQRS/MediatR, FluentValidation, AutoMapper
 - Microsoft.Agents.AI, Microsoft.Extensions.AI, Azure.AI.OpenAI
@@ -60,6 +63,7 @@ Key architectural concepts from the reference:
 - **Sandbox Isolation**: ProcessSandboxExecutor (Job Objects) and DockerSandboxExecutor with HMAC attestation. Closed-by-default capability model
 - **Step Executors**: Keyed DI by StepType enum — LlmCall, ToolUse, HumanGate, ConditionalBranch, SubPlanInvocation
 - **Partial Class Pattern**: Large files split into partials by responsibility (PlanExecutor.Scheduling.cs, PlanExecutor.Recovery.cs, etc.)
+- **Skill Training Loop**: `TrainSkillCommandHandler` chains the 6 stages on the same call stack (no MediatR re-entrance inner-loop); epoch-boundary mechanisms (SlowUpdate, MetaSkillUpdate) are separate CQRS commands dispatched via `IMediator` so they get the standard pipeline (validation, audit, telemetry)
 
 ## Documentation
 - **Developer Onboarding Guide**: `documentation/onboarding/` — 13-page guide for engineers (deployed at `/`)
@@ -103,6 +107,10 @@ After changes: `dotnet build src/AgenticHarness.slnx && dotnet test src/AgenticH
 - Adding NotifyStepStarted in step executors — PlanExecutor owns notification centrally
 - Using `PluginSource` on a skill without declaring the plugin in `PluginsConfig`: the plugin won't load and tools won't resolve
 - Forgetting that DeniedTools on a plugin are bypass-immune: they can't be overridden by auto-approve modes
+- Using `Replace` with empty `Content` to remove text in a `Patch` — `PatchApplier` rejects it as a failed edit; use `Delete` op explicitly so the audit trail captures intent
+- Returning raw exception text in `Result.Fail` from skill-training handlers — must use stable scrubbed codes (`skill_training.*`) and log the full exception via structured logging; HTTP-backed proposers can leak SAS tokens in exception messages otherwise
+- Persisting projected gate scores across checkpoint reloads — round-trip float→text→float can flip Accept/Reject by 1 ULP; orchestrator should re-project on each call via `IGateEvaluator.SelectGateScore`
+- Forgetting the `NotConfiguredPatchProposer` / `NotConfiguredRolloutRunner` defaults — these throw on first use; a consumer that invokes `TrainSkillCommand` without registering real impls gets an `InvalidOperationException` at runtime, not a silent no-op
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence

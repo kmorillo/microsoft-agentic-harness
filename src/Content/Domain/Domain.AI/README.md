@@ -315,6 +315,22 @@ Domain.AI/
 │   ├── SkillMode.cs             # Managed (harness-native) | Injected (plugin pass-through)
 │   ├── SkillResource.cs         # Attached file (template, reference, script, asset)
 │   └── SkillAgentOptions.cs     # Skill-to-agent mapping options (AdditionalTools)
+├── SkillTraining/               # SkillOpt-port value types for the skill-document training loop
+│   ├── EditOp.cs                # Append | InsertAfter | Replace | Delete
+│   ├── Edit.cs                  # Single bounded edit against a skill doc
+│   ├── Patch.cs                 # Ordered batch of edits + reasoning
+│   ├── PatchApplyReport.cs      # Applied vs failed edits + content-equality HasChanges flag
+│   ├── SourceType.cs            # Failure | Success origin classification
+│   ├── GateMetric.cs            # Hard | Soft | Mixed projection
+│   ├── GateAction.cs            # AcceptNewBest | Accept | Reject
+│   ├── GateResult.cs            # Immutable gate outcome with current/best/candidate state
+│   ├── RolloutResult.cs         # Per-item rollout outcome (Hard, Soft, Trajectory) + IsSuccess epsilon
+│   ├── RolloutBatch.cs          # Split-aware rollout request (train/val/test, ids, seed)
+│   ├── ReflectionInput.cs       # Bundle the optimizer reflects on
+│   ├── SlowUpdateAnalysis.cs    # Paired longitudinal counts + guidance string
+│   ├── SkillTrainingCheckpoint.cs    # Per-step snapshot (run, skill content + SHA-256 hash, score, action)
+│   ├── SkillTrainingRunResult.cs     # Final run outcome with per-step audit trail + HasAcceptedAny flag
+│   └── TrainSkillConfig.cs      # Epochs, steps, LR schedule, gate metric, patience, slow-update/meta toggles
 ├── Telemetry/Conventions/       # 15 convention classes (semantic OTel attributes)
 └── Tools/
     ├── ToolDeclaration.cs       # Skill's tool requirement (name, ops, fallback, guidance)

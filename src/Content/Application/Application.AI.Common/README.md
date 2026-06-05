@@ -241,6 +241,14 @@ Application.AI.Common/
 │   │   └── IPluginRegistry.cs         # Track loaded plugins
 │   ├── Skills/
 │   │   └── ISkillCompletionTracker.cs # Conversation-scoped prerequisite tracking
+│   ├── SkillTraining/
+│   │   ├── IGateEvaluator.cs          # Pure gate decision (Hard/Soft/Mixed, strict-greater)
+│   │   ├── IPatchProposer.cs          # The "optimizer" role — reflects on rollouts, emits a Patch
+│   │   ├── IPatchAggregator.cs        # Dedup equivalent edits, sum SupportCount across patches
+│   │   ├── IEditSelector.cs           # Rank by support + merge level, top-K clip (LR budget)
+│   │   ├── ILrScheduler.cs            # (step, totalSteps, lrStart, lrMin) → int edits/step
+│   │   ├── IRolloutRunner.cs          # Run candidate skill against an item batch
+│   │   └── ISkillTrainingCheckpointStore.cs   # Save/Get/GetBest/List checkpoints per run
 │   ├── ... (19 other subdirectories)
 ├── MediatRBehaviors/
 │   ├── AgentContextPropagationBehavior.cs  # Sets scoped agent identity
@@ -278,10 +286,34 @@ Application.AI.Common/
     ├── LlmUsageCapture.cs             # Per-turn token/cost accumulator
     ├── Skills/
     │   └── InMemorySkillCompletionTracker.cs  # In-memory prerequisite completion tracking
+    ├── SkillTraining/                 # SkillOpt-port skill-document training loop (pure components)
+    │   ├── PatchApplier.cs             # Apply ordered edits to markdown; per-edit success/failure report
+    │   ├── GateEvaluator.cs            # Pure gate (Hard/Soft/Mixed projection, finite-checked)
+    │   ├── PatchAggregator.cs          # Dedup edits by (Op, Target, Content), sum SupportCount
+    │   ├── TopKEditSelector.cs         # Stable ranking by support → merge level → insertion order
+    │   ├── RolloutBatchScorer.cs       # Project per-item rollouts to batch (hard, soft) means
+    │   ├── InMemorySkillTrainingCheckpointStore.cs  # Best + latest 64 per run; concurrent-safe
+    │   ├── NotConfiguredPatchProposer.cs    # Fail-fast default — replace before TrainSkillCommand
+    │   ├── NotConfiguredRolloutRunner.cs    # Fail-fast default — replace before TrainSkillCommand
+    │   └── Schedulers/                # CosineScheduler, LinearScheduler, ConstantScheduler, SchedulerArgs
     └── Tools/
         ├── AIToolConverter.cs         # ITool → AIFunction bridge
         └── ToolDescriptionBuilder.cs  # Generates LLM-friendly tool descriptions
 ```
+
+### Skill Training CQRS
+
+The `CQRS/SkillTraining/` subtree wires the SkillOpt-port training loop into the standard MediatR pipeline:
+
+| Command | Purpose |
+|---|---|
+| `TrainSkillCommand` | Main orchestrator. Chains rollout → reflect → aggregate → select → apply → gate for N epochs × M steps with patience-based early stop. |
+| `GateCandidateSkillCommand` | Pure gate decision over pre-computed (hard, soft) scores; returns `GateResult{Action, ...}`. |
+| `ReflectOnFailuresCommand` | Delegates to `IPatchProposer`; converts exceptions to stable scrubbed `Result.Fail` codes (no exception text leaks). |
+| `SlowUpdateCommand` | Paired longitudinal classification (improved/regressed/persistent_fail/stable_success) + guidance synthesis at epoch boundary. |
+| `MetaSkillUpdateCommand` | Persists cross-epoch strategy memory via `IKnowledgeMemory` under `skill-training/meta/{skillId}/{runId}`. |
+
+All validators enforce score ranges in [0, 1], `MaxSkillLength = 262_144` on every skill string, and cross-field invariants (`BestStep ≤ GlobalStep`, `IncludeSuccesses=false` requires ≥1 failure rollout). DI is auto-wired via `AddSkillTrainingDependencies()` from `Application.AI.Common/Extensions/`; consumers replace the `NotConfigured*` defaults with agent-backed Infrastructure impls.
 
 ## Key Types Reference
 
