@@ -1,3 +1,5 @@
+using System.Collections.Immutable;
+
 namespace Domain.AI.Identity;
 
 /// <summary>
@@ -34,14 +36,22 @@ public sealed record CredentialContext
 
     /// <summary>
     /// The OAuth scopes to request. Empty when the credential flow does not use scopes
-    /// (e.g. legacy resource-based access tokens). Defaults to an empty list, never null.
+    /// (e.g. legacy resource-based access tokens). Defaults to an empty array, never
+    /// <see cref="ImmutableArray{T}.IsDefault">default</see>.
     /// </summary>
-    public IReadOnlyList<string> Scopes { get; init; } = [];
+    /// <remarks>
+    /// <see cref="ImmutableArray{T}"/> (not <see cref="IReadOnlyList{T}"/>) so the value
+    /// is structurally unmodifiable — consumers cannot downcast and mutate the backing
+    /// store. The mutation methods on the <c>IList&lt;T&gt;</c> facet throw
+    /// <see cref="NotSupportedException"/>.
+    /// </remarks>
+    public ImmutableArray<string> Scopes { get; init; } = ImmutableArray<string>.Empty;
 
     /// <summary>
-    /// Records get reference equality on reference-type members by default — two
-    /// contexts with the same scope strings but different list instances would
-    /// otherwise compare unequal. Override to sequence-equal the scope list.
+    /// Records get reference equality on reference-type members by default;
+    /// <see cref="ImmutableArray{T}.Equals(ImmutableArray{T})"/> is reference equality
+    /// on the backing array, not element equality. Override to sequence-equal the
+    /// scope array so two contexts with the same scope strings compare equal.
     /// </summary>
     public bool Equals(CredentialContext? other) =>
         other is not null

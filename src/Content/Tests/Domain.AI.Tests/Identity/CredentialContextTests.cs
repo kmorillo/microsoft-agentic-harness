@@ -64,16 +64,26 @@ public sealed class CredentialContextTests
     }
 
     [Fact]
-    public void Scopes_IsImmutableList_PreventsExternalMutation()
+    public void Scopes_MutationViaIListFacet_ThrowsNotSupported()
     {
-        // Records expose IReadOnlyList<string>; backing source can't be mutated through
-        // the returned reference.
+        // ImmutableArray<T> implements IList<T> but its mutation methods throw
+        // NotSupportedException. A consumer downcasting to IList<string> to bypass
+        // the immutability contract gets a runtime error, not a silent mutation.
         var ctx = new CredentialContext
         {
             Audience = "api://x",
             Scopes = ["s1"]
         };
 
-        ctx.Scopes.Should().BeAssignableTo<IReadOnlyList<string>>();
+        Action add = () => ((IList<string>)ctx.Scopes).Add("s2");
+        Action remove = () => ((IList<string>)ctx.Scopes).Remove("s1");
+        Action clear = () => ((IList<string>)ctx.Scopes).Clear();
+
+        add.Should().Throw<NotSupportedException>();
+        remove.Should().Throw<NotSupportedException>();
+        clear.Should().Throw<NotSupportedException>();
+
+        // And the original record stays intact across the failed mutation attempts.
+        ctx.Scopes.Should().ContainSingle().Which.Should().Be("s1");
     }
 }
