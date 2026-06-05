@@ -139,13 +139,13 @@ await _memory.ImproveAsync(userMessage, assistantResponse, relevantNodeIds);
 Agent calls: _memory.RememberAsync("key", "content")
        |
        v
-[Create GraphNode with ID "memory:key"]
+[Create GraphNode with scope-namespaced ID "memory:{tenant}:{user}:key", OwnerId = scope.UserId]
        |
        v
 [Add to InMemorySessionCache] (fast lookup within session)
        |
        v
-[Background: flush to IKnowledgeGraphStore on scope dispose]
+[Write through to IKnowledgeGraphStore] (durable; survives the request scope)
 
 
 Agent calls: _memory.RecallAsync("query", maxResults: 5)
@@ -255,8 +255,8 @@ services.AddKeyedSingleton<IKnowledgeGraphStore>("my_backend", (sp, _) =>
 ### How to Debug Knowledge Recall Issues
 
 1. Check if the knowledge exists in the session cache (`InMemorySessionCache.Search()`).
-2. Check if the node exists in the graph (`IKnowledgeGraphStore.GetNodeAsync("memory:{key}")`).
-3. Verify the node ID format -- memories use `memory:{key}`, entities use `{name}:entity`.
+2. Check if the node exists in the graph (`IKnowledgeGraphStore.GetNodeAsync("memory:{tenant}:{user}:{key}")`).
+3. Verify the node ID format -- memories use `memory:{tenant}:{user}:{key}` (scope-namespaced for per-user isolation; unset scope falls back to `memory:default:anon:{key}`), entities use `{name}:entity`.
 4. Neo4j queries are traced via `ActivitySource` ("Infrastructure.AI.KnowledgeGraph.Neo4j") -- check OTel spans for Cypher execution details.
 
 ## Dependencies

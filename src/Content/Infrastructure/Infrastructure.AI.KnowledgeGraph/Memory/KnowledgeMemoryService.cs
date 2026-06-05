@@ -20,6 +20,7 @@ public sealed class KnowledgeMemoryService : IKnowledgeMemory
 {
     private readonly ISessionKnowledgeCache _sessionCache;
     private readonly IKnowledgeGraphStore _graphStore;
+    private readonly IKnowledgeScope _scope;
     private readonly IFeedbackDetector? _feedbackDetector;
     private readonly IFeedbackStore? _feedbackStore;
     private readonly IOptionsMonitor<AppConfig> _configMonitor;
@@ -30,6 +31,8 @@ public sealed class KnowledgeMemoryService : IKnowledgeMemory
     /// </summary>
     /// <param name="sessionCache">Session-local knowledge cache.</param>
     /// <param name="graphStore">Permanent knowledge graph store.</param>
+    /// <param name="scope">The current request's knowledge scope (user/tenant). Memory keys are
+    /// namespaced by this scope so one user can never recall another user's remembered facts.</param>
     /// <param name="feedbackDetector">Feedback detector (null when feedback disabled).</param>
     /// <param name="feedbackStore">Feedback weight store (null when feedback disabled).</param>
     /// <param name="configMonitor">Application configuration.</param>
@@ -37,6 +40,7 @@ public sealed class KnowledgeMemoryService : IKnowledgeMemory
     public KnowledgeMemoryService(
         ISessionKnowledgeCache sessionCache,
         IKnowledgeGraphStore graphStore,
+        IKnowledgeScope scope,
         IFeedbackDetector? feedbackDetector,
         IFeedbackStore? feedbackStore,
         IOptionsMonitor<AppConfig> configMonitor,
@@ -44,11 +48,13 @@ public sealed class KnowledgeMemoryService : IKnowledgeMemory
     {
         ArgumentNullException.ThrowIfNull(sessionCache);
         ArgumentNullException.ThrowIfNull(graphStore);
+        ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(configMonitor);
         ArgumentNullException.ThrowIfNull(logger);
 
         _sessionCache = sessionCache;
         _graphStore = graphStore;
+        _scope = scope;
         _feedbackDetector = feedbackDetector;
         _feedbackStore = feedbackStore;
         _configMonitor = configMonitor;
@@ -56,26 +62,32 @@ public sealed class KnowledgeMemoryService : IKnowledgeMemory
     }
 
     /// <inheritdoc />
-    public Task RememberAsync(
+    public async Task RememberAsync(
         string key,
         string content,
         string entityType = "Fact",
         CancellationToken cancellationToken = default)
     {
-        var nodeId = $"memory:{key.ToLowerInvariant()}";
         var node = new GraphNode
         {
-            Id = nodeId,
+            Id = MemoryNodeId(key),
             Name = key,
             Type = entityType,
             Properties = new Dictionary<string, string> { ["content"] = content },
-            ChunkIds = []
+            ChunkIds = [],
+            OwnerId = _scope.UserId
         };
 
+        // Fast path for any same-scope recall within this request.
         _sessionCache.Add(node);
-        _logger.LogDebug("Remembered: Key={Key}, Type={Type}", key, entityType);
 
-        return Task.CompletedTask;
+        // Durable write so the fact survives the request scope and is recallable in future
+        // sessions. The node carries an explicit scope-namespaced Id + OwnerId, so it is
+        // correctly attributed even when persisted from the post-turn background task (where
+        // the ambient request scope is no longer established).
+        await _graphStore.AddNodesAsync([node], cancellationToken);
+
+        _logger.LogDebug("Remembered: Key={Key}, Type={Type}", key, entityType);
     }
 
     /// <inheritdoc />
@@ -115,7 +127,7 @@ public sealed class KnowledgeMemoryService : IKnowledgeMemory
         string key,
         CancellationToken cancellationToken = default)
     {
-        var nodeId = $"memory:{key.ToLowerInvariant()}";
+        var nodeId = MemoryNodeId(key);
 
         _sessionCache.Remove(nodeId);
         await _graphStore.DeleteNodeAsync(nodeId, cancellationToken);
@@ -163,11 +175,12 @@ public sealed class KnowledgeMemoryService : IKnowledgeMemory
         var matched = new List<GraphNode>();
         var seen = new HashSet<string>();
 
-        // Try direct memory key lookups first
+        // Try direct memory key lookups first. Keys are namespaced by the current scope so a
+        // user only ever queries their own remembered facts — never another user's or tenant's.
         foreach (var term in terms)
         {
             if (matched.Count >= maxResults) break;
-            var memoryId = $"memory:{term.ToLowerInvariant()}";
+            var memoryId = MemoryNodeId(term);
             var node = await _graphStore.GetNodeAsync(memoryId, cancellationToken);
             if (node is not null && seen.Add(node.Id))
                 matched.Add(node);
@@ -220,4 +233,26 @@ public sealed class KnowledgeMemoryService : IKnowledgeMemory
             node.Name.Contains(t, StringComparison.OrdinalIgnoreCase) ||
             node.Type.Contains(t, StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>
+    /// Builds the deterministic, scope-namespaced node id for a remembered fact. Two users (or
+    /// two tenants) that remember the same key get distinct ids, so recall — which looks facts up
+    /// by id — can never cross the scope boundary. When scope is unset (single-tenant deployment
+    /// that has not wired <c>SetScope</c>), all callers share the configured default namespace,
+    /// preserving the prior single-tenant behavior.
+    /// </summary>
+    private string MemoryNodeId(string key)
+        => $"memory:{ScopeKey()}:{key.Trim().ToLowerInvariant()}";
+
+    private string ScopeKey()
+    {
+        var tenant = Sanitize(_scope.TenantId) ?? "default";
+        var user = Sanitize(_scope.UserId) ?? "anon";
+        return $"{tenant}:{user}";
+    }
+
+    private static string? Sanitize(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim().ToLowerInvariant().Replace(':', '_');
 }

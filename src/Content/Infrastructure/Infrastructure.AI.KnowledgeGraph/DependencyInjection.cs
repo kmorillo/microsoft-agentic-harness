@@ -87,6 +87,7 @@ public static class DependencyInjection
             new KnowledgeMemoryService(
                 sp.GetRequiredService<ISessionKnowledgeCache>(),
                 sp.GetRequiredService<IKnowledgeGraphStore>(),
+                sp.GetRequiredService<IKnowledgeScope>(),
                 sp.GetService<IFeedbackDetector>(),
                 sp.GetService<IFeedbackStore>(),
                 sp.GetRequiredService<IOptionsMonitor<AppConfig>>(),
@@ -95,9 +96,12 @@ public static class DependencyInjection
         // Conversation-to-Knowledge Bridge — LLM-based fact extraction from agent turns
         services.AddTransient<IConversationFactExtractor, ConversationFactExtractor>();
 
-        // Knowledge scope accessor (scoped per request)
+        // Knowledge scope accessor (scoped per request). IKnowledgeScope (read) and
+        // IKnowledgeScopeWriter (set-at-entry-point) resolve to the SAME instance, so a scope
+        // set by host middleware / a hub filter is observed by every consumer in that request.
         services.AddScoped<KnowledgeScopeAccessor>();
         services.AddScoped<IKnowledgeScope>(sp => sp.GetRequiredService<KnowledgeScopeAccessor>());
+        services.AddScoped<IKnowledgeScopeWriter>(sp => sp.GetRequiredService<KnowledgeScopeAccessor>());
 
         // Multi-tenant isolation (conditional decorator)
         services.AddSingleton<IKnowledgeScopeValidator>(sp =>

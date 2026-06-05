@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Identity.Web;
 using OpenTelemetry;
@@ -107,6 +108,7 @@ public static class DependencyInjection
 
         services.AddAuthorization();
 
+        services.AddSingleton<KnowledgeScopeHubFilter>();
         services.AddSignalR(options =>
             {
                 if (environment.IsDevelopment())
@@ -114,6 +116,10 @@ public static class DependencyInjection
 
                 options.ClientTimeoutInterval = TimeSpan.FromSeconds(120);
                 options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+
+                // Establish per-invocation knowledge scope (user/tenant) from the authenticated
+                // caller — the SignalR-transport equivalent of KnowledgeScopeMiddleware.
+                options.AddFilter<KnowledgeScopeHubFilter>();
             })
             .AddJsonProtocol(options =>
             {
