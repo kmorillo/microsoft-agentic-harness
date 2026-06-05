@@ -90,6 +90,28 @@ public sealed class GraphNodeTests
     }
 
     [Fact]
+    public void Defaults_OwnerAndTenant_AreNull()
+    {
+        var node = new GraphNode { Id = "test", Name = "Test", Type = "Entity" };
+
+        node.OwnerId.Should().BeNull();
+        node.TenantId.Should().BeNull();
+    }
+
+    [Fact]
+    public void TenantId_WhenSet_RoundTripsAndPreservesOnWith()
+    {
+        var node = new GraphNode
+        {
+            Id = "n1", Name = "Test", Type = "Entity",
+            OwnerId = "user-1", TenantId = "tenant-acme"
+        };
+
+        node.TenantId.Should().Be("tenant-acme");
+        (node with { Name = "Renamed" }).TenantId.Should().Be("tenant-acme");
+    }
+
+    [Fact]
     public void ChunkIds_MultipleChunks_PreservesAll()
     {
         var node = new GraphNode
@@ -159,6 +181,19 @@ public sealed class GraphEdgeTests
         };
 
         edge1.Should().BeEquivalentTo(edge2);
+    }
+
+    [Fact]
+    public void TenantId_WhenSet_RoundTrips()
+    {
+        var edge = new GraphEdge
+        {
+            Id = "e1", SourceNodeId = "n1", TargetNodeId = "n2",
+            Predicate = "uses", ChunkId = "c1", TenantId = "tenant-acme"
+        };
+
+        edge.TenantId.Should().Be("tenant-acme");
+        edge.OwnerId.Should().BeNull();
     }
 }
 

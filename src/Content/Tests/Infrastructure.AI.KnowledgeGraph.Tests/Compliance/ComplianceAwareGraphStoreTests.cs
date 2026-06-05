@@ -28,6 +28,7 @@ public sealed class ComplianceAwareGraphStoreTests
         _auditSink = new Mock<IMemoryAuditSink>();
         _scope = new Mock<IKnowledgeScope>();
         _scope.Setup(s => s.UserId).Returns("user-1");
+        _scope.Setup(s => s.TenantId).Returns("tenant-1");
         _retentionProvider = new Mock<IRetentionPolicyProvider>();
         _retentionProvider.Setup(r => r.GetPolicy(It.IsAny<string>()))
             .Returns(new RetentionPolicy
@@ -65,6 +66,28 @@ public sealed class ComplianceAwareGraphStoreTests
         stored!.CreatedAt.Should().Be(_timeProvider.GetUtcNow());
         stored.ExpiresAt.Should().Be(_timeProvider.GetUtcNow().AddDays(365));
         stored.OwnerId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AddNodes_StampsTenantFromScope()
+    {
+        // Unlike owner, tenant IS defaulted to the caller's tenant — this is what scopes a
+        // tenant's ingested corpus to that tenant.
+        var node = new GraphNode { Id = "n1", Name = "Test", Type = "Fact" };
+
+        await _store.AddNodesAsync([node]);
+
+        (await _innerStore.GetNodeAsync("n1"))!.TenantId.Should().Be("tenant-1");
+    }
+
+    [Fact]
+    public async Task AddNodes_PreservesExplicitTenantId()
+    {
+        var node = new GraphNode { Id = "n1", Name = "Test", Type = "Fact", TenantId = "tenant-explicit" };
+
+        await _store.AddNodesAsync([node]);
+
+        (await _innerStore.GetNodeAsync("n1"))!.TenantId.Should().Be("tenant-explicit");
     }
 
     [Fact]

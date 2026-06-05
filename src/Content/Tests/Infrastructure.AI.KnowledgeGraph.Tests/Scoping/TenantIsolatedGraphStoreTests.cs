@@ -25,6 +25,8 @@ public sealed class TenantIsolatedGraphStoreTests
 {
     private const string UserA = "user-a";
     private const string UserB = "user-b";
+    private const string TenantA = "tenant-a";
+    private const string TenantB = "tenant-b";
 
     private readonly InMemoryGraphStore _innerStore;
     private readonly KnowledgeScopeValidator _validator;
@@ -177,8 +179,79 @@ public sealed class TenantIsolatedGraphStoreTests
         (await store.GetNeighborsAsync("seed")).Select(n => n.Id).Should().Contain("nbr");
     }
 
+    // --- Tenant-level isolation ---
+
+    [Fact]
+    public async Task GetNode_DifferentTenant_SharedCorpus_ReturnsNull()
+    {
+        // A tenant's shared corpus (null owner) must be invisible to other tenants.
+        await SeedTenantNode("n1", tenant: TenantB, owner: null);
+        var store = StoreForTenant(UserA, TenantA);
+
+        (await store.GetNodeAsync("n1")).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetNode_SameTenant_SharedCorpus_ReturnsNode()
+    {
+        await SeedTenantNode("n1", tenant: TenantA, owner: null);
+        var store = StoreForTenant(UserA, TenantA);
+
+        (await store.GetNodeAsync("n1")).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GetNode_SameTenant_OtherUsersMemory_ReturnsNull()
+    {
+        // Within one tenant, a user still cannot read another user's owned memory.
+        await SeedTenantNode("n1", tenant: TenantA, owner: UserB);
+        var store = StoreForTenant(UserA, TenantA);
+
+        (await store.GetNodeAsync("n1")).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetNode_SameTenant_OwnMemory_ReturnsNode()
+    {
+        await SeedTenantNode("n1", tenant: TenantA, owner: UserA);
+        var store = StoreForTenant(UserA, TenantA);
+
+        (await store.GetNodeAsync("n1")).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GetNode_GlobalNullTenant_VisibleAcrossTenants()
+    {
+        // Global (null-tenant) reference data is visible to every tenant.
+        await SeedTenantNode("n1", tenant: null, owner: null);
+        var store = StoreForTenant(UserA, TenantA);
+
+        (await store.GetNodeAsync("n1")).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GetAllNodes_FiltersByTenantAndOwner()
+    {
+        await SeedTenantNode("mine", tenant: TenantA, owner: UserA);
+        await SeedTenantNode("tenantShared", tenant: TenantA, owner: null);
+        await SeedTenantNode("otherTenant", tenant: TenantB, owner: null);
+        await SeedTenantNode("otherUserSameTenant", tenant: TenantA, owner: UserB);
+        await SeedTenantNode("global", tenant: null, owner: null);
+        var store = StoreForTenant(UserA, TenantA);
+
+        var ids = (await store.GetAllNodesAsync()).Select(n => n.Id).ToList();
+
+        ids.Should().BeEquivalentTo(["mine", "tenantShared", "global"]);
+    }
+
     private Task SeedNode(string id, string? owner) =>
         _innerStore.AddNodesAsync([new GraphNode { Id = id, Name = id, Type = "Fact", OwnerId = owner }]);
+
+    private Task SeedTenantNode(string id, string? tenant, string? owner) =>
+        _innerStore.AddNodesAsync([new GraphNode
+        {
+            Id = id, Name = id, Type = "Fact", OwnerId = owner, TenantId = tenant
+        }]);
 
     private Task SeedEdge(string source, string target) =>
         _innerStore.AddEdgesAsync([new GraphEdge
@@ -187,9 +260,14 @@ public sealed class TenantIsolatedGraphStoreTests
             Predicate = "relates_to", ChunkId = "c1"
         }]);
 
-    private TenantIsolatedGraphStore StoreFor(string userId)
+    private TenantIsolatedGraphStore StoreFor(string userId) => StoreForScope(userId, tenantId: null);
+
+    private TenantIsolatedGraphStore StoreForTenant(string userId, string tenantId) =>
+        StoreForScope(userId, tenantId);
+
+    private TenantIsolatedGraphStore StoreForScope(string userId, string? tenantId)
     {
-        var scope = Mock.Of<IKnowledgeScope>(s => s.UserId == userId);
+        var scope = Mock.Of<IKnowledgeScope>(s => s.UserId == userId && s.TenantId == tenantId);
         var services = new ServiceCollection();
         services.AddSingleton(scope);
         var ambient = Mock.Of<IAmbientRequestScope>(a => a.Current == services.BuildServiceProvider());

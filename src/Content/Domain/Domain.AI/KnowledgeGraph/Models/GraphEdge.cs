@@ -79,4 +79,12 @@ public record GraphEdge
     /// Used for right-to-erasure cascading: erasing an owner deletes all their edges.
     /// </summary>
     public string? OwnerId { get; init; }
+
+    /// <summary>
+    /// The tenant that owns this edge, enforced by <c>TenantIsolatedGraphStore</c> for
+    /// multi-tenant isolation. <see langword="null"/> means the edge is global — visible
+    /// across all tenants. A non-null value scopes the edge to that tenant. Stamped on write
+    /// from the caller's <c>IKnowledgeScope.TenantId</c> by <c>ComplianceAwareGraphStore</c>.
+    /// </summary>
+    public string? TenantId { get; init; }
 }
