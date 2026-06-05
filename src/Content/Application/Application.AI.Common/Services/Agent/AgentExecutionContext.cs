@@ -1,4 +1,5 @@
 using Application.AI.Common.Interfaces.Agent;
+using Domain.AI.Identity;
 
 namespace Application.AI.Common.Services.Agent;
 
@@ -25,6 +26,9 @@ public sealed class AgentExecutionContext : IAgentExecutionContext
     public int? TurnNumber { get; private set; }
 
     /// <inheritdoc />
+    public AgentIdentity? AgentIdentity { get; private set; }
+
+    /// <inheritdoc />
     public void Initialize(string agentId, string conversationId, int turnNumber)
     {
         // Guard against scope leak: re-initialization with a different agent or conversation
@@ -39,5 +43,22 @@ public sealed class AgentExecutionContext : IAgentExecutionContext
         ConversationId = conversationId;
         TurnNumber = turnNumber;
         _initialized = true;
+    }
+
+    /// <inheritdoc />
+    public void SetIdentity(AgentIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+
+        // Same scope-leak guard as Initialize, applied to identity. Idempotent on value
+        // equality (records compare by structural equality) — re-setting the same logical
+        // identity is a no-op, not an error.
+        if (AgentIdentity is not null && !AgentIdentity.Equals(identity))
+            throw new InvalidOperationException(
+                $"AgentExecutionContext identity conflict: already bound to identity " +
+                $"'{AgentIdentity.Id}' (kind {AgentIdentity.Kind}), cannot re-bind to " +
+                $"identity '{identity.Id}' (kind {identity.Kind}).");
+
+        AgentIdentity = identity;
     }
 }

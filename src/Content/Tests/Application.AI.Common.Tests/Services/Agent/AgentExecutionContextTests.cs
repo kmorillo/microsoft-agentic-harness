@@ -1,4 +1,5 @@
 using Application.AI.Common.Services.Agent;
+using Domain.AI.Identity;
 using FluentAssertions;
 using Xunit;
 
@@ -91,5 +92,137 @@ public class AgentExecutionContextTests
         context.Initialize("planner", "conv-1", 5);
 
         context.TurnNumber.Should().Be(5);
+    }
+
+    // --- Agent identity (PR-1 step 3) -----------------------------------------
+
+    [Fact]
+    public void NewContext_AgentIdentity_IsNull()
+    {
+        var context = new AgentExecutionContext();
+
+        context.AgentIdentity.Should().BeNull();
+    }
+
+    [Fact]
+    public void SetIdentity_StoresIdentity()
+    {
+        var context = new AgentExecutionContext();
+        var identity = new AgentIdentity
+        {
+            Id = "planner",
+            Kind = AgentIdentityKind.ManagedIdentity
+        };
+
+        context.SetIdentity(identity);
+
+        context.AgentIdentity.Should().Be(identity);
+    }
+
+    [Fact]
+    public void SetIdentity_NullIdentity_ThrowsArgumentNull()
+    {
+        var context = new AgentExecutionContext();
+
+        var act = () => context.SetIdentity(null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Fact]
+    public void SetIdentity_SameValueTwice_IsIdempotent()
+    {
+        var context = new AgentExecutionContext();
+        var first = new AgentIdentity
+        {
+            Id = "planner",
+            Kind = AgentIdentityKind.ManagedIdentity,
+            TenantId = "tenant-a"
+        };
+        var sameValue = new AgentIdentity
+        {
+            Id = "planner",
+            Kind = AgentIdentityKind.ManagedIdentity,
+            TenantId = "tenant-a"
+        };
+
+        context.SetIdentity(first);
+        var act = () => context.SetIdentity(sameValue);
+
+        act.Should().NotThrow();
+        context.AgentIdentity.Should().Be(first);
+    }
+
+    [Fact]
+    public void SetIdentity_DifferentId_ThrowsInvalidOperation()
+    {
+        var context = new AgentExecutionContext();
+        context.SetIdentity(new AgentIdentity { Id = "planner", Kind = AgentIdentityKind.ManagedIdentity });
+
+        var act = () => context.SetIdentity(new AgentIdentity { Id = "reviewer", Kind = AgentIdentityKind.ManagedIdentity });
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*identity conflict*")
+            .WithMessage("*planner*")
+            .WithMessage("*reviewer*");
+    }
+
+    [Fact]
+    public void SetIdentity_DifferentKind_ThrowsInvalidOperation()
+    {
+        var context = new AgentExecutionContext();
+        context.SetIdentity(new AgentIdentity { Id = "planner", Kind = AgentIdentityKind.ManagedIdentity });
+
+        var act = () => context.SetIdentity(new AgentIdentity { Id = "planner", Kind = AgentIdentityKind.FederatedCredential });
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*identity conflict*");
+    }
+
+    [Fact]
+    public void SetIdentity_DifferentTenant_ThrowsInvalidOperation()
+    {
+        var context = new AgentExecutionContext();
+        context.SetIdentity(new AgentIdentity
+        {
+            Id = "planner",
+            Kind = AgentIdentityKind.ManagedIdentity,
+            TenantId = "tenant-a"
+        });
+
+        var act = () => context.SetIdentity(new AgentIdentity
+        {
+            Id = "planner",
+            Kind = AgentIdentityKind.ManagedIdentity,
+            TenantId = "tenant-b"
+        });
+
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void SetIdentity_DoesNotAffectAgentOrConversation()
+    {
+        var context = new AgentExecutionContext();
+        context.Initialize("planner", "conv-1", 1);
+
+        context.SetIdentity(new AgentIdentity { Id = "planner", Kind = AgentIdentityKind.ManagedIdentity });
+
+        context.AgentId.Should().Be("planner");
+        context.ConversationId.Should().Be("conv-1");
+        context.TurnNumber.Should().Be(1);
+    }
+
+    [Fact]
+    public void Initialize_AfterSetIdentity_PreservesIdentity()
+    {
+        var context = new AgentExecutionContext();
+        var identity = new AgentIdentity { Id = "planner", Kind = AgentIdentityKind.ManagedIdentity };
+
+        context.SetIdentity(identity);
+        context.Initialize("planner", "conv-1", 1);
+        context.Initialize("planner", "conv-1", 2);
+
+        context.AgentIdentity.Should().Be(identity);
     }
 }
