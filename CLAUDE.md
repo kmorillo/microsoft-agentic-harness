@@ -22,7 +22,7 @@ The harness includes a full RAG pipeline (`Infrastructure.AI.RAG`) and a product
 2. **Feedback-Weighted Search** — `GraphFeedbackStore` + `LlmFeedbackDetector` track retrieval quality on graph nodes/edges. Future retrievals blend semantic relevance with historical feedback weights
 3. **Cross-Session Knowledge Persistence** — `Remember()`/`Recall()`/`Forget()`/`Improve()` via `IKnowledgeMemory`. `InMemorySessionCache` for fast reads with background sync to `ICrossSessionMemoryStore`. `MemoryDecayService` handles configurable decay tiers (CRITICAL/STANDARD/EPHEMERAL)
 4. **Entity-Level Provenance** — `DefaultProvenanceStamper` stamps every node/edge with source pipeline, task, and timestamp. `ComplianceAwareGraphStore` enforces retention policies. `DefaultErasureOrchestrator` handles right-to-erasure with `ErasureReceipt` records
-5. **Multi-Tenant Knowledge Isolation** — `TenantIsolatedGraphStore` enforces scope boundaries (user → dataset → owner) via `IKnowledgeScopeValidator`. Multiple agents/users share infrastructure with strict data isolation
+5. **Multi-Tenant Knowledge Isolation** — `TenantIsolatedGraphStore` enforces per-record boundaries by **tenant AND owner** via `IKnowledgeScopeValidator`: a record is visible only when its tenant matches (or is global/null) and its owner matches (or is shared-in-tenant/null). Identity is captured at the entry point (`KnowledgeScopeMiddleware`/`KnowledgeScopeHubFilter`) and flows ambiently (`AsyncLocal`) into child scopes + post-turn background writes; `ComplianceAwareGraphStore` stamps `TenantId` on write (owner stays writer-authoritative). Memory is scope-namespaced (`memory:{tenant}:{user}:{key}`). Enforced across **all three backends** — in-memory, Neo4j, and PostgreSQL all persist and filter `OwnerId`/`TenantId` (Postgres self-initializes its schema)
 
 ### Governance Subsystems
 - **Drift Detection**: EWMA-based quality monitoring against baselines, three severity levels, DriftEscalationBridge
@@ -93,6 +93,14 @@ After changes: `dotnet build src/AgenticHarness.slnx && dotnet test src/AgenticH
 3. Implement in layers: Domain models first, Application interfaces, Infrastructure implementations, Presentation last
 4. Run build + tests after each meaningful change
 5. Flag anything that diverges from the ApplicationTemplate patterns
+
+## Quality Bar
+
+This is a production template that enterprise consumers will clone. Corners cut now propagate to every downstream consumer. The global "Optimize for Best Outcome, Not Speed" rule applies with extra weight here:
+
+- Match or exceed the reference implementation (`C:\CodeRepos\ApplicationTemplate`) on patterns, abstractions, and rigor. Never ship something here that you'd reject when reviewing the reference.
+- When the reference is silent on a problem, design the best answer; do not invent a smaller answer just because the reference didn't address it.
+- Every public type ships with full XML docs (already a rule) — same reasoning. Consumers are reading this as teaching material.
 
 ## Common Mistakes
 - Creating new abstractions when ApplicationTemplate already has one: check `Application.AI.Common/Interfaces/` first

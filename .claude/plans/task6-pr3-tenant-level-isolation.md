@@ -4,6 +4,8 @@
 **Date:** 2026-06-05
 **Scope chosen by user:** Option B — fix everything now. Tenant isolation must actually work on all three backends, not just in-memory.
 
+**STATUS: COMPLETE (2026-06-05).** Commits on `feat/task6-tenant-level-isolation`: `34f76e3` (model + default backend), `77355cb` (Neo4j), `aee659a` (Postgres), + docs. All 5 steps done; full suite green incl. 8 Docker-backed Neo4j/Postgres integration tests (179 KG tests total). Verified against real neo4j:5.20 + postgres:16 containers.
+
 ## Why this is bigger than "add a field"
 
 The default backend (`managed_code` → in-memory) is lossless, so PR 2's owner isolation works there. But the opt-in **Neo4j** and **PostgreSQL** backends are incomplete (pre-existing TODOs):
