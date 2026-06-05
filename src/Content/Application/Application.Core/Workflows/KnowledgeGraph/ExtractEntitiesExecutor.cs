@@ -130,11 +130,21 @@ public sealed class ExtractEntitiesExecutor : Executor<KgIngestionInput, Extract
                 })
                 .ToList();
 
+            // Node ids encode the entity type ("{name}:{type}"), but relationships reference entities
+            // by name only. Resolve each endpoint to its actual node id via a name->id map so edges
+            // join to their nodes; fall back to "{name}:entity" only for names not in this chunk's
+            // extracted entity set (orphan references).
+            var nodeIdByName = nodes
+                .GroupBy(n => n.Name.ToLowerInvariant())
+                .ToDictionary(g => g.Key, g => g.First().Id);
+
             var edges = (parsed?.Relationships ?? [])
                 .Select(r =>
                 {
-                    var source = $"{(r.Source ?? "unknown").ToLowerInvariant()}:entity";
-                    var target = $"{(r.Target ?? "unknown").ToLowerInvariant()}:entity";
+                    var sourceName = (r.Source ?? "unknown").ToLowerInvariant();
+                    var targetName = (r.Target ?? "unknown").ToLowerInvariant();
+                    var source = nodeIdByName.GetValueOrDefault(sourceName, $"{sourceName}:entity");
+                    var target = nodeIdByName.GetValueOrDefault(targetName, $"{targetName}:entity");
                     var predicate = r.Predicate ?? "related_to";
                     return new GraphEdge
                     {

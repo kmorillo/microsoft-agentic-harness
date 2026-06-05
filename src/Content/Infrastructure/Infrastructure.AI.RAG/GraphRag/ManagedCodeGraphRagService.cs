@@ -299,11 +299,20 @@ public sealed class ManagedCodeGraphRagService : IGraphRagService
                 })
                 .ToList();
 
+            // Resolve relationship endpoints (referenced by name) to the actual node ids, which encode
+            // the entity type — otherwise edges would reference "{name}:entity" and never join to the
+            // "{name}:{type}" nodes. Fall back to "{name}:entity" only for names not extracted here.
+            var nodeIdByName = nodes
+                .GroupBy(n => n.Name.ToLowerInvariant())
+                .ToDictionary(g => g.Key, g => g.First().Id);
+
             var edges = (parsed?.Relationships ?? [])
                 .Select(r =>
                 {
-                    var source = $"{(r.Source ?? "unknown").ToLowerInvariant()}:entity";
-                    var target = $"{(r.Target ?? "unknown").ToLowerInvariant()}:entity";
+                    var sourceName = (r.Source ?? "unknown").ToLowerInvariant();
+                    var targetName = (r.Target ?? "unknown").ToLowerInvariant();
+                    var source = nodeIdByName.GetValueOrDefault(sourceName, $"{sourceName}:entity");
+                    var target = nodeIdByName.GetValueOrDefault(targetName, $"{targetName}:entity");
                     var predicate = r.Predicate ?? "related_to";
                     return new GraphEdge
                     {

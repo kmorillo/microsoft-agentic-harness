@@ -6,15 +6,17 @@
 
 **STATUS: COMPLETE (2026-06-05).** Commits on `feat/task6-tenant-level-isolation`: `34f76e3` (model + default backend), `77355cb` (Neo4j), `aee659a` (Postgres), `04de890` (docs), `3c3555e` (code-review hardening). All 5 steps done; full suite green incl. 9 Docker-backed Neo4j/Postgres integration tests (180 KG tests total). Verified against real neo4j:5.20 + postgres:16 containers.
 
-## Follow-up findings (from PR 3 code review — NOT blocking; memory isolation is airtight)
+## Follow-up findings (from PR 3 code review) — RESOLVED 2026-06-05
 
-These concern the **corpus/entity dimension** only. Conversation-memory isolation is complete and unaffected (memory ids are `memory:{tenant}:{user}:{key}`-namespaced + owner+tenant stamped). Captured here as deliberate follow-ups:
+These concerned the **corpus/entity dimension** only. Conversation-memory isolation was complete and unaffected throughout (memory ids are `memory:{tenant}:{user}:{key}`-namespaced + owner+tenant stamped).
 
-1. **Shared entity ids across tenants (design).** Corpus entity nodes use content-derived ids (hash of name+type), so two tenants ingesting the same entity collide on one physical node; an upsert can merge properties or reassign the tenant. True per-tenant corpus needs tenant-namespaced entity ids at ingestion (RAG pipeline) + tenant-aware edge references, OR an explicit "shared global entity" model. Documented as a known limitation in `TenantIsolatedGraphStore` remarks. **Decision needed:** namespace corpus by tenant vs. accept shared global entities.
-2. **Null-tenant = global is fail-open.** A node that ends up untenanted (background ingestion that loses ambient scope, or a future writer that forgets to stamp) is readable by every tenant. Memory is hardened (explicit `TenantId` on the writer). **Decision needed:** keep fail-open (global reference data is a feature) or move to fail-closed (untenanted ⇒ system/null-scope only) + an explicit global marker.
-3. **Misconfig lockout (DX).** With `MultiTenantIsolation` ON but a caller's `IKnowledgeScope.TenantId` unpopulated (partial auth wiring), the caller keeps their own owner-stamped memory but silently loses their tenant's shared corpus on recall. **Suggested:** fail-fast / loud-log when isolation is on and a non-system caller has a null `TenantId`.
+1. **Shared entity ids across tenants — RESOLVED (decision: shared global entity graph).** User chose the standard RAG posture: entities are intentionally shared/global across tenants (dedup, no per-tenant bloat); only memory + documents are tenant-isolated. So `null-tenant = global` is *correct* for entities, and no id-namespacing is needed. Documented as a deliberate design choice in `TenantIsolatedGraphStore` remarks. Per-tenant entity graphs (namespacing) remain an option only if entity *names* are confidential — a separate change.
+2. **Null-tenant = global — RESOLVED (kept, by design).** Follows from #1: global reference/entity data is a feature, not a leak (entity names are non-sensitive). No fail-closed change.
+3. **Misconfig lockout — FIXED (`32d2980`).** `TenantIsolatedGraphStore` now logs a loud warning when isolation is on and a non-system caller (UserId present) has a null `TenantId`, instead of silently hiding their tenant's corpus.
 
-Lower-severity notes: Postgres `GetNeighborsAsync` recursive CTE filters tenant/owner only in the final projection, not inside the walk (defense-in-depth/perf — push predicates into the CTE); `DeleteEdgeAsync` remains unfiltered (no get-edge-by-id primitive).
+**Also fixed (pre-existing bug found during recon):** corpus extraction wrote edge endpoints as `{name}:entity` while nodes are `{name}:{type}`, so ingested-corpus edges never joined their nodes (triplet/neighbor traversal returned empty for corpus). Fixed in `ExtractEntitiesExecutor` + `ManagedCodeGraphRagService` by resolving edge endpoints to real node ids via a name→id map.
+
+Remaining lower-severity notes (not scheduled): Postgres `GetNeighborsAsync` recursive CTE filters tenant/owner only in the final projection (defense-in-depth/perf — could push predicates into the CTE); `DeleteEdgeAsync` unfiltered (no get-edge-by-id primitive).
 
 ## Why this is bigger than "add a field"
 

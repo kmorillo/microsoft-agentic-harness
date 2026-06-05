@@ -37,14 +37,17 @@ namespace Infrastructure.AI.KnowledgeGraph.Scoping;
 /// In single-tenant mode the inner store is used directly.
 /// </para>
 /// <para>
-/// <b>Scope &amp; known limitation.</b> Conversation <em>memory</em> isolation is airtight: memory
+/// <b>Scope of isolation (by design).</b> Conversation <em>memory</em> is strictly isolated: memory
 /// node ids are scope-namespaced (<c>memory:{tenant}:{user}:{key}</c>) and stamped with owner+tenant,
-/// so they never collide across tenants. Ingested <em>corpus</em> entity nodes, however, use
-/// content-derived ids (a hash of name+type) that are <strong>shared across tenants</strong> — two
-/// tenants ingesting the same entity resolve to one physical node, and an upsert can merge or
-/// reassign its tenant. Tenant-gating ingested corpus therefore assumes either tenant-namespaced
-/// entity ids at ingestion time or intentionally-shared global entities; it is not enforced by this
-/// decorator alone. Backends preserve (never null-clobber) an existing owner/tenant on re-write.
+/// so a user only ever recalls their own facts within their tenant. Ingested <em>corpus entities</em>
+/// (people, orgs, technologies) are <strong>intentionally shared/global</strong> across tenants: they
+/// use content-derived ids (name+type) and deduplicate into one physical node, giving a shared
+/// knowledge graph without per-tenant bloat. Entity nodes are therefore written without a tenant
+/// (<c>TenantId == null</c> = global, visible to all), which is the correct posture when entity
+/// <em>names</em> are non-sensitive shared knowledge. Per-tenant document/memory data carries an
+/// explicit tenant and is isolated as above. (If entity names themselves are confidential, corpus
+/// ingestion must tenant-namespace entity ids — that is a deliberate, separate change.) Backends
+/// preserve (never null-clobber) an existing owner/tenant on re-write.
 /// </para>
 /// </remarks>
 public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
