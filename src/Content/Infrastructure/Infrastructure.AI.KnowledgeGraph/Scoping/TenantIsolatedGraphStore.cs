@@ -36,6 +36,16 @@ namespace Infrastructure.AI.KnowledgeGraph.Scoping;
 /// Registered conditionally: only when <c>GraphRagConfig.MultiTenantIsolation</c> is <c>true</c>.
 /// In single-tenant mode the inner store is used directly.
 /// </para>
+/// <para>
+/// <b>Scope &amp; known limitation.</b> Conversation <em>memory</em> isolation is airtight: memory
+/// node ids are scope-namespaced (<c>memory:{tenant}:{user}:{key}</c>) and stamped with owner+tenant,
+/// so they never collide across tenants. Ingested <em>corpus</em> entity nodes, however, use
+/// content-derived ids (a hash of name+type) that are <strong>shared across tenants</strong> — two
+/// tenants ingesting the same entity resolve to one physical node, and an upsert can merge or
+/// reassign its tenant. Tenant-gating ingested corpus therefore assumes either tenant-namespaced
+/// entity ids at ingestion time or intentionally-shared global entities; it is not enforced by this
+/// decorator alone. Backends preserve (never null-clobber) an existing owner/tenant on re-write.
+/// </para>
 /// </remarks>
 public sealed class TenantIsolatedGraphStore : IKnowledgeGraphStore
 {

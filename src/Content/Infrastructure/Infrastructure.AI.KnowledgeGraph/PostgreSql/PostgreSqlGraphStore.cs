@@ -376,8 +376,22 @@ public sealed class PostgreSqlGraphStore : IKnowledgeGraphStore
         try
         {
             if (_schemaReady) return;
-            await using var cmd = new NpgsqlCommand(SchemaDdl, conn);
-            await cmd.ExecuteNonQueryAsync(ct);
+
+            // Serialize DDL across processes/replicas: concurrent CREATE TABLE/INDEX IF NOT EXISTS
+            // on a fresh database can race and throw ("tuple concurrently updated" / duplicate
+            // object). A transaction-scoped advisory lock (auto-released on commit) makes first-use
+            // safe in a scaled-out deployment; the in-process semaphore + flag handle the common case.
+            await using var tx = await conn.BeginTransactionAsync(ct);
+            await using (var lockCmd = new NpgsqlCommand("SELECT pg_advisory_xact_lock(@key)", conn, tx))
+            {
+                lockCmd.Parameters.AddWithValue("key", 0x6B675F736368656DL); // "kg_schem"
+                await lockCmd.ExecuteNonQueryAsync(ct);
+            }
+            await using (var cmd = new NpgsqlCommand(SchemaDdl, conn, tx))
+            {
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+            await tx.CommitAsync(ct);
             _schemaReady = true;
         }
         finally

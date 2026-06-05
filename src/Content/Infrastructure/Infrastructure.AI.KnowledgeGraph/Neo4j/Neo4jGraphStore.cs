@@ -46,8 +46,10 @@ public sealed class Neo4jGraphStore : IKnowledgeGraphStore, IAsyncDisposable
         var uri = new Uri(connString);
         var userInfo = uri.UserInfo.Split(':');
         // The Bolt driver rejects a URI that carries a userinfo component, so pass a clean
-        // scheme://host:port and supply credentials separately as an auth token.
-        var boltUri = $"{uri.Scheme}://{uri.Host}:{uri.Port}";
+        // scheme://host:port and supply credentials separately as an auth token. Fall back to the
+        // default Bolt port when the connection string omits one (Uri.Port is -1 in that case).
+        var port = uri.Port == -1 ? 7687 : uri.Port;
+        var boltUri = $"{uri.Scheme}://{uri.Host}:{port}";
         _driver = userInfo.Length == 2
             ? GraphDatabase.Driver(boltUri, AuthTokens.Basic(userInfo[0], userInfo[1]))
             : GraphDatabase.Driver(boltUri);
@@ -70,8 +72,11 @@ public sealed class Neo4jGraphStore : IKnowledgeGraphStore, IAsyncDisposable
                 await tx.RunAsync("""
                     MERGE (n:Entity {id: $id})
                     SET n.name = $name, n.type = $type, n.properties = $props,
-                        n.owner_id = $owner_id, n.tenant_id = $tenant_id,
-                        n.created_at = $created_at, n.expires_at = $expires_at, n.provenance = $prov
+                        n.owner_id = coalesce($owner_id, n.owner_id),
+                        n.tenant_id = coalesce($tenant_id, n.tenant_id),
+                        n.created_at = coalesce(n.created_at, $created_at),
+                        n.expires_at = $expires_at,
+                        n.provenance = coalesce($prov, n.provenance)
                     WITH n
                     UNWIND $chunks AS chunkId
                     WITH n, collect(DISTINCT chunkId) + coalesce(n.chunk_ids, []) AS allChunks
@@ -114,8 +119,11 @@ public sealed class Neo4jGraphStore : IKnowledgeGraphStore, IAsyncDisposable
                     MERGE (s)-[r:RELATES {id: $id}]->(t)
                     SET r.predicate = $pred, r.properties = $props, r.chunk_id = $chunk,
                         r.source = $source, r.target = $target,
-                        r.owner_id = $owner_id, r.tenant_id = $tenant_id,
-                        r.created_at = $created_at, r.expires_at = $expires_at, r.provenance = $prov
+                        r.owner_id = coalesce($owner_id, r.owner_id),
+                        r.tenant_id = coalesce($tenant_id, r.tenant_id),
+                        r.created_at = coalesce(r.created_at, $created_at),
+                        r.expires_at = $expires_at,
+                        r.provenance = coalesce($prov, r.provenance)
                     """,
                     new
                     {

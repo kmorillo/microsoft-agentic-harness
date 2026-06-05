@@ -108,6 +108,25 @@ public sealed class Neo4jGraphStoreTests : IClassFixture<Neo4jStoreFixture>
     }
 
     [Fact]
+    public async Task AddNode_RewriteWithoutOwnerTenant_PreservesExisting()
+    {
+        // A later write that omits owner/tenant (e.g. a background/system re-ingest of an entity id
+        // that collides with an existing node) must NOT null-clobber the stored owner/tenant, or the
+        // node would silently become global and leak across tenants.
+        await _store.AddNodesAsync([new GraphNode
+        {
+            Id = "neo-pres", Name = "P", Type = "Entity",
+            OwnerId = "neo-owner-p", TenantId = "neo-tenant-p"
+        }]);
+        await _store.AddNodesAsync([new GraphNode { Id = "neo-pres", Name = "P2", Type = "Entity" }]);
+
+        var node = await _store.GetNodeAsync("neo-pres");
+
+        node!.OwnerId.Should().Be("neo-owner-p");
+        node.TenantId.Should().Be("neo-tenant-p");
+    }
+
+    [Fact]
     public async Task AddAndGetTriplet_RoundTripsEdgeTenantAndEndpoints()
     {
         await _store.AddNodesAsync([
