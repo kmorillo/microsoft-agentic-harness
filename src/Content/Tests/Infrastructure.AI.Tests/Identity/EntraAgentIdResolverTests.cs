@@ -242,6 +242,22 @@ public sealed class EntraAgentIdResolverTests
     }
 
     [Fact]
+    public void Ctor_DuplicateKindRegistration_ThrowsInvalidOperation()
+    {
+        var first = ProviderFor(
+            AgentIdentityKind.ManagedIdentity,
+            Result<AgentIdentity>.Success(Identity("mi-one", AgentIdentityKind.ManagedIdentity)));
+        var second = ProviderFor(
+            AgentIdentityKind.ManagedIdentity,
+            Result<AgentIdentity>.Success(Identity("mi-two", AgentIdentityKind.ManagedIdentity)));
+
+        var act = () => Build([first.Object, second.Object]);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*Multiple IAgentCredentialProvider*ManagedIdentity*");
+    }
+
+    [Fact]
     public async Task ResolveAsync_CancelledToken_ThrowsOperationCanceled()
     {
         var federated = ProviderFor(

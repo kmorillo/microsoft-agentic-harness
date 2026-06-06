@@ -48,7 +48,7 @@ public sealed class EntraAgentIdResolver : IAgentIdentityResolver
         AgentIdentityKind.Development
     ];
 
-    private readonly IReadOnlyList<IAgentCredentialProvider> _providers;
+    private readonly IReadOnlyDictionary<AgentIdentityKind, IAgentCredentialProvider> _providersByKind;
     private readonly IHostEnvironment _hostEnvironment;
     private readonly ILogger<EntraAgentIdResolver> _logger;
 
@@ -58,6 +58,9 @@ public sealed class EntraAgentIdResolver : IAgentIdentityResolver
     /// <param name="providers">All registered credential providers.</param>
     /// <param name="hostEnvironment">Host environment used to gate the Development kind.</param>
     /// <param name="logger">Logger for resolution diagnostics.</param>
+    /// <exception cref="InvalidOperationException">Two or more providers register the same
+    /// <see cref="AgentIdentityKind"/>. The contract is one provider per kind; a duplicate
+    /// would silently shadow the other in the priority walk.</exception>
     public EntraAgentIdResolver(
         IEnumerable<IAgentCredentialProvider> providers,
         IHostEnvironment hostEnvironment,
@@ -67,10 +70,22 @@ public sealed class EntraAgentIdResolver : IAgentIdentityResolver
         ArgumentNullException.ThrowIfNull(hostEnvironment);
         ArgumentNullException.ThrowIfNull(logger);
 
-        // Materialise once: the IEnumerable<T> from DI is typically enumerable many times
-        // safely, but we want a stable ordering and to enumerate it during the
-        // hierarchy walk without re-querying the container.
-        _providers = providers.ToArray();
+        var materialised = providers.ToArray();
+        var byKind = new Dictionary<AgentIdentityKind, IAgentCredentialProvider>();
+        foreach (var provider in materialised)
+        {
+            if (byKind.TryGetValue(provider.Kind, out var existing))
+                throw new InvalidOperationException(
+                    $"Multiple IAgentCredentialProvider instances registered for kind " +
+                    $"{provider.Kind}: '{existing.GetType().FullName}' and " +
+                    $"'{provider.GetType().FullName}'. The contract is one provider per kind " +
+                    $"— the credential hierarchy walk would silently shadow the second one. " +
+                    $"Remove the duplicate registration in DI.");
+
+            byKind[provider.Kind] = provider;
+        }
+
+        _providersByKind = byKind;
         _hostEnvironment = hostEnvironment;
         _logger = logger;
     }
@@ -82,7 +97,7 @@ public sealed class EntraAgentIdResolver : IAgentIdentityResolver
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        if (_providers.Count == 0)
+        if (_providersByKind.Count == 0)
         {
             _logger.LogError("EntraAgentIdResolver has no registered IAgentCredentialProvider instances.");
             return Result<AgentIdentity>.Fail(NoProvidersRegisteredCode);
@@ -100,8 +115,7 @@ public sealed class EntraAgentIdResolver : IAgentIdentityResolver
                 continue;
             }
 
-            var provider = _providers.FirstOrDefault(p => p.Kind == kind);
-            if (provider is null)
+            if (!_providersByKind.TryGetValue(kind, out var provider))
                 continue;
 
             cancellationToken.ThrowIfCancellationRequested();
