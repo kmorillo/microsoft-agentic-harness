@@ -51,4 +51,14 @@ public sealed class ChangesConfig
     /// keeping a proposal pinned indefinitely.
     /// </summary>
     public int MaxConsecutiveDefers { get; set; } = 20;
+
+    /// <summary>
+    /// Minimum <c>PolicyFindingSeverity</c> (as a string: <c>Info</c>,
+    /// <c>Low</c>, <c>Medium</c>, <c>High</c>, <c>Critical</c>) that causes
+    /// the <c>PolicyGate</c> to <c>Fail</c> the proposal. Findings below this
+    /// threshold are still captured in the audit but do not block. Default
+    /// <c>High</c> matches the convention used by the existing
+    /// <c>GovernanceConfig.InjectionBlockThreshold</c>.
+    /// </summary>
+    public string PolicyBlockingSeverity { get; set; } = "High";
 }
