@@ -38,4 +38,10 @@ public class AgentIdentityConfig
     /// not declare its own. Empty when the credential flow does not use scopes.
     /// </summary>
     public IReadOnlyList<string> DefaultScopes { get; set; } = [];
+
+    /// <summary>
+    /// Configuration for the Development credential provider — a fixture-identity
+    /// fallback honoured only when the host environment is Development.
+    /// </summary>
+    public DevelopmentProviderConfig Development { get; set; } = new();
 }
