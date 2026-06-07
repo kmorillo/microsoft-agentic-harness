@@ -110,6 +110,24 @@ public sealed class SubmitChangeProposalCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_PipelineDisabled_ReturnsForbidden()
+    {
+        // The pipeline master switch is the first guard in Submit; a disabled
+        // pipeline must reject before doing anything (no Save, no orchestrator).
+        var store = new InMemoryChangeProposalStore();
+        var context = new TestHelpers.StubAgentContext(TestHelpers.DefaultIdentity);
+        var sut = NewSut(store, context, config: TestHelpers.DisabledConfigMonitor());
+
+        var result = await sut.Handle(DefaultCommand(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.FailureType.Should().Be(ResultFailureType.Forbidden);
+        result.Errors.Should().ContainSingle().Which.Should().Contain("disabled");
+        // Side-effect guard: no proposal should have been persisted.
+        store.Count.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Handle_OrchestratorReturnsNull_ReturnsNotFoundInsteadOfStaleDraft()
     {
         // Race window: the orchestrator returns null only when the store loses

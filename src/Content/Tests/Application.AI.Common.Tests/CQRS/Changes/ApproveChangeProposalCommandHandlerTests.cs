@@ -79,6 +79,33 @@ public sealed class ApproveChangeProposalCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_PipelineDisabled_ReturnsForbidden()
+    {
+        // Disabled pipeline must reject before touching the store or
+        // transitioning state; a proposal saved in AwaitingApproval before
+        // Enabled flipped off should NOT be approvable by this command.
+        var store = new InMemoryChangeProposalStore();
+        var pending = TestHelpers.NewProposal(ChangeProposalStatus.AwaitingApproval);
+        await store.SaveAsync(pending, CancellationToken.None);
+        var sut = new ApproveChangeProposalCommandHandler(
+            store,
+            new TestHelpers.StubOrchestrator(store),
+            TestHelpers.DisabledConfigMonitor(),
+            TimeProvider.System);
+
+        var result = await sut.Handle(
+            new ApproveChangeProposalCommand { ProposalId = pending.Id, ReviewerId = "user-42" },
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.FailureType.Should().Be(ResultFailureType.Forbidden);
+        result.Errors.Should().ContainSingle().Which.Should().Contain("disabled");
+        // Side-effect guard: proposal status should be unchanged.
+        (await store.GetAsync(pending.Id, CancellationToken.None))!
+            .Status.Should().Be(ChangeProposalStatus.AwaitingApproval);
+    }
+
+    [Fact]
     public async Task Handle_OrchestratorReturnsNull_ReturnsNotFoundInsteadOfStaleApproved()
     {
         // Race: orchestrator returns null when the store lost the proposal

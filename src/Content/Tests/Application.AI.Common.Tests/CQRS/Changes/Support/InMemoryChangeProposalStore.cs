@@ -13,6 +13,9 @@ internal sealed class InMemoryChangeProposalStore : IChangeProposalStore
 {
     private readonly ConcurrentDictionary<string, ChangeProposal> _byId = new(StringComparer.Ordinal);
 
+    /// <summary>Test-only side-effect probe — number of proposals currently persisted.</summary>
+    public int Count => _byId.Count;
+
     public Task<ChangeProposal?> GetAsync(string id, CancellationToken cancellationToken)
     {
         _byId.TryGetValue(id, out var proposal);
