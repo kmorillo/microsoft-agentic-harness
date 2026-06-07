@@ -71,7 +71,14 @@ public sealed class FileSystemEvidenceStore : IEvidenceStore
     {
         ArgumentException.ThrowIfNullOrEmpty(evidenceHash);
 
-        var path = PathFor(evidenceHash);
+        // Reject malformed hashes silently (treat as not-found) so a caller
+        // that passes an attacker-controlled hash never escapes the root.
+        if (!TryGetSafePath(evidenceHash, out var path))
+        {
+            _logger.LogDebug("Evidence hash {Hash} rejected as malformed; treating as not-found.", evidenceHash);
+            return null;
+        }
+
         if (!File.Exists(path))
         {
             _logger.LogDebug("Evidence {Hash} not present on disk.", evidenceHash);
@@ -84,13 +91,62 @@ public sealed class FileSystemEvidenceStore : IEvidenceStore
 
     private string PathFor(string evidenceHash)
     {
-        // hash format: "sha256:<base64url>". Strip prefix; use first 2 chars as fan-out.
-        var stripped = evidenceHash.StartsWith(HashPrefix, StringComparison.Ordinal)
-            ? evidenceHash[HashPrefix.Length..]
-            : evidenceHash;
-        var prefix = stripped.Length >= 2 ? stripped[..2] : "_";
-        return Path.Combine(_root, prefix, stripped + ".bin");
+        if (!TryGetSafePath(evidenceHash, out var path))
+        {
+            // Should be unreachable on the write path because StoreAsync derives
+            // the hash itself, but defense-in-depth: refuse to construct a path
+            // that doesn't match the strict format rather than silently writing
+            // outside the root.
+            throw new ArgumentException(
+                $"Evidence hash '{evidenceHash}' does not match the required 'sha256:<43 Base64URL chars>' format.",
+                nameof(evidenceHash));
+        }
+        return path;
     }
+
+    /// <summary>
+    /// Strict format check + safe path derivation. Hash MUST be exactly
+    /// <c>"sha256:"</c> followed by 43 characters from the Base64URL alphabet
+    /// (<c>A-Z</c>, <c>a-z</c>, <c>0-9</c>, <c>-</c>, <c>_</c>). Any other input
+    /// — including hashes with path separators, parent-directory tokens, or
+    /// characters outside the alphabet — is rejected. After validation the
+    /// 2-char fan-out and full hash are both known to be filename-safe, so the
+    /// resulting path cannot escape <see cref="_root"/>.
+    /// </summary>
+    private bool TryGetSafePath(string evidenceHash, out string path)
+    {
+        path = string.Empty;
+
+        if (!evidenceHash.StartsWith(HashPrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var stripped = evidenceHash[HashPrefix.Length..];
+        if (stripped.Length != Base64UrlSha256Length)
+        {
+            return false;
+        }
+
+        // Inline alphabet check — avoids regex backtracking and matches the
+        // exact output shape of Base64Url(byte[32]).
+        for (var i = 0; i < stripped.Length; i++)
+        {
+            var c = stripped[i];
+            var ok = c is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-' or '_';
+            if (!ok)
+            {
+                return false;
+            }
+        }
+
+        var prefix = stripped[..2];
+        path = Path.Combine(_root, prefix, stripped + ".bin");
+        return true;
+    }
+
+    /// <summary>32 raw bytes → 43 Base64URL chars (no padding). Constant for the format check.</summary>
+    private const int Base64UrlSha256Length = 43;
 
     private static string Base64Url(byte[] bytes)
     {

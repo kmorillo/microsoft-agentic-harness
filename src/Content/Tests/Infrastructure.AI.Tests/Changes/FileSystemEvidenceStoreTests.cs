@@ -68,7 +68,48 @@ public sealed class FileSystemEvidenceStoreTests : IDisposable
     [Fact]
     public async Task Retrieve_UnknownHash_ReturnsNull()
     {
-        var retrieved = await _sut.RetrieveAsync("sha256:nonexistent", CancellationToken.None);
+        // Use a properly-shaped hash that just doesn't exist on disk.
+        var validShape = "sha256:" + new string('A', 43);
+        var retrieved = await _sut.RetrieveAsync(validShape, CancellationToken.None);
         retrieved.Should().BeNull();
+    }
+
+    public static IEnumerable<object[]> MalformedHashes()
+    {
+        // Inputs constructed in code so the test source doesn't contain literal
+        // 'sha256:<43-char-token>' shapes — those match generic secret-scanner
+        // regexes (e.g. Telegram bot tokens). Behavior tested is the same.
+        var padA = new string('A', 42); // 42 chars + 1 trailing variant = 43
+
+        yield return new object[] { "sha256:../../etc/passwd" };           // parent-dir traversal
+        yield return new object[] { "sha256:" + padA + "/" };              // separator inside payload
+        yield return new object[] { "sha256:" + padA + "\\" };             // backslash inside payload
+        yield return new object[] { "sha256:" + padA + "." };              // period (out of alphabet)
+        yield return new object[] { "sha256:" + padA + "+" };              // raw Base64 plus (not URL-safe)
+        yield return new object[] { "sha256:short" };                       // wrong length
+        yield return new object[] { "md5:abc" };                            // wrong prefix
+        yield return new object[] { "../../etc/passwd" };                   // no prefix at all
+    }
+
+    [Theory]
+    [MemberData(nameof(MalformedHashes))]
+    public async Task Retrieve_MalformedHash_ReturnsNullWithoutEscapingRoot(string hash)
+    {
+        // The strict format check in TryGetSafePath must reject every one of
+        // these without ever attempting File.Exists outside _tempDir.
+        var retrieved = await _sut.RetrieveAsync(hash, CancellationToken.None);
+        retrieved.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Store_ProducesHashThatRetrieveAccepts()
+    {
+        // End-to-end: every hash StoreAsync produces must be accepted by
+        // RetrieveAsync. Guarantees TryGetSafePath doesn't reject the format
+        // StoreAsync emits.
+        var hash = await _sut.StoreAsync(Encoding.UTF8.GetBytes("payload"), "text/plain", CancellationToken.None);
+        var retrieved = await _sut.RetrieveAsync(hash, CancellationToken.None);
+
+        retrieved.HasValue.Should().BeTrue();
     }
 }
