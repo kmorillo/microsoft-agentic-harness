@@ -17,11 +17,11 @@ public sealed class SubmitChangeProposalCommandHandlerTests
         TestHelpers.StubGateResolver? resolver = null,
         TimeProvider? time = null,
         Microsoft.Extensions.Options.IOptionsMonitor<Domain.Common.Config.AppConfig>? config = null,
-        TestHelpers.StubOrchestrator? orchestrator = null) =>
+        TestHelpers.StubDispatchQueue? dispatchQueue = null) =>
         new(
             store,
             resolver ?? new TestHelpers.StubGateResolver(),
-            orchestrator ?? new TestHelpers.StubOrchestrator(store),
+            dispatchQueue ?? new TestHelpers.StubDispatchQueue(),
             context,
             config ?? TestHelpers.EnabledConfigMonitor(),
             time ?? TimeProvider.System,
@@ -36,27 +36,33 @@ public sealed class SubmitChangeProposalCommandHandlerTests
     };
 
     [Fact]
-    public async Task Handle_HappyPath_PersistsDraftAndReturnsProposal()
+    public async Task Handle_HappyPath_PersistsDraftAndReturnsProposalAndEnqueues()
     {
         var store = new InMemoryChangeProposalStore();
         var context = new TestHelpers.StubAgentContext(TestHelpers.DefaultIdentity);
-        var sut = NewSut(store, context);
+        var dispatcher = new TestHelpers.StubDispatchQueue();
+        var sut = NewSut(store, context, dispatchQueue: dispatcher);
 
         var result = await sut.Handle(DefaultCommand(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
+        // Status is Draft — handler no longer drives the orchestrator inline;
+        // the BackgroundService picks it up out-of-band.
         result.Value!.Status.Should().Be(ChangeProposalStatus.Draft);
         result.Value.SubmittedBy.Should().BeSameAs(TestHelpers.DefaultIdentity);
         result.Value.RequiredGates.Should().Equal("self_validation", "approval", "merge");
         (await store.GetAsync(result.Value.Id, CancellationToken.None)).Should().NotBeNull();
+        // Side-effect guard: the proposal was handed off to the worker.
+        dispatcher.Enqueued.Should().ContainSingle().Which.Should().Be(result.Value.Id);
     }
 
     [Fact]
-    public async Task Handle_DuplicateWithinIdBucket_ReturnsExistingProposalIdempotently()
+    public async Task Handle_DuplicateWithinIdBucket_ReturnsExistingProposalWithoutReEnqueueing()
     {
         var store = new InMemoryChangeProposalStore();
         var context = new TestHelpers.StubAgentContext(TestHelpers.DefaultIdentity);
-        var sut = NewSut(store, context);
+        var dispatcher = new TestHelpers.StubDispatchQueue();
+        var sut = NewSut(store, context, dispatchQueue: dispatcher);
 
         var first = await sut.Handle(DefaultCommand(), CancellationToken.None);
         var second = await sut.Handle(DefaultCommand(), CancellationToken.None);
@@ -64,35 +70,41 @@ public sealed class SubmitChangeProposalCommandHandlerTests
         first.IsSuccess.Should().BeTrue();
         second.IsSuccess.Should().BeTrue();
         second.Value!.Id.Should().Be(first.Value!.Id);
-        // Same instance returned (same store), proves no second Save occurred.
         second.Value.Should().BeSameAs(first.Value);
+        // Only the first submission enqueued — duplicates short-circuit
+        // before reaching the dispatcher.
+        dispatcher.Enqueued.Should().ContainSingle();
     }
 
     [Fact]
-    public async Task Handle_NoAmbientIdentity_ReturnsUnauthorized()
+    public async Task Handle_NoAmbientIdentity_ReturnsUnauthorizedAndDoesNotEnqueue()
     {
         var store = new InMemoryChangeProposalStore();
         var context = new TestHelpers.StubAgentContext(identity: null);
-        var sut = NewSut(store, context);
+        var dispatcher = new TestHelpers.StubDispatchQueue();
+        var sut = NewSut(store, context, dispatchQueue: dispatcher);
 
         var result = await sut.Handle(DefaultCommand(), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.FailureType.Should().Be(ResultFailureType.Unauthorized);
+        dispatcher.Enqueued.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task Handle_ResolverReturnsEmpty_ReturnsFailure()
+    public async Task Handle_ResolverReturnsEmpty_ReturnsFailureAndDoesNotEnqueue()
     {
         var store = new InMemoryChangeProposalStore();
         var context = new TestHelpers.StubAgentContext(TestHelpers.DefaultIdentity);
         var emptyResolver = new TestHelpers.StubGateResolver { ResolvedGates = [] };
-        var sut = NewSut(store, context, emptyResolver);
+        var dispatcher = new TestHelpers.StubDispatchQueue();
+        var sut = NewSut(store, context, emptyResolver, dispatchQueue: dispatcher);
 
         var result = await sut.Handle(DefaultCommand(), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.Errors.Should().ContainSingle().Which.Should().Contain("empty gate list");
+        dispatcher.Enqueued.Should().BeEmpty();
     }
 
     [Fact]
@@ -110,41 +122,21 @@ public sealed class SubmitChangeProposalCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_PipelineDisabled_ReturnsForbidden()
+    public async Task Handle_PipelineDisabled_ReturnsForbiddenAndDoesNotEnqueue()
     {
         // The pipeline master switch is the first guard in Submit; a disabled
-        // pipeline must reject before doing anything (no Save, no orchestrator).
+        // pipeline must reject before doing anything (no Save, no Enqueue).
         var store = new InMemoryChangeProposalStore();
         var context = new TestHelpers.StubAgentContext(TestHelpers.DefaultIdentity);
-        var sut = NewSut(store, context, config: TestHelpers.DisabledConfigMonitor());
+        var dispatcher = new TestHelpers.StubDispatchQueue();
+        var sut = NewSut(store, context, config: TestHelpers.DisabledConfigMonitor(), dispatchQueue: dispatcher);
 
         var result = await sut.Handle(DefaultCommand(), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
         result.FailureType.Should().Be(ResultFailureType.Forbidden);
         result.Errors.Should().ContainSingle().Which.Should().Contain("disabled");
-        // Side-effect guard: no proposal should have been persisted.
         store.Count.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task Handle_OrchestratorReturnsNull_ReturnsNotFoundInsteadOfStaleDraft()
-    {
-        // Race window: the orchestrator returns null only when the store loses
-        // the proposal between our Save and its Get. Surface as NotFound so the
-        // caller doesn't get a stale Draft snapshot pretending the pipeline ran.
-        var store = new InMemoryChangeProposalStore();
-        var context = new TestHelpers.StubAgentContext(TestHelpers.DefaultIdentity);
-        // Orchestrator with no pass-through store → ProcessAsync returns null
-        // even though the handler successfully Saved.
-        var orchestrator = new TestHelpers.StubOrchestrator(storeForPassThrough: null);
-        var sut = NewSut(store, context, orchestrator: orchestrator);
-
-        var result = await sut.Handle(DefaultCommand(), CancellationToken.None);
-
-        result.IsSuccess.Should().BeFalse();
-        result.FailureType.Should().Be(ResultFailureType.NotFound);
-        result.Errors.Should().ContainSingle().Which.Should().Contain("deleted before");
-        orchestrator.InvocationCount.Should().Be(1);
+        dispatcher.Enqueued.Should().BeEmpty();
     }
 }
