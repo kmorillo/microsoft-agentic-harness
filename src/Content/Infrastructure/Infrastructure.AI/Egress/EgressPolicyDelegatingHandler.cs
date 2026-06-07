@@ -130,8 +130,14 @@ public sealed class EgressPolicyDelegatingHandler : DelegatingHandler
 
     private IEgressPolicy ResolvePolicy(AgentIdentity identity)
     {
-        var requestServices = _ambientScope.Current ?? _rootServices;
-        var resolver = requestServices.GetRequiredService<IEgressPolicyResolver>();
+        // Resolver is registered as a singleton in the root container — prefer
+        // the root provider so the lookup succeeds even when the ambient
+        // request scope is a narrow fake (test fixtures) or a scoped provider
+        // that doesn't carry the singleton.
+        var resolver = _rootServices.GetService<IEgressPolicyResolver>()
+            ?? _ambientScope.Current?.GetService<IEgressPolicyResolver>()
+            ?? throw new InvalidOperationException(
+                "No IEgressPolicyResolver registered. Call services.RegisterEgressServices() during DI composition.");
         return resolver.ResolveFor(identity);
     }
 
