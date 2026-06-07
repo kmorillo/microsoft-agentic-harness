@@ -58,17 +58,67 @@ public sealed class ChangeProposalOrchestratorTests : IDisposable
     }
 
     [Fact]
-    public async Task ProcessAsync_DraftWithValidationPassAndApprovalGate_TransitionsToAwaitingApproval()
+    public async Task ProcessAsync_DraftWithValidationPassAndApprovalDefers_TransitionsToAwaitingApproval()
     {
         var proposal = TestProposals.NewProposal();
         await _store.SaveAsync(proposal, CancellationToken.None);
 
-        var sut = BuildSut(new TestProposals.StubGate(WellKnownGateKeys.SelfValidation, GateResult.Pass()));
+        var sut = BuildSut(
+            new TestProposals.StubGate(WellKnownGateKeys.SelfValidation, GateResult.Pass()),
+            new TestProposals.StubGate(WellKnownGateKeys.Approval, GateResult.Defer("queued for human", TimeSpan.FromMinutes(5))));
 
         var result = await sut.ProcessAsync(proposal.Id, OrchestratorMode.Live, CancellationToken.None);
 
         result.Should().NotBeNull();
         result!.Status.Should().Be(ChangeProposalStatus.AwaitingApproval);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ApprovalGatePass_TransitionsThroughApprovedToMerged()
+    {
+        var proposal = TestProposals.NewProposal();
+        await _store.SaveAsync(proposal, CancellationToken.None);
+
+        var sut = BuildSut(
+            new TestProposals.StubGate(WellKnownGateKeys.SelfValidation, GateResult.Pass()),
+            new TestProposals.StubGate(WellKnownGateKeys.Approval, GateResult.Pass("autonomy-tier auto-approve")),
+            new TestProposals.StubGate(WellKnownGateKeys.Merge, GateResult.Pass("applied")));
+
+        var result = await sut.ProcessAsync(proposal.Id, OrchestratorMode.Live, CancellationToken.None);
+
+        result!.Status.Should().Be(ChangeProposalStatus.Merged);
+        result.History.Should().Contain(h =>
+            h.GateKey == WellKnownGateKeys.Approval && h.Action == GateAction.Pass);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_ApprovalGateFail_TransitionsToRejected()
+    {
+        var proposal = TestProposals.NewProposal();
+        await _store.SaveAsync(proposal, CancellationToken.None);
+
+        var sut = BuildSut(
+            new TestProposals.StubGate(WellKnownGateKeys.SelfValidation, GateResult.Pass()),
+            new TestProposals.StubGate(WellKnownGateKeys.Approval, GateResult.Fail("blocked by policy")));
+
+        var result = await sut.ProcessAsync(proposal.Id, OrchestratorMode.Live, CancellationToken.None);
+
+        result!.Status.Should().Be(ChangeProposalStatus.Rejected);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_NoApprovalGateRegisteredButRequired_TransitionsToRejected()
+    {
+        var proposal = TestProposals.NewProposal();
+        await _store.SaveAsync(proposal, CancellationToken.None);
+
+        // SelfValidation registered, but no "approval" gate even though it's in RequiredGates.
+        var sut = BuildSut(new TestProposals.StubGate(WellKnownGateKeys.SelfValidation, GateResult.Pass()));
+
+        var result = await sut.ProcessAsync(proposal.Id, OrchestratorMode.Live, CancellationToken.None);
+
+        result!.Status.Should().Be(ChangeProposalStatus.Rejected);
+        result.History.Last().Reason.Should().Contain("approval");
     }
 
     [Fact]

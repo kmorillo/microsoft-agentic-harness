@@ -61,4 +61,14 @@ public sealed class ChangesConfig
     /// <c>GovernanceConfig.InjectionBlockThreshold</c>.
     /// </summary>
     public string PolicyBlockingSeverity { get; set; } = "High";
+
+    /// <summary>
+    /// Default approver identifiers used by the
+    /// <c>EscalationServiceApprovalRouter</c> when surfacing a proposal for
+    /// human approval. Empty list means the consumer has not configured
+    /// approvers — the router fails fast rather than silently producing an
+    /// escalation that nobody can act on. Override per-skill via a custom
+    /// <c>IChangeApprovalRouter</c> implementation.
+    /// </summary>
+    public List<string> DefaultApprovers { get; set; } = [];
 }

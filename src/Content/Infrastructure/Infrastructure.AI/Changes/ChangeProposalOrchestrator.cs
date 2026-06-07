@@ -215,12 +215,85 @@ public sealed class ChangeProposalOrchestrator : IChangeProposalOrchestrator
                 .ConfigureAwait(false);
         }
 
-        // Validation phase complete. Always route through AwaitingApproval so
-        // the state machine stays linear (Validating → AwaitingApproval → Approved).
-        // For the auto-approve case (no approval gate in RequiredGates), the
-        // orchestrator immediately follows up with a synthetic auto-approval
-        // decision so the audit trail records exactly what happened —
-        // distinguishable from a real human nod by the reviewer id "auto-approver".
+        // Validation phase complete. The transition depends on whether the
+        // proposal carries an approval gate:
+        //  - Has approval gate: invoke it; gate returns Pass / Fail / Defer.
+        //    Defer → transition to AwaitingApproval (wait for human via the
+        //    Approve/Reject CQRS commands). Pass → synthetic transit through
+        //    AwaitingApproval to Approved (auto-approve under autonomy tier).
+        //    Fail → terminal Rejected.
+        //  - No approval gate (e.g. Trivial blast radius): transit through
+        //    AwaitingApproval to Approved with a synthetic "auto-approver"
+        //    audit entry so the trail records exactly what happened.
+        if (hasApproval)
+        {
+            var attempt = ConsecutiveDeferAttempts(proposal, WellKnownGateKeys.Approval) + 1;
+            if (attempt > maxDefers)
+            {
+                return await TransitionAsync(
+                    proposal,
+                    ChangeProposalStatus.Rejected,
+                    new GateDecision
+                    {
+                        Timestamp = _time.GetUtcNow(),
+                        GateKey = WellKnownGateKeys.Approval,
+                        Action = GateAction.Fail,
+                        Reason = $"approval defer budget exhausted ({maxDefers} consecutive Defers).",
+                        DurationMs = 0
+                    },
+                    mode,
+                    correlationId,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            var (approvalDecision, terminate) = await EvaluateGateAsync(
+                proposal, WellKnownGateKeys.Approval, mode, attempt, correlationId, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (terminate)
+            {
+                return await TransitionAsync(
+                    proposal,
+                    ChangeProposalStatus.Rejected,
+                    approvalDecision,
+                    mode,
+                    correlationId,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            if (approvalDecision.Action == GateAction.Defer)
+            {
+                return await TransitionAsync(
+                    proposal,
+                    ChangeProposalStatus.AwaitingApproval,
+                    approvalDecision,
+                    mode,
+                    correlationId,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            // Pass — gate auto-approved (e.g. autonomy tier ruling under PR-4).
+            // Route through AwaitingApproval to Approved per the state machine.
+            proposal = await TransitionAsync(
+                proposal,
+                ChangeProposalStatus.AwaitingApproval,
+                approvalDecision with { Reason = $"approval gate auto-approved: {approvalDecision.Reason}" },
+                mode,
+                correlationId,
+                cancellationToken).ConfigureAwait(false);
+
+            proposal = await TransitionAsync(
+                proposal,
+                ChangeProposalStatus.Approved,
+                approvalDecision,
+                mode,
+                correlationId,
+                cancellationToken).ConfigureAwait(false);
+
+            return proposal;
+        }
+
+        // No approval gate in RequiredGates — auto-approve by omission.
         proposal = await TransitionAsync(
             proposal,
             ChangeProposalStatus.AwaitingApproval,
@@ -229,33 +302,28 @@ public sealed class ChangeProposalOrchestrator : IChangeProposalOrchestrator
                 Timestamp = _time.GetUtcNow(),
                 GateKey = "orchestrator",
                 Action = GateAction.Pass,
-                Reason = hasApproval
-                    ? "validation phase passed, awaiting approval"
-                    : "validation phase passed, awaiting auto-approval",
+                Reason = "validation phase passed, awaiting auto-approval",
                 DurationMs = 0
             },
             mode,
             correlationId,
             cancellationToken).ConfigureAwait(false);
 
-        if (!hasApproval)
-        {
-            proposal = await TransitionAsync(
-                proposal,
-                ChangeProposalStatus.Approved,
-                new GateDecision
-                {
-                    Timestamp = _time.GetUtcNow(),
-                    GateKey = WellKnownGateKeys.Approval,
-                    Action = GateAction.Pass,
-                    Reason = "auto-approved (no approval gate in RequiredGates)",
-                    ReviewerId = "auto-approver",
-                    DurationMs = 0
-                },
-                mode,
-                correlationId,
-                cancellationToken).ConfigureAwait(false);
-        }
+        proposal = await TransitionAsync(
+            proposal,
+            ChangeProposalStatus.Approved,
+            new GateDecision
+            {
+                Timestamp = _time.GetUtcNow(),
+                GateKey = WellKnownGateKeys.Approval,
+                Action = GateAction.Pass,
+                Reason = "auto-approved (no approval gate in RequiredGates)",
+                ReviewerId = "auto-approver",
+                DurationMs = 0
+            },
+            mode,
+            correlationId,
+            cancellationToken).ConfigureAwait(false);
 
         return proposal;
     }
