@@ -8,11 +8,21 @@ using Microsoft.Extensions.Options;
 namespace Application.AI.Common.CQRS.Changes.ApproveChangeProposal;
 
 /// <summary>
-/// Handles <see cref="ApproveChangeProposalCommand"/>: load the proposal, transition
-/// to <see cref="ChangeProposalStatus.Approved"/>, append the gate-history entry,
-/// persist, and inline-drive the orchestrator so the proposal advances through
-/// Merging to Merged (or Rejected on apply failure) before the command returns.
+/// Handles <see cref="ApproveChangeProposalCommand"/>: load the proposal,
+/// transition to <see cref="ChangeProposalStatus.Approved"/>, append the
+/// gate-history entry, persist, and enqueue the proposal on the
+/// <see cref="IChangeProposalDispatchQueue"/> so the background worker
+/// advances it through Merging to Merged (or Rejected on apply failure).
+/// Returns the Approved snapshot immediately; the caller polls the read
+/// model for the final outcome.
 /// </summary>
+/// <remarks>
+/// Behaviour change from inline-orchestrator: the command no longer blocks
+/// on the merge phase. A 20-second merge call against GitHub used to keep
+/// the HTTP response open the whole time; behind a tight proxy timeout the
+/// caller dropped while the orchestrator finished. The dispatch queue
+/// decouples the response from the merge wall-clock.
+/// </remarks>
 public sealed class ApproveChangeProposalCommandHandler
     : IRequestHandler<ApproveChangeProposalCommand, Result<ChangeProposal>>
 {
@@ -20,24 +30,24 @@ public sealed class ApproveChangeProposalCommandHandler
     public const string ApprovalGateKey = "approval";
 
     private readonly IChangeProposalStore _store;
-    private readonly IChangeProposalOrchestrator _orchestrator;
+    private readonly IChangeProposalDispatchQueue _dispatchQueue;
     private readonly IOptionsMonitor<AppConfig> _config;
     private readonly TimeProvider _time;
 
     /// <summary>Initializes a new <see cref="ApproveChangeProposalCommandHandler"/>.</summary>
     public ApproveChangeProposalCommandHandler(
         IChangeProposalStore store,
-        IChangeProposalOrchestrator orchestrator,
+        IChangeProposalDispatchQueue dispatchQueue,
         IOptionsMonitor<AppConfig> config,
         TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(store);
-        ArgumentNullException.ThrowIfNull(orchestrator);
+        ArgumentNullException.ThrowIfNull(dispatchQueue);
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(time);
 
         _store = store;
-        _orchestrator = orchestrator;
+        _dispatchQueue = dispatchQueue;
         _config = config;
         _time = time;
     }
@@ -56,8 +66,6 @@ public sealed class ApproveChangeProposalCommandHandler
             return Result<ChangeProposal>.Forbidden(
                 "ChangeProposal pipeline is disabled. Set AppConfig.AI.Changes.Enabled = true to enable.");
         }
-
-        var mode = ParseMode(changesConfig.DefaultMode);
 
         return await ChangeProposalCommandHelper.ApplyDecisionAsync(
             _store,
@@ -78,21 +86,14 @@ public sealed class ApproveChangeProposalCommandHandler
             targetStatus: ChangeProposalStatus.Approved,
             postSave: async (approved, ct) =>
             {
-                // Drive the orchestrator inline so Approved → Merging → Merged
-                // (or Rejected on apply failure) happens before the command
-                // returns. ProcessAsync returns null only when the store lost
-                // the proposal between our Save and its Get — surface as
-                // NotFound rather than returning the stale Approved snapshot,
-                // which would lie about the merge phase having completed.
-                var processed = await _orchestrator.ProcessAsync(approved.Id, mode, ct).ConfigureAwait(false);
-                return processed is null
-                    ? Result<ChangeProposal>.NotFound(
-                        $"ChangeProposal '{approved.Id}' was deleted before the orchestrator could process it.")
-                    : Result<ChangeProposal>.Success(processed);
+                // Hand off to the background worker for the merge phase.
+                // Approved is a transient status; the orchestrator will flip
+                // it to Merging then Merged (or Rejected on apply failure)
+                // out-of-band so this command doesn't block on the merge
+                // wall-clock.
+                await _dispatchQueue.EnqueueAsync(approved.Id, ct).ConfigureAwait(false);
+                return Result<ChangeProposal>.Success(approved);
             },
             cancellationToken: cancellationToken).ConfigureAwait(false);
     }
-
-    private static OrchestratorMode ParseMode(string raw) =>
-        Enum.TryParse<OrchestratorMode>(raw, ignoreCase: true, out var mode) ? mode : OrchestratorMode.Shadow;
 }

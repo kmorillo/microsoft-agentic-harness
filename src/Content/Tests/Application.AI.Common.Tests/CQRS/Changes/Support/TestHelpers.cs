@@ -75,6 +75,34 @@ internal static class TestHelpers
         }
     }
 
+    /// <summary>
+    /// In-memory <see cref="IChangeProposalDispatchQueue"/> stub for handler
+    /// tests. Records every enqueue so tests can assert "Submit / Approve
+    /// handed off to the background worker." Does NOT drive the orchestrator
+    /// — the dispatch-to-orchestrator path is covered by
+    /// <c>ChangeProposalBackgroundServiceTests</c> in the Infrastructure suite.
+    /// </summary>
+    public sealed class StubDispatchQueue : IChangeProposalDispatchQueue
+    {
+        public List<string> Enqueued { get; } = new();
+
+        public ValueTask EnqueueAsync(string proposalId, CancellationToken cancellationToken)
+        {
+            Enqueued.Add(proposalId);
+            return ValueTask.CompletedTask;
+        }
+
+        public async IAsyncEnumerable<string> DequeueAllAsync(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await Task.CompletedTask;
+            foreach (var id in Enqueued)
+            {
+                yield return id;
+            }
+        }
+    }
+
     public static IOptionsMonitor<AppConfig> EnabledConfigMonitor(string mode = "Live")
     {
         var cfg = new AppConfig();

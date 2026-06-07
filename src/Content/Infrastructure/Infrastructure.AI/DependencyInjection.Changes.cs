@@ -102,5 +102,14 @@ public static partial class DependencyInjection
         // approval router has no configured approvers. See
         // ChangeProposalStartupValidator for the full rule set.
         services.AddHostedService<ChangeProposalStartupValidator>();
+
+        // --- Dispatch queue + background worker ---
+        // Submit and Approve enqueue here; the background service drains and
+        // drives the orchestrator out-of-band so the command handlers don't
+        // block the HTTP request on long-running gates. Consumers requiring
+        // at-least-once delivery across host restarts replace the queue with
+        // an outbox-backed IChangeProposalDispatchQueue implementation.
+        services.AddSingleton<IChangeProposalDispatchQueue, InMemoryChangeProposalDispatchQueue>();
+        services.AddHostedService<ChangeProposalBackgroundService>();
     }
 }

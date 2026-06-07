@@ -10,16 +10,23 @@ namespace Application.AI.Common.Tests.CQRS.Changes;
 /// <summary>Handler tests for <see cref="ApproveChangeProposalCommandHandler"/>.</summary>
 public sealed class ApproveChangeProposalCommandHandlerTests
 {
-    private static ApproveChangeProposalCommandHandler NewSut(InMemoryChangeProposalStore store) =>
-        new(store, new TestHelpers.StubOrchestrator(store), TestHelpers.EnabledConfigMonitor(), TimeProvider.System);
+    private static ApproveChangeProposalCommandHandler NewSut(
+        InMemoryChangeProposalStore store,
+        TestHelpers.StubDispatchQueue? dispatcher = null) =>
+        new(
+            store,
+            dispatcher ?? new TestHelpers.StubDispatchQueue(),
+            TestHelpers.EnabledConfigMonitor(),
+            TimeProvider.System);
 
     [Fact]
-    public async Task Handle_AwaitingApproval_TransitionsToApprovedAndPersists()
+    public async Task Handle_AwaitingApproval_TransitionsToApprovedPersistsAndEnqueues()
     {
         var store = new InMemoryChangeProposalStore();
         var pending = TestHelpers.NewProposal(ChangeProposalStatus.AwaitingApproval);
         await store.SaveAsync(pending, CancellationToken.None);
-        var sut = NewSut(store);
+        var dispatcher = new TestHelpers.StubDispatchQueue();
+        var sut = NewSut(store, dispatcher);
 
         var result = await sut.Handle(
             new ApproveChangeProposalCommand
@@ -31,6 +38,8 @@ public sealed class ApproveChangeProposalCommandHandlerTests
             CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
+        // Status is Approved — handler transitions then enqueues; the
+        // merge phase runs out-of-band in the BackgroundService.
         result.Value!.Status.Should().Be(ChangeProposalStatus.Approved);
         result.Value.History.Should().ContainSingle();
         result.Value.History[0].GateKey.Should().Be("approval");
@@ -40,13 +49,17 @@ public sealed class ApproveChangeProposalCommandHandlerTests
 
         (await store.GetAsync(pending.Id, CancellationToken.None))!
             .Status.Should().Be(ChangeProposalStatus.Approved);
+
+        // Side-effect guard: the proposal was queued for merge-phase dispatch.
+        dispatcher.Enqueued.Should().ContainSingle().Which.Should().Be(pending.Id);
     }
 
     [Fact]
-    public async Task Handle_UnknownProposal_ReturnsNotFound()
+    public async Task Handle_UnknownProposal_ReturnsNotFoundAndDoesNotEnqueue()
     {
         var store = new InMemoryChangeProposalStore();
-        var sut = NewSut(store);
+        var dispatcher = new TestHelpers.StubDispatchQueue();
+        var sut = NewSut(store, dispatcher);
 
         var result = await sut.Handle(
             new ApproveChangeProposalCommand { ProposalId = "missing", ReviewerId = "user-42" },
@@ -54,6 +67,7 @@ public sealed class ApproveChangeProposalCommandHandlerTests
 
         result.IsSuccess.Should().BeFalse();
         result.FailureType.Should().Be(ResultFailureType.NotFound);
+        dispatcher.Enqueued.Should().BeEmpty();
     }
 
     [Theory]
@@ -64,32 +78,32 @@ public sealed class ApproveChangeProposalCommandHandlerTests
     [InlineData(ChangeProposalStatus.Merged)]
     [InlineData(ChangeProposalStatus.Rejected)]
     [InlineData(ChangeProposalStatus.Cancelled)]
-    public async Task Handle_WrongStatus_ReturnsFailure(ChangeProposalStatus status)
+    public async Task Handle_WrongStatus_ReturnsFailureAndDoesNotEnqueue(ChangeProposalStatus status)
     {
         var store = new InMemoryChangeProposalStore();
         var proposal = TestHelpers.NewProposal(status);
         await store.SaveAsync(proposal, CancellationToken.None);
-        var sut = NewSut(store);
+        var dispatcher = new TestHelpers.StubDispatchQueue();
+        var sut = NewSut(store, dispatcher);
 
         var result = await sut.Handle(
             new ApproveChangeProposalCommand { ProposalId = proposal.Id, ReviewerId = "user-42" },
             CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
+        dispatcher.Enqueued.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task Handle_PipelineDisabled_ReturnsForbidden()
+    public async Task Handle_PipelineDisabled_ReturnsForbiddenAndDoesNotEnqueue()
     {
-        // Disabled pipeline must reject before touching the store or
-        // transitioning state; a proposal saved in AwaitingApproval before
-        // Enabled flipped off should NOT be approvable by this command.
         var store = new InMemoryChangeProposalStore();
         var pending = TestHelpers.NewProposal(ChangeProposalStatus.AwaitingApproval);
         await store.SaveAsync(pending, CancellationToken.None);
+        var dispatcher = new TestHelpers.StubDispatchQueue();
         var sut = new ApproveChangeProposalCommandHandler(
             store,
-            new TestHelpers.StubOrchestrator(store),
+            dispatcher,
             TestHelpers.DisabledConfigMonitor(),
             TimeProvider.System);
 
@@ -100,31 +114,8 @@ public sealed class ApproveChangeProposalCommandHandlerTests
         result.IsSuccess.Should().BeFalse();
         result.FailureType.Should().Be(ResultFailureType.Forbidden);
         result.Errors.Should().ContainSingle().Which.Should().Contain("disabled");
-        // Side-effect guard: proposal status should be unchanged.
+        dispatcher.Enqueued.Should().BeEmpty();
         (await store.GetAsync(pending.Id, CancellationToken.None))!
             .Status.Should().Be(ChangeProposalStatus.AwaitingApproval);
-    }
-
-    [Fact]
-    public async Task Handle_OrchestratorReturnsNull_ReturnsNotFoundInsteadOfStaleApproved()
-    {
-        // Race: orchestrator returns null when the store lost the proposal
-        // between Approve's Save and the orchestrator's Get. Don't return the
-        // stale Approved snapshot — surface as NotFound.
-        var store = new InMemoryChangeProposalStore();
-        var pending = TestHelpers.NewProposal(ChangeProposalStatus.AwaitingApproval);
-        await store.SaveAsync(pending, CancellationToken.None);
-        var orchestrator = new TestHelpers.StubOrchestrator(storeForPassThrough: null);
-        var sut = new ApproveChangeProposalCommandHandler(
-            store, orchestrator, TestHelpers.EnabledConfigMonitor(), TimeProvider.System);
-
-        var result = await sut.Handle(
-            new ApproveChangeProposalCommand { ProposalId = pending.Id, ReviewerId = "user-42" },
-            CancellationToken.None);
-
-        result.IsSuccess.Should().BeFalse();
-        result.FailureType.Should().Be(ResultFailureType.NotFound);
-        result.Errors.Should().ContainSingle().Which.Should().Contain("deleted before");
-        orchestrator.InvocationCount.Should().Be(1);
     }
 }

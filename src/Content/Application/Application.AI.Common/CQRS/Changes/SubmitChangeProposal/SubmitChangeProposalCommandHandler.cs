@@ -10,19 +10,42 @@ using Microsoft.Extensions.Options;
 namespace Application.AI.Common.CQRS.Changes.SubmitChangeProposal;
 
 /// <summary>
-/// Handles <see cref="SubmitChangeProposalCommand"/>: resolves required gates, derives
-/// the deterministic id, persists the proposal in Draft, and (when the pipeline is
-/// Enabled) inline-drives the orchestrator so the proposal lands at AwaitingApproval,
-/// Merged, or Rejected before the command returns. Idempotent — a duplicate submission
-/// within the same id-bucket returns the prior proposal verbatim instead of creating
-/// a parallel pipeline.
+/// Handles <see cref="SubmitChangeProposalCommand"/>: resolves required gates,
+/// derives the deterministic id, persists the proposal in Draft, and enqueues
+/// it on the <see cref="IChangeProposalDispatchQueue"/> for asynchronous
+/// orchestrator dispatch. Returns the Draft snapshot immediately — the caller
+/// polls <c>GetChangeProposalQueryHandler</c> (or subscribes to a future
+/// outcome notification stream) for the post-pipeline state. Idempotent: a
+/// duplicate submission within the same id-bucket returns the prior proposal
+/// verbatim without re-enqueueing.
 /// </summary>
+/// <remarks>
+/// <para>
+/// Behaviour change from inline-orchestrator: the command no longer blocks
+/// until the pipeline reaches a quiescent status. A 30-second policy gate
+/// and a 20-second merge gate used to keep the HTTP request open for ~50
+/// seconds; behind a load-balancer with a tight idle timeout, the response
+/// dropped while the orchestrator finished server-side and the caller had
+/// no way to learn the outcome. The dispatcher decouples the request from
+/// the pipeline's wall-clock cost.
+/// </para>
+/// <para>
+/// Crash semantics. Save-then-Enqueue: a host crash between the two leaves
+/// the proposal at Draft on disk; a re-Submit hits the idempotency check
+/// and re-enqueues. With the default in-memory dispatch queue, ids enqueued
+/// before a crash are lost — same loss profile as the default in-memory
+/// store, which the startup validator forces consumers to explicitly opt
+/// in to outside Development. Consumers requiring at-least-once delivery
+/// wire an outbox-backed <see cref="IChangeProposalDispatchQueue"/>; the
+/// seam is here.
+/// </para>
+/// </remarks>
 public sealed class SubmitChangeProposalCommandHandler
     : IRequestHandler<SubmitChangeProposalCommand, Result<ChangeProposal>>
 {
     private readonly IChangeProposalStore _store;
     private readonly IChangeProposalGateResolver _gateResolver;
-    private readonly IChangeProposalOrchestrator _orchestrator;
+    private readonly IChangeProposalDispatchQueue _dispatchQueue;
     private readonly IAgentExecutionContext _agentContext;
     private readonly IOptionsMonitor<AppConfig> _config;
     private readonly TimeProvider _time;
@@ -32,7 +55,7 @@ public sealed class SubmitChangeProposalCommandHandler
     public SubmitChangeProposalCommandHandler(
         IChangeProposalStore store,
         IChangeProposalGateResolver gateResolver,
-        IChangeProposalOrchestrator orchestrator,
+        IChangeProposalDispatchQueue dispatchQueue,
         IAgentExecutionContext agentContext,
         IOptionsMonitor<AppConfig> config,
         TimeProvider time,
@@ -40,7 +63,7 @@ public sealed class SubmitChangeProposalCommandHandler
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(gateResolver);
-        ArgumentNullException.ThrowIfNull(orchestrator);
+        ArgumentNullException.ThrowIfNull(dispatchQueue);
         ArgumentNullException.ThrowIfNull(agentContext);
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(time);
@@ -48,7 +71,7 @@ public sealed class SubmitChangeProposalCommandHandler
 
         _store = store;
         _gateResolver = gateResolver;
-        _orchestrator = orchestrator;
+        _dispatchQueue = dispatchQueue;
         _agentContext = agentContext;
         _config = config;
         _time = time;
@@ -108,26 +131,10 @@ public sealed class SubmitChangeProposalCommandHandler
 
         await _store.SaveAsync(proposal, cancellationToken).ConfigureAwait(false);
 
-        // Drive the orchestrator inline so the command returns the post-pipeline
-        // proposal (Validating-deferred, AwaitingApproval, Approved, Merging,
-        // Merged, or Rejected depending on what the gates decide).
-        var mode = ParseMode(changesConfig.DefaultMode);
-        var processed = await _orchestrator.ProcessAsync(proposal.Id, mode, cancellationToken).ConfigureAwait(false);
-        if (processed is null)
-        {
-            // ProcessAsync returns null only when the store lost the proposal
-            // between our Save and its Get — a tiny race window with an external
-            // deletion. Surface as NotFound rather than returning the stale Draft
-            // snapshot, which would lie about the pipeline having advanced.
-            _logger.LogWarning(
-                "Orchestrator returned null for just-saved ChangeProposal {ProposalId}; treating as NotFound.",
-                proposal.Id);
-            return Result<ChangeProposal>.NotFound(
-                $"ChangeProposal '{proposal.Id}' was deleted before the orchestrator could process it.");
-        }
-        return Result<ChangeProposal>.Success(processed);
+        // Hand off to the background worker. The orchestrator runs out-of-band;
+        // this command returns the Draft snapshot, and the caller polls /
+        // subscribes for the post-pipeline status.
+        await _dispatchQueue.EnqueueAsync(proposal.Id, cancellationToken).ConfigureAwait(false);
+        return Result<ChangeProposal>.Success(proposal);
     }
-
-    private static OrchestratorMode ParseMode(string raw) =>
-        Enum.TryParse<OrchestratorMode>(raw, ignoreCase: true, out var mode) ? mode : OrchestratorMode.Shadow;
 }
