@@ -4,6 +4,7 @@ using Domain.Common.Config.AI.ContextManagement;
 using Domain.Common.Config.AI.DriftDetection;
 using Domain.Common.Config.AI.Hooks;
 using Domain.Common.Config.AI.Identity;
+using Domain.Common.Config.AI.IncidentResponse;
 using Domain.Common.Config.AI.Learnings;
 using Domain.Common.Config.AI.MCP;
 using Domain.Common.Config.AI.Orchestration;
@@ -46,7 +47,8 @@ namespace Domain.Common.Config.AI;
 /// ├── Sandbox           — Sandbox execution: resource limits, isolation, containers
 /// ├── ToolOutputCompression — Tool output compression: thresholds, LLM fallback, strategies
 /// ├── Plugins              — Local plugin declarations for external skill/MCP discovery
-/// └── Egress               — Per-skill outbound egress allowlist + SSRF defense
+/// ├── Egress               — Per-skill outbound egress allowlist + SSRF defense
+/// └── IncidentResponse     — Named incident-response plans (skill sets, autonomy overrides, gate overlays)
 /// </code>
 /// </para>
 /// </remarks>
@@ -214,4 +216,11 @@ public class AIConfig
     /// alongside the per-skill hostname allowlist.
     /// </summary>
     public EgressConfig Egress { get; set; } = new();
+
+    /// <summary>
+    /// Incident-response plan registry (PR-5). Empty by default — the resolver
+    /// returns <c>null</c> for every incident type so the orchestrator
+    /// behaves identically to a host with no incident concept at all.
+    /// </summary>
+    public IncidentResponsePlanConfig IncidentResponse { get; set; } = new();
 }

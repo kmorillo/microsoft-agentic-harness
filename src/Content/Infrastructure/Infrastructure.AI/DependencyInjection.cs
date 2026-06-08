@@ -56,6 +56,7 @@ namespace Infrastructure.AI;
 ///   <item><description><c>DependencyInjection.Planner.cs</c> — planner DB, step executors, sandbox</description></item>
 ///   <item><description><c>DependencyInjection.Quality.cs</c> — drift detection and learnings</description></item>
 ///   <item><description><c>DependencyInjection.Egress.cs</c> — per-skill egress policy + AntiSSRF</description></item>
+///   <item><description><c>DependencyInjection.IncidentResponse.cs</c> — incident-response plan registry + ambient context</description></item>
 /// </list>
 /// </para>
 /// Called from the Presentation composition root after Application dependencies:
@@ -209,6 +210,11 @@ public static partial class DependencyInjection
         //     AppConfig.AI.Egress.Enabled. ---
 
         RegisterEgressServices(services);
+
+        // --- Incident-response plan registry (PR-5). Inert until a consumer
+        //     declares plans under AppConfig.AI.IncidentResponse. ---
+
+        RegisterIncidentResponseServices(services);
 
         // --- Governance (permissions, escalation, resilience) ---
 
