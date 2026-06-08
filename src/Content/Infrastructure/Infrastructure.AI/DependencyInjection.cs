@@ -18,6 +18,7 @@ using Infrastructure.AI.Agents;
 using Infrastructure.AI.Audit;
 using Infrastructure.AI.Compaction;
 using Infrastructure.AI.Compaction.Strategies;
+using Infrastructure.AI.Tools.GitOps;
 using Infrastructure.AI.Tools.Workspace;
 using Infrastructure.AI.Compression;
 using Infrastructure.AI.Compression.Strategies;
@@ -125,6 +126,12 @@ public static partial class DependencyInjection
         // working-copy path. Registered unconditionally so any consumer that enables the
         // workspace-skill plugin sees the keyed-DI tool entries available.
         services.AddWorkspaceSkillTools();
+
+        // GitOps skill pack — detect_drift, cluster_health, propose_remediation (submits
+        // ChangeProposal), k8sgpt_analyze. Flux + Argo CD controllers behind IGitOpsController;
+        // the active one is selected by AppConfig.AI.GitOps.ActiveController. Registered
+        // unconditionally; GitOpsStartupValidator fails the host loud when Enabled with bad config.
+        services.AddGitOpsSkillTools();
 
         // Chat client factory — creates IChatClient from Azure OpenAI / OpenAI / AI Inference / Persistent Agents
         services.AddSingleton<IChatClientFactory, ChatClientFactory>();
