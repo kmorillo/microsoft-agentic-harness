@@ -107,11 +107,15 @@ public sealed class K8sGptMcpClient : IK8sGptMcpClient
             return new K8sGptAnalysisResult { CapturedAt = capturedAt };
         }
 
-        // K8sGPT analyze responses are JSON; the MCP layer typically returns
-        // them as a string or JsonElement depending on transport.
+        // K8sGPT analyze responses are JSON; the MCP layer returns them as a
+        // string or a JsonElement depending on transport. Microsoft.Extensions.AI
+        // commonly hands back a JsonElement of kind String whose value IS the
+        // JSON payload — unwrap that to the inner string so it parses to an
+        // object rather than a JSON string literal.
         var json = raw switch
         {
             string s => s,
+            JsonElement { ValueKind: JsonValueKind.String } strEl => strEl.GetString() ?? string.Empty,
             JsonElement el => el.GetRawText(),
             _ => JsonSerializer.Serialize(raw)
         };
@@ -120,6 +124,17 @@ public sealed class K8sGptMcpClient : IK8sGptMcpClient
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
+
+            // Defensive: a non-object root (bare string/number/array) carries no
+            // results/explanation shape — treat it as an empty analysis rather
+            // than throwing on the property lookups below.
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                _logger.LogWarning(
+                    "K8sGPT response parsed to {ValueKind}, expected an object; returning empty result.",
+                    root.ValueKind);
+                return new K8sGptAnalysisResult { CapturedAt = capturedAt };
+            }
 
             var findings = new List<K8sGptFinding>();
             if (root.TryGetProperty("results", out var resultsEl) && resultsEl.ValueKind == JsonValueKind.Array)
