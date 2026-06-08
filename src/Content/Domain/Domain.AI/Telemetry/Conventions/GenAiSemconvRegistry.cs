@@ -1,4 +1,4 @@
-namespace Domain.AI.Telemetry.Conventions;
+﻿namespace Domain.AI.Telemetry.Conventions;
 
 /// <summary>
 /// Single registry of OpenTelemetry GenAI semantic convention attribute and
@@ -9,7 +9,7 @@ namespace Domain.AI.Telemetry.Conventions;
 /// <para>
 /// This file is the authoritative entry point for the OTel <c>gen_ai.*</c>
 /// vocabulary. New code MUST reference constants from here (or from the
-/// per-domain conventions files it re-exports) — never inline a <c>gen_ai.*</c>
+/// per-domain conventions files it re-exports) â€” never inline a <c>gen_ai.*</c>
 /// string literal anywhere else.
 /// </para>
 /// <para>
@@ -29,9 +29,9 @@ namespace Domain.AI.Telemetry.Conventions;
 /// </remarks>
 public static class GenAiSemconvRegistry
 {
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // System / provider identity
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
     /// Provider identifier the request was dispatched to (effective provider,
@@ -53,9 +53,9 @@ public static class GenAiSemconvRegistry
     /// </summary>
     public const string SystemIntended = "gen_ai.harness.system.intended";
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Operation
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
     /// Operation kind. Re-exported from <see cref="ToolConventions.GenAiOperationName"/>.
@@ -94,9 +94,9 @@ public static class GenAiSemconvRegistry
     /// </summary>
     public const string OperationInvokeAgent = ToolConventions.InvokeAgentOperation;
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Request
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
     /// Requested model identifier. Re-exported from
@@ -119,9 +119,9 @@ public static class GenAiSemconvRegistry
     /// <summary>Stop sequences for the request.</summary>
     public const string RequestStopSequences = "gen_ai.request.stop_sequences";
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Response
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>Provider response id.</summary>
     public const string ResponseId = "gen_ai.response.id";
@@ -132,9 +132,9 @@ public static class GenAiSemconvRegistry
     /// <summary>Array of finish reasons.</summary>
     public const string ResponseFinishReasons = "gen_ai.response.finish_reasons";
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Token usage (re-exported)
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>Re-exported from <see cref="TokenConventions.GenAiInputTokens"/>.</summary>
     public const string UsageInputTokens = TokenConventions.GenAiInputTokens;
@@ -148,9 +148,9 @@ public static class GenAiSemconvRegistry
     /// <summary>Re-exported from <see cref="TokenConventions.GenAiCacheWriteTokens"/>.</summary>
     public const string UsageCacheCreationInputTokens = TokenConventions.GenAiCacheWriteTokens;
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Agent (multi-skill harness identity)
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>Agent display name.</summary>
     public const string AgentName = "gen_ai.agent.name";
@@ -181,9 +181,9 @@ public static class GenAiSemconvRegistry
     /// </summary>
     public const string LegacyConversationId = AgentConventions.ConversationId;
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Errors
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
     /// Error type attribute used by gen_ai spans. Per OTel SemConv this is
@@ -193,9 +193,9 @@ public static class GenAiSemconvRegistry
     /// </summary>
     public const string ErrorType = "error.type";
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Tools (re-exported, with new keys for parts SemConv adds)
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>Re-exported from <see cref="ToolConventions.GenAiToolName"/>.</summary>
     public const string ToolName = ToolConventions.GenAiToolName;
@@ -215,9 +215,9 @@ public static class GenAiSemconvRegistry
     /// <summary>Re-exported from <see cref="ToolConventions.ToolCallResult"/>.</summary>
     public const string ToolCallResult = ToolConventions.ToolCallResult;
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Output
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>
     /// Output content type. Standard values: <c>text</c>, <c>json</c>,
@@ -225,9 +225,9 @@ public static class GenAiSemconvRegistry
     /// </summary>
     public const string OutputType = "gen_ai.output.type";
 
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Harness-vendored extensions (under gen_ai.harness.*)
-    // ─────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     /// <summary>Skill currently executing within a multi-skill compose. Harness-vendored.</summary>
     public const string HarnessSkillName = "gen_ai.harness.skill.name";
@@ -247,4 +247,50 @@ public static class GenAiSemconvRegistry
     /// Re-exported from <see cref="ToolConventions.HarnessIteration"/>. Harness-vendored.
     /// </summary>
     public const string HarnessIteration = ToolConventions.HarnessIteration;
+
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Magentic orchestration (re-exported from MagenticConventions)
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    /// <summary>
+    /// Operation value used on the root Magentic workflow span.
+    /// Re-exported from <see cref="MagenticConventions.OperationInvokeWorkflow"/>.
+    /// </summary>
+    public const string OperationInvokeWorkflow = MagenticConventions.OperationInvokeWorkflow;
+
+    /// <summary>
+    /// Workflow name attribute on the root Magentic workflow span.
+    /// Re-exported from <see cref="MagenticConventions.WorkflowName"/>.
+    /// </summary>
+    public const string WorkflowName = MagenticConventions.WorkflowName;
+
+    /// <summary>
+    /// Magentic orchestration role discriminator (<c>manager</c> | <c>participant</c>).
+    /// Re-exported from <see cref="MagenticConventions.Role"/>.
+    /// </summary>
+    public const string MagenticRole = MagenticConventions.Role;
+
+    /// <summary>
+    /// Monotonic Magentic plan version on the manager span.
+    /// Re-exported from <see cref="MagenticConventions.PlanVersion"/>.
+    /// </summary>
+    public const string MagenticPlanVersion = MagenticConventions.PlanVersion;
+
+    /// <summary>
+    /// Magentic round number on the per-round span.
+    /// Re-exported from <see cref="MagenticConventions.RoundNumber"/>.
+    /// </summary>
+    public const string MagenticRoundNumber = MagenticConventions.RoundNumber;
+
+    /// <summary>
+    /// Magentic reset number on the reset span.
+    /// Re-exported from <see cref="MagenticConventions.ResetNumber"/>.
+    /// </summary>
+    public const string MagenticResetNumber = MagenticConventions.ResetNumber;
+
+    /// <summary>
+    /// Name of the OTel <c>ActivitySource</c> for Magentic orchestration spans.
+    /// Re-exported from <see cref="MagenticConventions.ActivitySourceName"/>.
+    /// </summary>
+    public const string MagenticActivitySourceName = MagenticConventions.ActivitySourceName;
 }
