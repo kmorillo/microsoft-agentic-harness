@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using Application.AI.Common.Interfaces.Changes;
+using Application.AI.Common.Interfaces.IncidentResponse;
 using Domain.AI.Changes;
 using Domain.Common.Config;
+using Domain.Common.Config.AI.IncidentResponse;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -36,15 +38,38 @@ public sealed class ChangeProposalOrchestrator : IChangeProposalOrchestrator
     private readonly TimeProvider _time;
     private readonly IOptionsMonitor<AppConfig> _config;
     private readonly ILogger<ChangeProposalOrchestrator> _logger;
+    private readonly IIncidentContext? _incidentContext;
+    private readonly IIncidentResponsePlanResolver? _incidentResolver;
 
     /// <summary>Initializes a new <see cref="ChangeProposalOrchestrator"/>.</summary>
+    /// <param name="store">Proposal persistence.</param>
+    /// <param name="audit">Append-only audit sink for gate decisions.</param>
+    /// <param name="services">Service provider used to resolve gates by key.</param>
+    /// <param name="time">Time provider for audit timestamps.</param>
+    /// <param name="config">Application configuration (defer budget, etc.).</param>
+    /// <param name="logger">Diagnostic logger.</param>
+    /// <param name="incidentContext">
+    /// Optional (PR-5) — when supplied alongside <paramref name="incidentResolver"/>,
+    /// the orchestrator overlays any active incident plan's
+    /// <see cref="IncidentResponsePlan.AdditionalRequiredGates"/> on every
+    /// proposal it processes. Null in tests that exercise the orchestrator in
+    /// isolation; non-null when registered through DI.
+    /// </param>
+    /// <param name="incidentResolver">
+    /// Optional (PR-5) — resolves the incident type carried by
+    /// <paramref name="incidentContext"/> to the active plan. Null in tests
+    /// that exercise the orchestrator in isolation; non-null when registered
+    /// through DI.
+    /// </param>
     public ChangeProposalOrchestrator(
         IChangeProposalStore store,
         IChangeAuditWriter audit,
         IServiceProvider services,
         TimeProvider time,
         IOptionsMonitor<AppConfig> config,
-        ILogger<ChangeProposalOrchestrator> logger)
+        ILogger<ChangeProposalOrchestrator> logger,
+        IIncidentContext? incidentContext = null,
+        IIncidentResponsePlanResolver? incidentResolver = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(audit);
@@ -59,6 +84,8 @@ public sealed class ChangeProposalOrchestrator : IChangeProposalOrchestrator
         _time = time;
         _config = config;
         _logger = logger;
+        _incidentContext = incidentContext;
+        _incidentResolver = incidentResolver;
     }
 
     /// <inheritdoc />
@@ -84,13 +111,84 @@ public sealed class ChangeProposalOrchestrator : IChangeProposalOrchestrator
         var correlationId = Guid.NewGuid().ToString("N");
         var maxDefers = Math.Max(1, _config.CurrentValue.AI.Changes.MaxConsecutiveDefers);
 
-        proposal = await AdvanceFromCurrentStatusAsync(proposal, mode, correlationId, maxDefers, cancellationToken)
+        // PR-5: compute the effective required gates *once* per ProcessAsync
+        // invocation. The proposal's stored RequiredGates is never mutated;
+        // the orchestrator evaluates against the overlay at runtime so the
+        // audit trail records both the original shape and the incident-driven
+        // additions. The overlay marker is emitted before the first phase
+        // transition so reviewers see the augment alongside the orchestrator's
+        // "picked up Draft" line.
+        var (effectiveGates, activePlan) = ResolveEffectiveGates(proposal);
+        if (activePlan is not null && effectiveGates.Count != proposal.RequiredGates.Count)
+        {
+            proposal = await AppendHistoryAndSaveAsync(
+                proposal,
+                new GateDecision
+                {
+                    Timestamp = _time.GetUtcNow(),
+                    GateKey = "incident_overlay",
+                    Action = GateAction.Pass,
+                    Reason = $"incident plan '{activePlan.Name}' overlaid gates: " +
+                             string.Join(",", activePlan.AdditionalRequiredGates),
+                    DurationMs = 0
+                },
+                mode,
+                correlationId,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        proposal = await AdvanceFromCurrentStatusAsync(proposal, effectiveGates, mode, correlationId, maxDefers, cancellationToken)
             .ConfigureAwait(false);
         return proposal;
     }
 
+    /// <summary>
+    /// Compute the effective required-gate list for this orchestrator run by
+    /// overlaying any active incident plan's
+    /// <see cref="IncidentResponsePlan.AdditionalRequiredGates"/> on the
+    /// proposal's stored <c>RequiredGates</c>. Returns the proposal's original
+    /// list (and a null plan) when no incident is active, the resolver is not
+    /// registered, or the matching plan has no additional gates.
+    /// </summary>
+    /// <remarks>
+    /// Order preservation: the proposal's original gates come first in their
+    /// declared order; incident-added gates that are NOT already present in
+    /// the proposal's list are appended in the plan's declared order. Gates
+    /// already in the proposal are silently de-duplicated — the orchestrator
+    /// never runs the same gate twice in one phase.
+    /// </remarks>
+    private (IReadOnlyList<string> EffectiveGates, IncidentResponsePlan? Plan) ResolveEffectiveGates(
+        ChangeProposal proposal)
+    {
+        if (_incidentContext is null || _incidentResolver is null)
+        {
+            return (proposal.RequiredGates, null);
+        }
+
+        var incidentType = _incidentContext.CurrentIncidentType;
+        var plan = _incidentResolver.ResolveFor(incidentType);
+        if (plan is null || plan.AdditionalRequiredGates.Count == 0)
+        {
+            return (proposal.RequiredGates, plan);
+        }
+
+        var existing = new HashSet<string>(proposal.RequiredGates, StringComparer.Ordinal);
+        var effective = new List<string>(proposal.RequiredGates.Count + plan.AdditionalRequiredGates.Count);
+        effective.AddRange(proposal.RequiredGates);
+        for (var i = 0; i < plan.AdditionalRequiredGates.Count; i++)
+        {
+            var extra = plan.AdditionalRequiredGates[i];
+            if (existing.Add(extra))
+            {
+                effective.Add(extra);
+            }
+        }
+        return (effective, plan);
+    }
+
     private async Task<ChangeProposal> AdvanceFromCurrentStatusAsync(
         ChangeProposal proposal,
+        IReadOnlyList<string> effectiveGates,
         OrchestratorMode mode,
         string correlationId,
         int maxDefers,
@@ -118,7 +216,7 @@ public sealed class ChangeProposalOrchestrator : IChangeProposalOrchestrator
 
         if (proposal.Status == ChangeProposalStatus.Validating)
         {
-            proposal = await RunValidationPhaseAsync(proposal, mode, correlationId, maxDefers, cancellationToken)
+            proposal = await RunValidationPhaseAsync(proposal, effectiveGates, mode, correlationId, maxDefers, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -143,7 +241,7 @@ public sealed class ChangeProposalOrchestrator : IChangeProposalOrchestrator
 
         if (proposal.Status == ChangeProposalStatus.Merging)
         {
-            proposal = await RunMergePhaseAsync(proposal, mode, correlationId, maxDefers, cancellationToken)
+            proposal = await RunMergePhaseAsync(proposal, effectiveGates, mode, correlationId, maxDefers, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -152,13 +250,14 @@ public sealed class ChangeProposalOrchestrator : IChangeProposalOrchestrator
 
     private async Task<ChangeProposal> RunValidationPhaseAsync(
         ChangeProposal proposal,
+        IReadOnlyList<string> effectiveGates,
         OrchestratorMode mode,
         string correlationId,
         int maxDefers,
         CancellationToken cancellationToken)
     {
-        var validationGates = GatesForPhase(proposal.RequiredGates, GatePhase.Validation);
-        var approvalGateKey = FindApprovalGateKey(proposal.RequiredGates);
+        var validationGates = GatesForPhase(effectiveGates, GatePhase.Validation);
+        var approvalGateKey = FindApprovalGateKey(effectiveGates);
 
         var outcome = await RunGatesAsync(
             proposal,
@@ -289,12 +388,13 @@ public sealed class ChangeProposalOrchestrator : IChangeProposalOrchestrator
 
     private async Task<ChangeProposal> RunMergePhaseAsync(
         ChangeProposal proposal,
+        IReadOnlyList<string> effectiveGates,
         OrchestratorMode mode,
         string correlationId,
         int maxDefers,
         CancellationToken cancellationToken)
     {
-        var mergeGates = GatesForPhase(proposal.RequiredGates, GatePhase.Merge);
+        var mergeGates = GatesForPhase(effectiveGates, GatePhase.Merge);
 
         // Merging does not legally self-loop in the state machine, so a Defer
         // records history without a status transition (selfLoopOnDefer: null).
