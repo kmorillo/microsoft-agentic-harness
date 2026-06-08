@@ -1,0 +1,21 @@
+{
+  "name": "iac-skill",
+  "description": "Infrastructure-as-code skill pack: scaffold Terraform/Bicep modules, validate and plan them, and security-scan with Checkov, tfsec, and ARM-TTK. Plan/scan only — the skill never deploys; all fixes flow through ChangeProposal and the gate pipeline.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Microsoft Agentic Harness",
+    "url": "https://github.com/MCKRUZ/microsoft-agentic-harness"
+  },
+  "license": "MIT",
+  "keywords": [
+    "iac",
+    "terraform",
+    "bicep",
+    "checkov",
+    "tfsec",
+    "arm-ttk",
+    "change-proposal",
+    "devops"
+  ],
+  "skills": "./skills/"
+}

@@ -19,6 +19,7 @@ using Infrastructure.AI.Audit;
 using Infrastructure.AI.Compaction;
 using Infrastructure.AI.Compaction.Strategies;
 using Infrastructure.AI.Tools.GitOps;
+using Infrastructure.AI.Tools.Iac;
 using Infrastructure.AI.Tools.Workspace;
 using Infrastructure.AI.Compression;
 using Infrastructure.AI.Compression.Strategies;
@@ -133,6 +134,12 @@ public static partial class DependencyInjection
         // unconditionally; GitOpsStartupValidator fails the host loud when Enabled with bad config.
         services.AddGitOpsSkillTools();
 
+        // IaC skill pack — iac_generate (scaffold), iac_plan (validate+plan), iac_scan (Checkov/tfsec/ARM-TTK).
+        // Terraform + Bicep generators behind IIacGenerator, keyed by backend. All CLI work runs inside the
+        // PR-3 sandbox; the skill never deploys. Registered unconditionally; IacStartupValidator fails the host
+        // loud when Enabled with bad config. The IaC validator swap happens after RegisterChangesServices below.
+        services.AddIacSkillTools();
+
         // Chat client factory — creates IChatClient from Azure OpenAI / OpenAI / AI Inference / Persistent Agents
         services.AddSingleton<IChatClientFactory, ChatClientFactory>();
 
@@ -218,6 +225,13 @@ public static partial class DependencyInjection
         //     NotConfigured defaults). Inert until AppConfig.AI.Changes.Enabled. ---
 
         RegisterChangesServices(services);
+
+        // --- Swap the IaC NotConfiguredValidator placeholder (registered inside
+        //     RegisterChangesServices, keyed by ChangeTargetKind.IacDeployment) for
+        //     the real IacChangeProposalValidator. Must run AFTER RegisterChangesServices
+        //     so the placeholder exists to remove. See RegisterIacValidator. ---
+
+        RegisterIacValidator(services);
 
         // --- Egress layer (per-skill allowlist policy + AntiSSRF terminal
         //     handler + JSONL audit + named HttpClient "egress"). Inert until

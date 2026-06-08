@@ -4,6 +4,7 @@ using Domain.Common.Config.AI.ContextManagement;
 using Domain.Common.Config.AI.DriftDetection;
 using Domain.Common.Config.AI.GitOps;
 using Domain.Common.Config.AI.Hooks;
+using Domain.Common.Config.AI.Iac;
 using Domain.Common.Config.AI.Identity;
 using Domain.Common.Config.AI.IncidentResponse;
 using Domain.Common.Config.AI.Learnings;
@@ -235,6 +236,14 @@ public class AIConfig
     /// skill at runtime.
     /// </summary>
     public GitOpsConfig GitOps { get; set; } = new();
+
+    /// <summary>
+    /// IaC skill pack configuration (PR-10). Off by default — when enabled, the
+    /// startup validator requires each enabled backend (terraform/bicep) to carry
+    /// a pinned CLI version and a valid blocking-severity. Generation/plan/scan
+    /// run inside the PR-3 sandbox; the skill never deploys.
+    /// </summary>
+    public IacConfig Iac { get; set; } = new();
 
     /// <summary>
     /// Telemetry-layer configuration (PR-11). Wraps the OTel GenAI
