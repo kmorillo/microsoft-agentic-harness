@@ -52,16 +52,30 @@ export function AgentHubProvider({ children }: { children: ReactNode }) {
     const connection = buildHubConnection('/hubs/agent', getToken);
     connectionRef.current = connection;
 
+    // Streaming events are broadcast per hub connection, but a single client can
+    // switch the active conversation mid-stream. Drop any payload whose
+    // conversationId does not match the store's active conversation so tokens from
+    // conversation A never render or finalize into conversation B's transcript.
+    // When no conversation is active (conversationId === null) there is nothing to
+    // contaminate, so the payload is allowed through.
+    const isActiveConversation = (conversationId: string): boolean => {
+      const active = useChatStore.getState().conversationId;
+      return active === null || active === conversationId;
+    };
+
     connection.on('TokenReceived', (payload: { conversationId: string; token: string; isComplete: boolean }) => {
       if (payload.isComplete) return;
+      if (!isActiveConversation(payload.conversationId)) return;
       useChatStore.getState().appendToken(payload.token);
     });
 
     connection.on('TurnComplete', (payload: { conversationId: string; turnNumber: number; fullResponse: string; assistantMessageId?: string }) => {
+      if (!isActiveConversation(payload.conversationId)) return;
       useChatStore.getState().finalizeStream(payload.fullResponse, payload.assistantMessageId);
     });
 
     connection.on('HistoryTruncated', (payload: { conversationId: string; keepCount: number }) => {
+      if (!isActiveConversation(payload.conversationId)) return;
       useChatStore.getState().truncateAfter(payload.keepCount);
     });
 

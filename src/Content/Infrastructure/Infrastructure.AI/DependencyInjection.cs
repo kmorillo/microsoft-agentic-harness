@@ -14,6 +14,7 @@ using Application.AI.Common.Interfaces.Tools;
 using Application.AI.Common.Interfaces.Traces;
 using Application.Common.Factories;
 using Domain.Common.Config;
+using Domain.Common.Workflow;
 using Infrastructure.AI.Agents;
 using Infrastructure.AI.Audit;
 using Infrastructure.AI.Compaction;
@@ -35,7 +36,6 @@ using Infrastructure.AI.Prompts.Sections;
 using Infrastructure.AI.Security;
 using Infrastructure.AI.Skills;
 using Infrastructure.AI.StateManagement;
-using Infrastructure.AI.StateManagement.Checkpoints;
 using Infrastructure.AI.Routing;
 using Infrastructure.AI.Tools;
 using Infrastructure.AI.Traces;
@@ -168,8 +168,8 @@ public static partial class DependencyInjection
         // --- State management ---
 
         services.AddSingleton<IStateMarkdownGenerator, StateMarkdownGenerator>();
-        services.AddSingleton<JsonCheckpointStateManager>();
         services.AddSingleton<CompositeStateManager>();
+        services.AddSingleton<IStateManager>(sp => sp.GetRequiredService<CompositeStateManager>());
 
         // --- Hooks ---
 

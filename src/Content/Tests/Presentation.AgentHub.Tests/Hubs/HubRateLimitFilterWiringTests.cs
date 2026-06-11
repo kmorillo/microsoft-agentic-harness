@@ -1,0 +1,79 @@
+using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
+using Moq;
+using Presentation.AgentHub;
+using Presentation.AgentHub.Hubs;
+using Xunit;
+
+namespace Presentation.AgentHub.Tests.Hubs;
+
+/// <summary>
+/// Regression tests for the SignalR hub-method rate-limit wiring in
+/// <see cref="DependencyInjection.AddAgentHubServices"/>. The prior defect registered a
+/// "HubSendMessage" token-bucket policy that was never applied to any hub-method invocation
+/// (ASP.NET Core's HTTP rate-limiting middleware cannot partition SignalR invocations). These
+/// tests pin that <see cref="HubRateLimitFilter"/> is both registered in DI and added to the
+/// global SignalR filter chain so the expensive agent-turn methods are actually throttled.
+/// </summary>
+public sealed class HubRateLimitFilterWiringTests
+{
+    [Fact]
+    public void AddAgentHubServices_RegistersHubRateLimitFilterAsSingleton()
+    {
+        using var provider = BuildProvider();
+
+        var filter = provider.GetService<HubRateLimitFilter>();
+
+        filter.Should().NotBeNull("the rate-limit filter must be resolvable so SignalR can apply it");
+    }
+
+    [Fact]
+    public void AddAgentHubServices_AddsHubRateLimitFilterToSignalRFilterChain()
+    {
+        using var provider = BuildProvider();
+
+        var hubOptions = provider.GetRequiredService<IOptions<HubOptions>>().Value;
+
+        // AddFilter<T>() records an IHubFilterDescriptor whose FilterType is typeof(T). Assert by
+        // the FilterType property (reflected, to avoid coupling to the internal descriptor type) so
+        // this fails if the rate-limit filter is ever dropped from the SignalR filter chain again.
+        hubOptions.HubFilters.Should().NotBeNull(
+            "AddSignalR must register at least the knowledge-scope and rate-limit hub filters");
+
+        var filterTypes = hubOptions.HubFilters!
+            .Select(descriptor => descriptor.GetType()
+                .GetProperty("FilterType")?
+                .GetValue(descriptor) as Type)
+            .Where(t => t is not null)
+            .ToArray();
+
+        filterTypes.Should().Contain(typeof(HubRateLimitFilter),
+            "the hub-method rate limiter is only effective if it is in the SignalR filter chain");
+    }
+
+    private static ServiceProvider BuildProvider()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                // Dev-auth branch avoids the Azure Identity (Microsoft.Identity.Web) wiring,
+                // keeping this a focused DI/wiring test.
+                ["Auth:Disabled"] = "true",
+            })
+            .Build();
+
+        var environment = new Mock<IWebHostEnvironment>();
+        environment.SetupGet(e => e.EnvironmentName).Returns(Environments.Development);
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddAgentHubServices(configuration, environment.Object);
+
+        return services.BuildServiceProvider();
+    }
+}
