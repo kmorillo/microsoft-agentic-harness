@@ -1,3 +1,4 @@
+using System.Reflection;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.SignalR;
@@ -39,20 +40,17 @@ public sealed class HubRateLimitFilterWiringTests
 
         var hubOptions = provider.GetRequiredService<IOptions<HubOptions>>().Value;
 
-        // AddFilter<T>() records an IHubFilterDescriptor whose FilterType is typeof(T). Assert by
-        // the FilterType property (reflected, to avoid coupling to the internal descriptor type) so
-        // this fails if the rate-limit filter is ever dropped from the SignalR filter chain again.
-        hubOptions.HubFilters.Should().NotBeNull(
+        // HubOptions.HubFilters is an internal IList<object>; AddFilter<T>() records typeof(T) in it.
+        // Reflect the property (rather than coupling to internals) so this fails if the rate-limit
+        // filter is ever dropped from the SignalR filter chain again.
+        var hubFilters = (typeof(HubOptions)
+            .GetProperty("HubFilters", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            ?.GetValue(hubOptions) as IEnumerable<object>)?.ToArray();
+
+        hubFilters.Should().NotBeNull(
             "AddSignalR must register at least the knowledge-scope and rate-limit hub filters");
 
-        var filterTypes = hubOptions.HubFilters!
-            .Select(descriptor => descriptor.GetType()
-                .GetProperty("FilterType")?
-                .GetValue(descriptor) as Type)
-            .Where(t => t is not null)
-            .ToArray();
-
-        filterTypes.Should().Contain(typeof(HubRateLimitFilter),
+        hubFilters.Should().Contain(typeof(HubRateLimitFilter),
             "the hub-method rate limiter is only effective if it is in the SignalR filter chain");
     }
 

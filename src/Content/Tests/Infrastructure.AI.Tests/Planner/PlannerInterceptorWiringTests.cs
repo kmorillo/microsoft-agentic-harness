@@ -1,6 +1,7 @@
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.Interfaces.Governance;
 using Application.AI.Common.Interfaces.Planner;
+using Application.AI.Common.Interfaces.Sandbox;
 using Application.AI.Common.Models.Sandbox;
 using Application.AI.Common.Prompts.Interfaces;
 using Docker.DotNet;

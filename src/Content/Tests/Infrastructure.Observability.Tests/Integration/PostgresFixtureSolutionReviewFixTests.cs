@@ -73,7 +73,7 @@ public sealed class PostgresFixtureSolutionReviewFixTests
             "the guard must produce an xUnit *skip*, not an ordinary failure or a pass-through");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task SkipIfUnavailable_PostgresAvailable_DoesNotThrow()
     {
         // Arrange — initialize against the real default endpoint. This test only has something to
@@ -85,7 +85,7 @@ public sealed class PostgresFixtureSolutionReviewFixTests
         try
         {
             await fixture.InitializeAsync();
-            Assert.SkipUnless(
+            Skip.IfNot(
                 fixture.IsAvailable,
                 "No local Postgres reachable — the available-path assertion is not exercisable here.");
 

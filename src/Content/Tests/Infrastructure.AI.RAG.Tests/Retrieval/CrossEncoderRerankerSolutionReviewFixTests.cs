@@ -1,6 +1,7 @@
 using System.Globalization;
 using Application.AI.Common.Interfaces.Routing;
 using Domain.AI.RAG.Models;
+using Domain.Common.Config.AI;
 using Domain.AI.Routing.Enums;
 using Domain.AI.Routing.Models;
 using FluentAssertions;

@@ -90,11 +90,11 @@ public sealed class PostgresFixture : IAsyncLifetime
     /// <c>if (!IsAvailable) return;</c> makes xUnit report the test as a green PASS with zero
     /// assertions executed, so an entire integration suite silently goes green when Postgres is
     /// unreachable and any regression in the persistence layer becomes invisible. Routing the guard
-    /// through <see cref="Assert.SkipUnless(bool, string)"/> instead surfaces the opt-out honestly as
-    /// a skipped test, keeping the green count meaningful.
+    /// through <c>Skip.IfNot</c> (Xunit.SkippableFact) instead surfaces the opt-out honestly as
+    /// a skipped test, keeping the green count meaningful. Callers must be <c>[SkippableFact]</c>.
     /// </summary>
     public void SkipIfUnavailable() =>
-        Assert.SkipUnless(
+        Skip.IfNot(
             IsAvailable,
             "Postgres is not provisioned for this run (set OBSERVABILITY_TEST_CONN or start a local " +
             "Postgres on localhost:5432). The test is skipped rather than reported as a silent pass.");
