@@ -37,10 +37,13 @@ public sealed class IdempotencyWiringTests
         var services = new ServiceCollection();
 
         services.AddApplicationCommonDependencies();
-        using var provider = services.BuildServiceProvider();
 
-        var behaviors = provider.GetServices<IPipelineBehavior<IdempotentCommand, Result<string>>>();
-        behaviors.Should().ContainSingle(b => b is IdempotencyBehavior<IdempotentCommand, Result<string>>,
+        // Inspect the registration rather than resolving the whole pipeline (which would also
+        // construct the pre-existing AuthorizationBehavior and its auth-stack dependencies). The
+        // behavior is registered as an open-generic pipeline behavior.
+        services.Should().ContainSingle(d =>
+            d.ServiceType == typeof(IPipelineBehavior<,>) &&
+            d.ImplementationType == typeof(IdempotencyBehavior<,>),
             "marking a command IIdempotentRequest must engage the behavior, not silently no-op");
     }
 

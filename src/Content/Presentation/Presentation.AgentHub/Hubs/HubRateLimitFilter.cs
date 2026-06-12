@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 using Presentation.AgentHub.Extensions;
 
 namespace Presentation.AgentHub.Hubs;
@@ -47,8 +48,11 @@ public sealed class HubRateLimitFilter : IHubFilter, IDisposable
 
     /// <summary>
     /// Initialises the filter with a per-user token-bucket limiter using the default capacity and
-    /// replenishment cadence.
+    /// replenishment cadence. This is the constructor SignalR's <c>AddFilter&lt;T&gt;()</c> activates;
+    /// it is marked <see cref="ActivatorUtilitiesConstructorAttribute"/> so the presence of the
+    /// test-only configurable constructor does not make activation ambiguous.
     /// </summary>
+    [ActivatorUtilitiesConstructor]
     public HubRateLimitFilter()
         : this(DefaultTokenLimit, DefaultTokensPerPeriod, TimeSpan.FromSeconds(DefaultReplenishmentPeriodSeconds))
     {

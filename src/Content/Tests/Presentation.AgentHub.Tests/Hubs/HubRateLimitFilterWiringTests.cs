@@ -40,8 +40,9 @@ public sealed class HubRateLimitFilterWiringTests
 
         var hubOptions = provider.GetRequiredService<IOptions<HubOptions>>().Value;
 
-        // HubOptions.HubFilters is an internal IList<object>; AddFilter<T>() records typeof(T) in it.
-        // Reflect the property (rather than coupling to internals) so this fails if the rate-limit
+        // HubOptions.HubFilters is an internal IList<object>; AddFilter<T>() wraps typeof(T) in an
+        // internal HubFilterFactory rather than storing the Type directly. Reflect each entry's
+        // Type-typed field to recover the wrapped filter type, so this fails if the rate-limit
         // filter is ever dropped from the SignalR filter chain again.
         var hubFilters = (typeof(HubOptions)
             .GetProperty("HubFilters", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
@@ -50,7 +51,15 @@ public sealed class HubRateLimitFilterWiringTests
         hubFilters.Should().NotBeNull(
             "AddSignalR must register at least the knowledge-scope and rate-limit hub filters");
 
-        hubFilters.Should().Contain(typeof(HubRateLimitFilter),
+        static IEnumerable<Type?> WrappedFilterTypes(object filter) =>
+            filter is Type t
+                ? [t]
+                : filter.GetType()
+                    .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Where(f => f.FieldType == typeof(Type))
+                    .Select(f => f.GetValue(filter) as Type);
+
+        hubFilters!.SelectMany(WrappedFilterTypes).Should().Contain(typeof(HubRateLimitFilter),
             "the hub-method rate limiter is only effective if it is in the SignalR filter chain");
     }
 

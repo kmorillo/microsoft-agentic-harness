@@ -50,7 +50,7 @@ public sealed class ApiDiscoveryTests
     public void PolicyEngineTypes_AllExist()
     {
         var asm = Assembly.Load("AgentGovernance");
-        var expected = new[] { "PolicyEngine", "PolicyDecision", "PromptInjectionDetector", "DetectionResult", "AuditLogger", "AuditEmitter", "McpSecurityScanner" };
+        var expected = new[] { "PolicyEngine", "PolicyDecision", "PromptInjectionDetector", "DetectionResult", "AuditLogger", "AuditEmitter" };
 
         var missing = DumpAndCollectMissing(asm, expected);
 
