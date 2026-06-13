@@ -27,7 +27,12 @@ export interface UseAgentHubReturn {
   startConversation: (agentName: string, conversationId: string) => Promise<ServerConversationMessage[]>;
   invokeToolViaAgent: (conversationId: string, toolName: string, args: Record<string, unknown>) => Promise<void>;
   retryFromMessage: (conversationId: string, assistantMessageId: string) => Promise<void>;
-  editAndResubmit: (conversationId: string, userMessageId: string, newContent: string) => Promise<void>;
+  editAndResubmit: (
+    conversationId: string,
+    userMessageId: string,
+    newUserMessageId: string,
+    newContent: string,
+  ) => Promise<void>;
   setConversationSettings: (conversationId: string, settings: ConversationSettingsInput) => Promise<void>;
 }
 
@@ -145,8 +150,8 @@ export function AgentHubProvider({ children }: { children: ReactNode }) {
       hubInvoke('InvokeToolViaAgent', conversationId, toolName, JSON.stringify(args)),
     retryFromMessage: (conversationId, assistantMessageId) =>
       hubInvoke('RetryFromMessage', conversationId, assistantMessageId),
-    editAndResubmit: (conversationId, userMessageId, newContent) =>
-      hubInvoke('EditAndResubmit', conversationId, userMessageId, crypto.randomUUID(), newContent),
+    editAndResubmit: (conversationId, userMessageId, newUserMessageId, newContent) =>
+      hubInvoke('EditAndResubmit', conversationId, userMessageId, newUserMessageId, newContent),
     setConversationSettings: (conversationId, settings) =>
       hubInvoke('SetConversationSettings', conversationId, settings),
   };

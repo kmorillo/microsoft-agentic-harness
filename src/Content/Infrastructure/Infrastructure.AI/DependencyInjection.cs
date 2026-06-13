@@ -162,6 +162,24 @@ public static partial class DependencyInjection
         services.AddSingleton<IPluginManifestReader, PluginManifestReader>();
         services.AddSingleton<IPluginRegistry, PluginRegistry>();
 
+        // PluginLoader mutates the SkillsConfig / McpServersConfig it is given. To make those
+        // mutations observable, it must be handed the SAME instances the downstream consumers
+        // read at runtime:
+        //   - SkillMetadataRegistry reads IOptionsMonitor<AppConfig>.CurrentValue.AI.Skills
+        //   - McpConnectionManager is built from IOptionsMonitor<AIConfig>.CurrentValue.McpServers
+        // These two monitors bind independent object graphs (AppConfig vs the AppConfig:AI section
+        // bound as AIConfig), so the loader is wired to the live instance behind each monitor.
+        // OptionsMonitor caches CurrentValue per name until a config reload, so in-place mutation
+        // of the cached instance is seen by every later reader of the same monitor.
+        services.AddSingleton<IPluginLoader>(sp => new PluginLoader(
+            sp.GetRequiredService<IOptionsMonitor<AppConfig>>().CurrentValue.AI.Skills,
+            sp.GetRequiredService<IOptionsMonitor<Domain.Common.Config.AI.AIConfig>>().CurrentValue.McpServers,
+            sp.GetRequiredService<ILogger<PluginLoader>>()));
+
+        // Startup driver: resolves every declared plugin into the live config + registry before
+        // the first (lazy) skill/MCP discovery. Empty Packages list is a clean no-op.
+        services.AddHostedService<PluginStartupLoader>();
+
         // --- Tool execution ---
 
         services.AddSingleton<IToolConcurrencyClassifier, ToolConcurrencyClassifier>();

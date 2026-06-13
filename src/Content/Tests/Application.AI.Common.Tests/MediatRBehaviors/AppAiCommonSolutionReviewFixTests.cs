@@ -191,6 +191,8 @@ public sealed class AppAiCommonSolutionReviewFixTests
     {
         public bool Success => true;
         public string Response => "noted";
+        public int InputTokens => 0;
+        public int OutputTokens => 0;
     }
 
     private sealed class SingleFactExtractor : IConversationFactExtractor
