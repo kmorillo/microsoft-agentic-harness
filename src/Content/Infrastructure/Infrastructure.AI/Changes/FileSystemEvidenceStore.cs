@@ -98,7 +98,7 @@ public sealed class FileSystemEvidenceStore : IEvidenceStore
                 await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            File.Move(tmp, targetPath, overwrite: true);
+            MoveIntoPlace(tmp, targetPath);
         }
         catch
         {
@@ -119,12 +119,47 @@ public sealed class FileSystemEvidenceStore : IEvidenceStore
         try
         {
             await File.WriteAllTextAsync(tmp, content, cancellationToken).ConfigureAwait(false);
-            File.Move(tmp, targetPath, overwrite: true);
+            MoveIntoPlace(tmp, targetPath);
         }
         catch
         {
             TryDeleteTemp(tmp);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Renames the staged temp file onto its final content-addressed path, tolerating concurrent
+    /// writers. Because the path is content-addressed, two writers producing the same content target
+    /// the same path; on Windows their <see cref="File.Move(string, string, bool)"/> calls can race
+    /// and throw <see cref="IOException"/> or <see cref="UnauthorizedAccessException"/> while the
+    /// destination is briefly held. When the destination already exists the (identical) content is
+    /// already durably stored, so the race is benign — discard our temp and succeed. Otherwise retry
+    /// briefly to ride out the transient lock window.
+    /// </summary>
+    private static void MoveIntoPlace(string tmp, string targetPath)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                File.Move(tmp, targetPath, overwrite: true);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (File.Exists(targetPath))
+                {
+                    // A concurrent writer already produced this exact content-addressed file.
+                    TryDeleteTemp(tmp);
+                    return;
+                }
+
+                if (attempt >= 4)
+                    throw;
+
+                Thread.Sleep(15 * (attempt + 1));
+            }
         }
     }
 

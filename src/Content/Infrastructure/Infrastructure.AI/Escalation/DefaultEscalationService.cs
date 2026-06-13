@@ -232,9 +232,11 @@ public sealed class DefaultEscalationService : IEscalationService, IDisposable
 
 	private async Task ResolveEscalationAsync(EscalationState state, EscalationOutcome outcome)
 	{
-		if (!state.Completion.TrySetResult(outcome))
-			return;
-
+		// Every caller claims resolution under state.Lock (sets state.IsResolved) before invoking
+		// this, so it runs exactly once per escalation. Record the outcome to the audit store BEFORE
+		// completing the caller's task: a caller that observes the escalation resolved must be
+		// guaranteed the outcome was durably audited, leaving no crash window between "resolved" and
+		// "audited" (and removing the race where the caller's continuation outran the background audit).
 		state.TimeoutCts.Cancel();
 		_activeEscalations.TryRemove(state.Request.EscalationId, out _);
 
@@ -248,6 +250,8 @@ public sealed class DefaultEscalationService : IEscalationService, IDisposable
 		await SafeExecuteAsync(
 			() => _auditStore.RecordOutcomeAsync(outcome, CancellationToken.None),
 			"record outcome", outcome.EscalationId);
+
+		state.Completion.TrySetResult(outcome);
 
 		await SafeExecuteAsync(
 			() => _notifier.NotifyEscalationResolvedAsync(outcome, CancellationToken.None),
