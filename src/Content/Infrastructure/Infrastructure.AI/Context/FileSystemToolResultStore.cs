@@ -126,23 +126,24 @@ public sealed class FileSystemToolResultStore : IToolResultStore
     /// </exception>
     private static string SanitizeSessionSegment(string sessionId)
     {
-        // Path.GetFileName strips any directory portion; if the result differs, the caller
-        // supplied separators or a rooted path — reject rather than silently truncate.
-        var segment = Path.GetFileName(sessionId);
-        if (segment != sessionId || Path.IsPathRooted(sessionId))
+        // Reject any path separator from EITHER platform, a rooted path, or a relative
+        // directory reference. Path.GetFileName / Path.IsPathRooted are OS-specific — on
+        // Linux '\' is an ordinary character, so a Windows-style "..\escape" slips through
+        // GetFileName unchanged. Check both separators explicitly so the guard behaves
+        // identically on every platform.
+        if (sessionId.Contains('/') || sessionId.Contains('\\') || Path.IsPathRooted(sessionId))
         {
             throw new ArgumentException(
                 "Session ID must be a single path segment without separators.", nameof(sessionId));
         }
 
-        // GetFileName preserves "." and ".." verbatim; these still resolve to a parent or the
-        // storage root itself when combined, so they must be rejected explicitly.
-        if (segment is "." or "..")
+        // "." and ".." resolve to the storage root or a parent when combined, so reject them.
+        if (sessionId is "." or "..")
         {
             throw new ArgumentException(
                 "Session ID must not be a relative directory reference.", nameof(sessionId));
         }
 
-        return segment;
+        return sessionId;
     }
 }
