@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/microsoft/AgentSchema/refs/heads/main/schemas/v1.0/AgentManifest.yaml
+name: agentic-harness
+displayName: "Microsoft Agentic Harness"
+
+description: >
+  The Microsoft Agentic Harness packaged as a Foundry hosted agent. Exposes the harness's
+  full in-process pipeline — multi-skill composition, governance, tool-output compression,
+  RAG, and knowledge graph — over the OpenAI-compatible Responses protocol. The agent served
+  is selected by id from the harness's AGENT.md manifests (FOUNDRY_AGENT_ID, default "default").
+
+metadata:
+  tags:
+    - AI Agent Hosting
+    - Azure AI AgentServer
+    - Responses Protocol
+    - Agent Framework
+
+template:
+  name: agentic-harness
+  kind: hosted
+  protocols:
+    - protocol: responses
+      version: 1.0.0
+  resources:
+    cpu: "1.0"
+    memory: 2.0Gi
+  environment_variables:
+    - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+      value: "{{AZURE_AI_MODEL_DEPLOYMENT_NAME}}"
+    - name: FOUNDRY_AGENT_ID
+      value: "{{FOUNDRY_AGENT_ID}}"
+parameters:
+  properties:
+    - name: FOUNDRY_AGENT_ID
+      description: "Which discovered AGENT.md agent the hosted deployment exposes."
+      type: string
+      default: "default"
+resources:
+  - kind: model
+    id: gpt-4.1-mini
+    name: AZURE_AI_MODEL_DEPLOYMENT_NAME

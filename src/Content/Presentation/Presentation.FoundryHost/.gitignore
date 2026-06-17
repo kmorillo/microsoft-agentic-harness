@@ -1,0 +1,5 @@
+# The root .gitignore excludes appsettings.*.json (intended for dev-secret overlays like
+# appsettings.Development.json). appsettings.Foundry.json is NOT secrets — it is the
+# hosted-runtime configuration profile that must ship with the template and load in the
+# container (ASPNETCORE_ENVIRONMENT=Foundry). Re-include it explicitly.
+!appsettings.Foundry.json
