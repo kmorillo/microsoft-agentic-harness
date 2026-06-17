@@ -23,7 +23,11 @@ Foundry runs each conversation in its own **session** — a VM-isolated sandbox 
 - Conversation history is stored **durably in Foundry**, independently of compute. The host sets
   the harness to *not* re-persist it, so Foundry remains the single source of truth.
 - **Only `$HOME`/`/files` are guaranteed to persist** — *not* the container's app/publish
-  directory. So the host re-roots every local-disk write under `$HOME` (see below).
+  directory. So the host re-roots the harness's per-session disk stores under `$HOME/agent-state`:
+  the planner database, the JSONL audit trails (drift, escalation, change proposals + evidence,
+  egress), offloaded tool results, subagent delegation records and mailbox, the embedded (Kuzu)
+  graph database, and file logs. (RAG's FAISS vector index and FTS5 BM25 store are in-memory only —
+  there is no on-disk index to root; they rebuild from ingested documents.)
 
 **Net effect:** out of the box, every conversation gets durable, idle-surviving memory with **zero
 external services**. External managed stores are needed *only* to share knowledge **across different
@@ -60,6 +64,12 @@ per-conversation memory via `$HOME`); supply a variable and that subsystem goes 
 
 Any of the above can also be set directly via the native `AppConfig__...` env key, which the host
 never overwrites.
+
+> **Vector store note:** with no `AZURE_SEARCH_ENDPOINT`, the host applies an in-process FAISS
+> default *via an environment override*, which takes precedence over an `appsettings`-only
+> `VectorStore` section. To run against Azure AI Search, set `AZURE_SEARCH_ENDPOINT` (or the native
+> `AppConfig__AI__Rag__VectorStore__Endpoint` env key) — do not rely on an `appsettings`-only
+> endpoint, which the FAISS default would shadow.
 
 ### Capability note: sandbox
 

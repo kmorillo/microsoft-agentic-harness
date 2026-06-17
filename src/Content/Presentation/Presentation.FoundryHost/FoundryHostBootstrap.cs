@@ -108,6 +108,20 @@ internal static class FoundryHostBootstrap
         overrides["AppConfig__AI__Changes__EvidenceStoragePath"] = $"{stateRoot}/changes/evidence";
         overrides["AppConfig__AI__Egress__AuditStoragePath"] = $"{stateRoot}/egress";
 
+        // Per-session agent working state that also defaults under .agent-sessions/: offloaded tool
+        // results (large outputs spilled to disk), subagent delegation records, and the inter-agent
+        // mailbox. StoragePath is the .agent-sessions root itself (the store appends
+        // {session}/tool-results/), so it maps to the state root directly. Mailbox has no writer
+        // today but is rooted now so the capability lands persistent when it ships.
+        overrides["AppConfig__AI__ContextManagement__ToolResultStorage__StoragePath"] = stateRoot;
+        overrides["AppConfig__AI__Orchestration__Subagent__DelegationStoragePath"] = $"{stateRoot}/delegations";
+        overrides["AppConfig__AI__Orchestration__Subagent__MailboxStoragePath"] = $"{stateRoot}/mailbox";
+
+        // Embedded graph database (Kuzu) — the default GraphDatabase.Provider, so it writes to local
+        // disk out of the box. (External Neo4j/PostgreSQL promotion targets a different subsystem,
+        // the GraphRag knowledge store, so this still applies when the embedded backend is in use.)
+        overrides["AppConfig__AI__Rag__GraphDatabase__DataDirectory"] = $"{stateRoot}/graph";
+
         // File logs.
         overrides["AppConfig__Logging__LogsBasePath"] = $"{stateRoot}/logs";
     }
