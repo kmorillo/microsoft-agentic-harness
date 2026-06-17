@@ -50,3 +50,22 @@ Depends on: exposing an OTLP HTTP receiver that the browser can reach (the curre
 **Estimated effort.** ~2–3 hours (scaffold new project + implement 3 tools + docs). Remaining tools can land incrementally.
 
 **Why deferred.** Scope too large for the current debugging session. Log file sink (Serilog) provides 80% of the immediate value; this is the "right" answer when a future session focuses on diagnostics tooling rather than fixing a specific bug.
+
+---
+
+## Documentation
+
+### Release Notes page
+
+**Rationale.** The harness ships as a template that enterprise consumers clone and track over time. There is no single page that records what changed between versions (new providers, config sections, breaking changes, dependency bumps). Consumers currently have to read the git log to understand what a given update brings — which doesn't surface migration steps or breaking changes clearly.
+
+**Proposal.** Add a `Release Notes` page alongside the existing documentation set (`documentation/`), deployed via the GitHub Pages workflow. Group entries by version/date; for each release call out: new features, config/`AppConfig` additions, dependency changes, breaking changes, and required migration steps.
+
+**Acceptance criteria:**
+1. New page (e.g. `documentation/release-notes/` or a top-level `RELEASE-NOTES.md`) wired into the Pages deploy (`.github/workflows/pages.yml`).
+2. Reverse-chronological entries with a stable heading format (version or date).
+3. Each entry distinguishes Added / Changed / Deprecated / Removed / Breaking (Keep a Changelog style).
+4. Backfill at least the recent notable changes (e.g. Foundry Responses provider, multi-tenant isolation, skill-training subsystem).
+5. Linked from the onboarding guide landing page.
+
+**Why deferred.** Captured as a one-off request during the Foundry Phase 1 session; not blocking current feature work.
