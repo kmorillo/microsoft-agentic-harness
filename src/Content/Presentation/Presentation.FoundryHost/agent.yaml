@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/microsoft/AgentSchema/refs/heads/main/schemas/v1.0/ContainerAgent.yaml
+#
+# Deployment descriptor for the agentic harness as a Foundry hosted agent.
+# `azd deploy` builds the Dockerfile, pushes the image to ACR, and registers this hosted agent.
+kind: hosted
+name: agentic-harness
+protocols:
+  - protocol: responses
+    version: 1.0.0
+# Build the image from the repository src/ directory (shared props + sibling project references).
+docker:
+  context: ../../..
+  path: Content/Presentation/Presentation.FoundryHost/Dockerfile
+# The full harness (RAG, knowledge graph, governance, planner) needs more than a trivial agent.
+resources:
+  cpu: "1.0"
+  memory: 2.0Gi
+environment_variables:
+  - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+    value: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+  # Which discovered AGENT.md this deployment exposes. Defaults to "default" when unset.
+  - name: FOUNDRY_AGENT_ID
+    value: ${FOUNDRY_AGENT_ID}
