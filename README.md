@@ -23,11 +23,13 @@ This harness solves those problems with real engineering, not abstractions on to
 
 ## Learn How It Works
 
-Four learning resources, depending on what you need:
+Five learning resources, depending on what you need:
 
 - **[Developer Onboarding Guide](https://mckruz.github.io/microsoft-agentic-harness/)** — Step-by-step walkthrough of the codebase aimed at engineers who are forking this template to build something. 14 pages covering getting running, every config knob, the Clean Architecture layout, a full message-journey trace, the skills/tools/RAG/MCP systems, observability, the evaluation framework, and the SkillOpt-port skill-training loop. Read this if you're going to write code.
 
 - **[Architecture Guide](https://mckruz.github.io/microsoft-agentic-harness/architecture/)** — Infrastructure playbook for deploying the harness on Azure. 7 pages covering the full Azure topology, compute and AI services (Container Apps, Azure OpenAI), data and retrieval infrastructure (AI Search, knowledge graph backends), networking and security (VNets, Entra ID, Key Vault), observability (OTel to Azure Monitor or Grafana), and operations with cost tiers from $50/month dev to $800+ production. Read this if you're planning a deployment.
+
+- **[Security Guide](https://mckruz.github.io/microsoft-agentic-harness/security/)** — Every runtime security protocol baked into the harness, explained plainly in the same style as the other guides. 11 pages organized as seven defense-in-depth layers plus an assurance chapter: the threat model, identity &amp; access (JWT/Entra, A2A mTLS, roles, CORS, rate limiting), autonomy &amp; governance (tiers, human-approval escalation), tool permissions (the Deny→Ask→Allow resolver, bypass-immune `DeniedTools`), sandbox &amp; execution (Job Objects, capability model, HMAC attestation), egress &amp; SSRF defense, content safety &amp; prompt-injection, data protection (multi-tenant isolation, provenance, right-to-erasure), and the OWASP Agentic Top-10 eval gate — each protocol cited to its real class. Read this if you need to understand, configure, or extend how the harness stays safe.
 
 - **[Patterns & Technologies Reference](https://mckruz.github.io/microsoft-agentic-harness/reference/patterns-and-technologies.html)** — Exhaustive catalogue of every architectural pattern, AI/RAG subsystem, governance behaviour, framework, and dependency the harness ships with — cross-linked to source paths. 11 sections covering the CQRS pipeline (all 14 MediatR behaviours in order), Result&lt;T&gt;, factories, keyed-DI strategies, the skills/plugin system, the full RAG pipeline (3 chunkers, RAPTOR, hybrid + RRF, CRAG, multi-source orchestration), four knowledge-graph backends, drift/learnings/escalation governance, the DAG plan executor, sandbox + HMAC attestation, the frontend stack, and the full NuGet/npm inventory. Read this when you know what you're looking for and just need the index.
 
