@@ -84,7 +84,25 @@ public static class McpServerExtensions
                     logger?.LogInformation(
                         "MCP tool call authorized. User={User} ToolName={ToolName} CorrelationId={CorrelationId}",
                         user, toolName, correlationId);
-                    return await next(context, cancellationToken);
+
+                    // Guaranteed outcome line (mirrors the WebUI controller path): every
+                    // authorized call logs a terminal success/error/faulted record so the
+                    // audit trail is never left at "authorized" with no resolution.
+                    try
+                    {
+                        var result = await next(context, cancellationToken);
+                        logger?.LogInformation(
+                            "MCP tool call completed. User={User} ToolName={ToolName} Status={Status} CorrelationId={CorrelationId}",
+                            user, toolName, result?.IsError == true ? "error" : "success", correlationId);
+                        return result;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger?.LogWarning(ex,
+                            "MCP tool call faulted. User={User} ToolName={ToolName} Status=faulted CorrelationId={CorrelationId}",
+                            user, toolName, correlationId);
+                        throw;
+                    }
                 });
             });
 
