@@ -1,9 +1,11 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Domain.Common.Config;
 using Domain.Common.Config.AI.MCP;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.Hosting;
+using Infrastructure.AI.MCPServer.Authorization;
 using ModelContextProtocol;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
@@ -27,6 +29,12 @@ public static class McpServerExtensions
         var subscriptions = new ConcurrentDictionary<string, byte>();
         services.AddSingleton(subscriptions);
 
+        // Auth is configured in all non-Development environments (AddMcpAuthentication
+        // enforces this). When it is, every inbound tool call must carry an
+        // authenticated principal — re-checked at the tool-dispatch layer below as
+        // defense-in-depth behind the endpoint's RequireAuthorization().
+        var authenticationRequired = mcpConfig.Auth.IsConfigured;
+
         services
             .AddMcpServer(options =>
             {
@@ -39,6 +47,9 @@ public static class McpServerExtensions
                 options.InitializationTimeout = mcpConfig.InitializationTimeout;
             })
             .WithHttpTransport()
+            // Enable [Authorize]/[AllowAnonymous] attributes on individual tools so a
+            // high-risk tool can be locked to a role without touching the baseline gate.
+            .AddAuthorizationFilters()
             // Always load tools/prompts from this assembly (SkillTools, etc.)
             .WithToolsFromAssembly(typeof(McpServerExtensions).Assembly)
             // Load additional tools/prompts from externally configured assemblies
@@ -47,7 +58,35 @@ public static class McpServerExtensions
             .LoadResourcesFromAssemblies(mcpConfig)
             .WithSubscribeToResourcesHandler(CreateSubscribeHandler(subscriptions))
             .WithUnsubscribeFromResourcesHandler(CreateUnsubscribeHandler(subscriptions))
-            .WithSetLoggingLevelHandler(CreateSetLoggingLevelHandler());
+            .WithSetLoggingLevelHandler(CreateSetLoggingLevelHandler())
+            // Baseline per-tool-call authorization gate (defense-in-depth) + audit.
+            .WithRequestFilters(filters =>
+            {
+                filters.AddCallToolFilter(next => async (context, cancellationToken) =>
+                {
+                    var logger = context.Services?
+                        .GetService<ILoggerFactory>()?
+                        .CreateLogger("Mcp.ToolAudit");
+                    var toolName = context.Params?.Name ?? "(unknown)";
+                    var user = context.User?.Identity?.Name ?? "anonymous";
+                    // W3C trace id correlates this audit line with the request's spans.
+                    var correlationId = Activity.Current?.TraceId.ToString() ?? "none";
+
+                    var denied = McpToolAuthorizationFilter.Evaluate(authenticationRequired, context.User);
+                    if (denied is not null)
+                    {
+                        logger?.LogWarning(
+                            "MCP tool call denied. User={User} ToolName={ToolName} Reason=unauthenticated CorrelationId={CorrelationId}",
+                            user, toolName, correlationId);
+                        return denied;
+                    }
+
+                    logger?.LogInformation(
+                        "MCP tool call authorized. User={User} ToolName={ToolName} CorrelationId={CorrelationId}",
+                        user, toolName, correlationId);
+                    return await next(context, cancellationToken);
+                });
+            });
 
         return services;
     }

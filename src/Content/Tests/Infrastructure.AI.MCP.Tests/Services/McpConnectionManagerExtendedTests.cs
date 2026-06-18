@@ -18,6 +18,7 @@ public sealed class McpConnectionManagerExtendedTests
         return new McpConnectionManager(
             Mock.Of<ILogger<McpConnectionManager>>(),
             new Mock<ILoggerFactory>().Object,
+            TestSsrf.HandlerFactory(),
             config ?? new McpServersConfig());
     }
 
