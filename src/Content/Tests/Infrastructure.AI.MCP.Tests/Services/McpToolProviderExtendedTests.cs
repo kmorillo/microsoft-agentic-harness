@@ -19,6 +19,7 @@ public sealed class McpToolProviderExtendedTests
         var manager = new McpConnectionManager(
             Mock.Of<ILogger<McpConnectionManager>>(),
             new Mock<ILoggerFactory>().Object,
+            TestSsrf.HandlerFactory(),
             config ?? new McpServersConfig());
 
         var provider = new McpToolProvider(

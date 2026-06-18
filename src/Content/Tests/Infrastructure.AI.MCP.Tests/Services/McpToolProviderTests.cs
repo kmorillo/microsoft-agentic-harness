@@ -86,6 +86,7 @@ public sealed class McpToolProviderTests
         return new McpConnectionManager(
             Mock.Of<ILogger<McpConnectionManager>>(),
             new Mock<ILoggerFactory>().Object,
+            TestSsrf.HandlerFactory(),
             new Domain.Common.Config.AI.MCP.McpServersConfig());
     }
 }

@@ -1,5 +1,6 @@
 using Application.AI.Common.Interfaces;
 using Domain.Common.Config.AI;
+using Infrastructure.AI.Egress;
 using Infrastructure.AI.MCP.Resources;
 using Infrastructure.AI.MCP.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,13 +29,17 @@ public static class DependencyInjection
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddMcpClientDependencies(this IServiceCollection services)
     {
-        // Connection manager — singleton, manages MCP client lifecycles
+        // Connection manager — singleton, manages MCP client lifecycles.
+        // Resolving AntiSsrfHandlerFactory makes the SSRF guard a mandatory dependency:
+        // if the egress layer (Infrastructure.AI RegisterEgressServices) was not wired,
+        // this throws at startup rather than silently producing an unguarded client.
         services.AddSingleton<McpConnectionManager>(sp =>
         {
             var aiConfig = sp.GetRequiredService<IOptionsMonitor<AIConfig>>();
             var logger = sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<McpConnectionManager>>();
             var loggerFactory = sp.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>();
-            return new McpConnectionManager(logger, loggerFactory, aiConfig.CurrentValue.McpServers);
+            var antiSsrfHandlerFactory = sp.GetRequiredService<AntiSsrfHandlerFactory>();
+            return new McpConnectionManager(logger, loggerFactory, antiSsrfHandlerFactory, aiConfig.CurrentValue.McpServers);
         });
 
         // Tool provider — singleton wrapping connection manager

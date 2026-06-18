@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Application.AI.Common.Exceptions;
 using Domain.Common.Config.AI.MCP;
+using Infrastructure.AI.Egress;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 
@@ -21,6 +22,7 @@ public sealed class McpConnectionManager : IAsyncDisposable
 {
     private readonly ILogger<McpConnectionManager> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly HttpClient _httpClient;
     private readonly McpServersConfig _config;
     private readonly ConcurrentDictionary<string, McpClient> _clients = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _connectionLocks = new();
@@ -29,13 +31,34 @@ public sealed class McpConnectionManager : IAsyncDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="McpConnectionManager"/> class.
     /// </summary>
+    /// <remarks>
+    /// The SSRF defense is a hard dependency, not a configuration option: the single
+    /// shared <see cref="HttpClient"/> used for every HTTP/SSE transport is built on the
+    /// <c>AntiSSRFHandler</c> produced by <paramref name="antiSsrfHandlerFactory"/>, which
+    /// performs connect-time IP filtering (RFC 1918, loopback, link-local, IMDS, IPv6 ULA)
+    /// and redirect re-validation. There is no code path that constructs an unguarded
+    /// client, so SSRF protection cannot be silently omitted by misconfiguration.
+    /// <para>
+    /// This deliberately applies only the AntiSSRF ring, NOT the outer
+    /// <c>EgressPolicyDelegatingHandler</c> (per-skill hostname allowlist + JSONL audit)
+    /// that the general egress <see cref="HttpClient"/> composes. MCP servers are
+    /// explicitly admin-configured, and connections are established outside an agent turn
+    /// (e.g. startup tool discovery) where that handler's required agent identity is
+    /// absent — it would deny every connection. SSRF filtering, the security-critical
+    /// ring, applies unconditionally.
+    /// </para>
+    /// </remarks>
     public McpConnectionManager(
         ILogger<McpConnectionManager> logger,
         ILoggerFactory loggerFactory,
+        AntiSsrfHandlerFactory antiSsrfHandlerFactory,
         McpServersConfig config)
     {
         _logger = logger;
         _loggerFactory = loggerFactory;
+        // disposeHandler: false — the AntiSSRF handler is a shared singleton owned by
+        // the factory; this client must not dispose it.
+        _httpClient = new HttpClient(antiSsrfHandlerFactory.GetOrCreate(), disposeHandler: false);
         _config = config;
     }
 
@@ -136,7 +159,7 @@ public sealed class McpConnectionManager : IAsyncDisposable
         }
     }
 
-    private static IClientTransport CreateTransport(string serverName, McpServerDefinition definition)
+    private IClientTransport CreateTransport(string serverName, McpServerDefinition definition)
     {
         return definition.Type switch
         {
@@ -155,7 +178,7 @@ public sealed class McpConnectionManager : IAsyncDisposable
         };
     }
 
-    private static HttpClientTransport CreateHttpTransport(string serverName, McpServerDefinition definition)
+    private HttpClientTransport CreateHttpTransport(string serverName, McpServerDefinition definition)
     {
         var uri = new Uri(definition.Url ?? throw new McpConnectionException(
             $"MCP server '{serverName}' is configured as {definition.Type} but has no URL."));
@@ -185,7 +208,12 @@ public sealed class McpConnectionManager : IAsyncDisposable
             };
         }
 
-        return new HttpClientTransport(options);
+        // Route the transport through the SSRF-guarded client. Its handler performs
+        // connect-time IP filtering and redirect re-validation, so a server URL that
+        // resolves to an internal/metadata address is refused at the socket — including
+        // the DNS-rebinding case a pre-flight host check cannot catch. The transport
+        // does not own the shared client.
+        return new HttpClientTransport(options, _httpClient, _loggerFactory);
     }
 
     private static readonly HashSet<string> BlockedHosts = new(StringComparer.OrdinalIgnoreCase)
@@ -195,6 +223,10 @@ public sealed class McpConnectionManager : IAsyncDisposable
         "metadata.goog"
     };
 
+    // Cheap pre-flight check: reject non-http(s) schemes early and fail fast on
+    // well-known metadata hostnames. Comprehensive IP-range filtering (RFC 1918,
+    // loopback, link-local, IMDS, IPv6 ULA) and DNS-rebinding defense are handled
+    // at connect time by the AntiSSRF handler backing this manager's shared HTTP client.
     private static void ValidateMcpServerUrl(Uri uri, string serverName)
     {
         if (uri.Scheme is not ("http" or "https"))
@@ -225,5 +257,9 @@ public sealed class McpConnectionManager : IAsyncDisposable
         }
 
         _connectionLocks.Clear();
+
+        // disposeHandler:false at construction — disposes the client wrapper only,
+        // leaving the shared AntiSSRF handler intact for the factory to own.
+        _httpClient.Dispose();
     }
 }

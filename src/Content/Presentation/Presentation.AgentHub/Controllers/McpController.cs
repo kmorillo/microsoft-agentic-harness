@@ -140,9 +140,13 @@ public sealed class McpController : ControllerBase
         var rawArgs = request.Arguments.GetRawText();
         var inputHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawArgs))).ToLowerInvariant();
 
+        // W3C trace id ties this audit entry to the rest of the request's spans across
+        // systems — the "who authorized that call?" thread an auditor follows.
+        var correlationId = Activity.Current?.TraceId.ToString() ?? "none";
+
         _logger.LogInformation(
-            "MCP tool invoked. UserId={UserId} ToolName={ToolName} InputHash={InputHash}",
-            userId, name, inputHash);
+            "MCP tool invoked. UserId={UserId} ToolName={ToolName} InputHash={InputHash} CorrelationId={CorrelationId}",
+            userId, name, inputHash, correlationId);
 
         _logger.LogDebug(
             "MCP tool raw arguments. ToolName={ToolName} Arguments={Arguments}",
@@ -165,6 +169,10 @@ public sealed class McpController : ControllerBase
                 ? je
                 : JsonSerializer.SerializeToElement(result);
 
+            _logger.LogInformation(
+                "MCP tool completed. UserId={UserId} ToolName={ToolName} Status=success DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                userId, name, sw.ElapsedMilliseconds, correlationId);
+
             return Ok(new McpToolInvokeResponse
             {
                 Output = output,
@@ -175,7 +183,9 @@ public sealed class McpController : ControllerBase
         catch (Exception ex)
         {
             sw.Stop();
-            _logger.LogError(ex, "MCP tool {ToolName} threw during invocation.", name);
+            _logger.LogError(ex,
+                "MCP tool completed. UserId={UserId} ToolName={ToolName} Status=error DurationMs={DurationMs} CorrelationId={CorrelationId}",
+                userId, name, sw.ElapsedMilliseconds, correlationId);
             return Ok(new McpToolInvokeResponse
             {
                 DurationMs = sw.ElapsedMilliseconds,

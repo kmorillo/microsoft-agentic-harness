@@ -27,6 +27,9 @@ public sealed class DependencyInjectionTests : IAsyncLifetime
         services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
         services.Configure<AIConfig>(_ => { });
         services.Configure<Domain.Common.Config.MetaHarness.MetaHarnessConfig>(_ => { });
+        // McpConnectionManager now has a hard dependency on the SSRF guard; the egress
+        // layer normally registers it. Provide it here so resolution succeeds.
+        services.AddSingleton(TestSsrf.HandlerFactory());
 
         services.AddMcpClientDependencies();
 
