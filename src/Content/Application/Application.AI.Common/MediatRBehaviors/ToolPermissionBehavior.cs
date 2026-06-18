@@ -203,8 +203,11 @@ public sealed class ToolPermissionBehavior<TRequest, TResponse>
         var profile = _toolRiskClassifier.Classify(toolName);
 
         // The evaluator ignores targetKind (reserved); tool calls pass Unspecified. isStateChange
-        // is the inverse of the tool's read-only flag. skillKey is null here — tool-call risk uses
-        // the baseline tier, which can only be stricter than a per-skill narrowing.
+        // is the inverse of the tool's read-only flag. skillKey is null because the executing skill
+        // is not exposed on the tool-permission context, so tool-call risk is evaluated at the
+        // BASELINE tier. A per-skill tier *narrowing* is therefore not applied here — that only
+        // forgoes extra tightening, it cannot loosen: the gate still never relaxes the rule-based
+        // Allow, and the rule layer (which does see plugin/skill rules) has already run.
         var result = _autonomyEvaluator.Evaluate(
             tier, profile.Radius, ChangeTargetKind.Unspecified, isStateChange: !profile.IsReadOnly, skillKey: null);
 
