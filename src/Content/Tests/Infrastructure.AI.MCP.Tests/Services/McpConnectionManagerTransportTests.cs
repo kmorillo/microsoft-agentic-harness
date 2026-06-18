@@ -110,6 +110,67 @@ public sealed class McpConnectionManagerTransportTests
         await act.Should().ThrowAsync<McpConnectionException>();
     }
 
+    [Fact]
+    public async Task GetClientAsync_HttpWithIncompleteEntraAuth_ThrowsWithClearMessage()
+    {
+        // Entra type selected but no scope — previously this silently connected with no
+        // credential. It must now fail loudly at transport build before any send.
+        var config = new McpServersConfig
+        {
+            Servers = new Dictionary<string, McpServerDefinition>
+            {
+                ["entra-no-scope"] = new()
+                {
+                    Enabled = true,
+                    Type = McpServerType.Http,
+                    Url = "http://localhost:19999/mcp",
+                    StartupTimeoutSeconds = 1,
+                    Auth = new McpServerAuthConfig
+                    {
+                        Type = McpServerAuthType.Entra
+                    }
+                }
+            }
+        };
+        var sut = CreateManager(config);
+
+        var act = () => sut.GetClientAsync("entra-no-scope");
+
+        await act.Should().ThrowAsync<McpConnectionException>()
+            .WithMessage("*incomplete*");
+    }
+
+    [Fact]
+    public async Task GetClientAsync_HttpWithIncompleteBearerAuth_ThrowsWithClearMessage()
+    {
+        // A configured-but-empty static credential must also fail loudly rather than
+        // connecting with no Authorization header.
+        var config = new McpServersConfig
+        {
+            Servers = new Dictionary<string, McpServerDefinition>
+            {
+                ["bearer-empty"] = new()
+                {
+                    Enabled = true,
+                    Type = McpServerType.Http,
+                    Url = "http://localhost:19999/mcp",
+                    StartupTimeoutSeconds = 1,
+                    Auth = new McpServerAuthConfig
+                    {
+                        Type = McpServerAuthType.Bearer,
+                        BearerToken = ""
+                    }
+                }
+            }
+        };
+        var sut = CreateManager(config);
+
+        var act = () => sut.GetClientAsync("bearer-empty");
+
+        await act.Should().ThrowAsync<McpConnectionException>()
+            .WithMessage("*incomplete*");
+    }
+
     // -- Concurrent GetClientAsync --
 
     [Fact]
