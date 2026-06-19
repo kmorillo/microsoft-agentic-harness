@@ -1,6 +1,8 @@
+using Application.AI.Common.Interfaces.Agent;
 using Application.AI.Common.Services.Agent;
 using Domain.AI.Identity;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Application.AI.Common.Tests.Services.Agent;
@@ -340,5 +342,52 @@ public class AgentExecutionContextTests
         exceptions.Should().HaveCount(threadCount);
         exceptions.Should().AllSatisfy(e => e.Should().BeNull());
         context.AgentIdentity.Should().Be(identityTemplate);
+    }
+
+    // --- Per-run DI scoping contract (regression: GitHub #19) ---------------------
+    // ResearchAgentExample reused a root-scoped ISender across runs, so the scoped
+    // IAgentExecutionContext was bound on the first turn and collided on the second
+    // ("AgentExecutionContext scope conflict"), forcing an app restart. The fix runs
+    // each turn in a fresh DI scope. These two tests pin both halves of that contract.
+
+    [Fact]
+    public void ScopedContext_ReusedWithinOneScope_ThrowsScopeConflictOnSecondTurn()
+    {
+        // Reproduces the bug: a single scope hands back the same scoped instance, so the
+        // second turn's Initialize collides with the first turn's binding.
+        using var provider = new ServiceCollection()
+            .AddScoped<IAgentExecutionContext, AgentExecutionContext>()
+            .BuildServiceProvider();
+
+        var firstTurn = provider.GetRequiredService<IAgentExecutionContext>();
+        firstTurn.Initialize("research-agent", "conv-1", 1);
+
+        var reused = provider.GetRequiredService<IAgentExecutionContext>();
+        var act = () => reused.Initialize("research-agent", "conv-2", 1);
+
+        reused.Should().BeSameAs(firstTurn, "a single scope resolves the scoped context once");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*scope conflict*");
+    }
+
+    [Fact]
+    public void ScopedContext_FreshScopePerTurn_NoConflict()
+    {
+        // Proves the fix: a new scope per turn yields a fresh, unbound context each time.
+        using var provider = new ServiceCollection()
+            .AddScoped<IAgentExecutionContext, AgentExecutionContext>()
+            .BuildServiceProvider();
+
+        using (var firstScope = provider.CreateScope())
+        {
+            firstScope.ServiceProvider.GetRequiredService<IAgentExecutionContext>()
+                .Initialize("research-agent", "conv-1", 1);
+        }
+
+        using var secondScope = provider.CreateScope();
+        var secondTurn = secondScope.ServiceProvider.GetRequiredService<IAgentExecutionContext>();
+        var act = () => secondTurn.Initialize("research-agent", "conv-2", 1);
+
+        act.Should().NotThrow();
+        secondTurn.ConversationId.Should().Be("conv-2");
     }
 }

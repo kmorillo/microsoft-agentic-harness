@@ -25,5 +25,8 @@ trap cleanup EXIT INT TERM
 dashboard_pid=$!
 
 # WebUI Vite (:5173) in the foreground — keeps the process alive for SpaProxy.
+# Deliberately NOT `exec`: replacing the shell image would discard the EXIT/INT/TERM
+# trap above, orphaning the backgrounded Dashboard server. Running npm as a child keeps
+# the trap installed so the Dashboard is torn down when this script exits or is signalled.
 cd "$script_dir/../Presentation.WebUI"
-exec npm run dev
+npm run dev
