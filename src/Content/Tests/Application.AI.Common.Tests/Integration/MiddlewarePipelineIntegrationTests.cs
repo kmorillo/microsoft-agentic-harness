@@ -1,4 +1,6 @@
+using Application.AI.Common.Interfaces;
 using Application.AI.Common.Middleware;
+using Application.AI.Common.Services;
 using Application.AI.Common.Tests.Fakes;
 using FluentAssertions;
 using Microsoft.Extensions.AI;
@@ -63,6 +65,54 @@ public class MiddlewarePipelineIntegrationTests
         }
 
         chunks.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task ObservabilityMiddleware_StreamingResponse_CapturesTokenUsage()
+    {
+        // Guards the streaming usage-capture fix: a streamed response must record the
+        // same token usage the blocking path would, via the final UsageContent chunk.
+        var usageCapture = new Mock<ILlmUsageCapture>();
+        var fakeClient = new FakeChatClient();
+        fakeClient.EnqueueResponseWithUsage("streamed reply", inputTokens: 100, outputTokens: 50);
+
+        var middleware = new ObservabilityMiddleware(
+            fakeClient, NullLogger<ObservabilityMiddleware>.Instance, usageCapture.Object);
+
+        var messages = new List<ChatMessage> { new(ChatRole.User, "Stream this") };
+        await foreach (var _ in middleware.GetStreamingResponseAsync(messages)) { }
+
+        usageCapture.Verify(
+            c => c.Record(100, 50, 0, 0, It.IsAny<string?>()),
+            Times.Once,
+            "streaming path must record token usage like the blocking path");
+    }
+
+    [Fact]
+    public async Task ToolDiagnosticsMiddleware_StreamingResponse_CapturesToolCalls()
+    {
+        // Guards the streaming tool-capture fix: a tool call in a streamed response must
+        // be recorded (name + request) just as the blocking path records it.
+        var capture = new Mock<ILlmUsageCapture>();
+        LlmUsageCapture.Current = capture.Object;
+        try
+        {
+            var fakeClient = new FakeChatClient();
+            fakeClient.EnqueueResponseWithToolCall("test_tool", "call-1");
+
+            var middleware = new ToolDiagnosticsMiddleware(
+                fakeClient, NullLogger<ToolDiagnosticsMiddleware>.Instance);
+
+            var messages = new List<ChatMessage> { new(ChatRole.User, "Use a tool") };
+            await foreach (var _ in middleware.GetStreamingResponseAsync(messages)) { }
+
+            capture.Verify(c => c.RecordToolCall("test_tool"), Times.Once);
+            capture.Verify(c => c.RecordToolRequest("call-1", "test_tool", It.IsAny<string?>()), Times.Once);
+        }
+        finally
+        {
+            LlmUsageCapture.Current = null;
+        }
     }
 
     [Fact]

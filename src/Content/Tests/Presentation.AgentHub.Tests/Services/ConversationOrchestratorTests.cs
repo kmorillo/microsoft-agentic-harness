@@ -1,4 +1,5 @@
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Services;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using FluentAssertions;
 using MediatR;
@@ -135,12 +136,23 @@ public class ConversationOrchestratorTests
         _obsStore.Setup(s => s.StartSessionAsync("c1", "agent", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Guid.NewGuid());
 
+        // Simulate the handler streaming deltas through the ambient sink the orchestrator
+        // attaches for the duration of the dispatch.
         _mediator.Setup(m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AgentTurnResult
+            .Returns(async () =>
             {
-                Success = true,
-                Response = "Hello from agent",
-                UpdatedHistory = [],
+                var sink = AgentTurnStreamSink.Current;
+                if (sink is not null)
+                {
+                    await sink.EmitAsync("Hello ", CancellationToken.None);
+                    await sink.EmitAsync("from agent", CancellationToken.None);
+                }
+                return new AgentTurnResult
+                {
+                    Success = true,
+                    Response = "Hello from agent",
+                    UpdatedHistory = [],
+                };
             });
 
         var orchestrator = CreateOrchestrator();
@@ -154,7 +166,7 @@ public class ConversationOrchestratorTests
         outcome.Success.Should().BeTrue();
         outcome.Response.Should().Be("Hello from agent");
         outcome.AssistantMessageId.Should().NotBeEmpty();
-        chunks.Should().NotBeEmpty();
+        chunks.Should().Equal("Hello ", "from agent");
     }
 
     [Fact]
@@ -479,7 +491,7 @@ public class ConversationOrchestratorTests
     // ── Streaming ────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task SendMessage_LongResponse_StreamsMultipleChunks()
+    public async Task SendMessage_ForwardsHandlerDeltasVerbatim_WithoutRechunking()
     {
         var record = new ConversationRecord("c1", "agent", "user1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []);
         _store.Setup(s => s.GetAsync("c1", It.IsAny<CancellationToken>())).ReturnsAsync(record);
@@ -489,9 +501,17 @@ public class ConversationOrchestratorTests
         _obsStore.Setup(s => s.StartSessionAsync("c1", "agent", null, It.IsAny<CancellationToken>()))
             .ReturnsAsync(Guid.NewGuid());
 
-        var longResponse = new string('x', 120);
+        // A single long delta from the handler must reach the client as one chunk — the
+        // old 50-char re-chunker is gone; the orchestrator no longer reshapes the stream.
+        var longDelta = new string('x', 120);
         _mediator.Setup(m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new AgentTurnResult { Success = true, Response = longResponse, UpdatedHistory = [] });
+            .Returns(async () =>
+            {
+                var sink = AgentTurnStreamSink.Current;
+                if (sink is not null)
+                    await sink.EmitAsync(longDelta, CancellationToken.None);
+                return new AgentTurnResult { Success = true, Response = longDelta, UpdatedHistory = [] };
+            });
 
         var chunks = new List<string>();
         var orchestrator = CreateOrchestrator();
@@ -500,7 +520,7 @@ public class ConversationOrchestratorTests
             (chunk, _) => { chunks.Add(chunk); return Task.CompletedTask; },
             CancellationToken.None);
 
-        chunks.Should().HaveCount(3, "120 chars / 50 chars per chunk = 3 chunks (50+50+20)");
-        string.Concat(chunks).Should().Be(longResponse);
+        chunks.Should().ContainSingle("the orchestrator forwards handler deltas without re-chunking");
+        chunks[0].Should().Be(longDelta);
     }
 }

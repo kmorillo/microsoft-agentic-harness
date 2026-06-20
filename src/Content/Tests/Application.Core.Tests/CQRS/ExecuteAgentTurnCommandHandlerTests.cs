@@ -84,6 +84,63 @@ public class ExecuteAgentTurnCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_ActiveStreamSink_StreamsDeltasAndReturnsConcatenatedText()
+    {
+        // Arrange — multi-chunk streaming agent + an attached sink.
+        var agent = TestableAIAgent.Streaming("Hello ", "from ", "the agent");
+        _agentCache
+            .Setup(c => c.GetOrCreateAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<SkillAgentOptions>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(agent);
+
+        var deltas = new List<string>();
+        Application.AI.Common.Services.AgentTurnStreamSink.Current =
+            new Application.AI.Common.Services.AgentTurnStreamSink(
+                (delta, _) => { deltas.Add(delta); return Task.CompletedTask; });
+
+        try
+        {
+            // Act
+            var result = await _handler.Handle(CreateCommand(), CancellationToken.None);
+
+            // Assert — each delta streamed in order; full text is their concatenation.
+            deltas.Should().Equal("Hello ", "from ", "the agent");
+            result.Success.Should().BeTrue();
+            result.Response.Should().Be("Hello from the agent");
+        }
+        finally
+        {
+            Application.AI.Common.Services.AgentTurnStreamSink.Current = null;
+        }
+    }
+
+    [Fact]
+    public async Task Handle_NoStreamSink_DoesNotStream_AndStillReturnsResponse()
+    {
+        // Arrange — sink is null (default), so the handler uses the blocking path.
+        var agent = TestableAIAgent.Streaming("A", "B");
+        _agentCache
+            .Setup(c => c.GetOrCreateAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<string>>(),
+                It.IsAny<SkillAgentOptions>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(agent);
+
+        Application.AI.Common.Services.AgentTurnStreamSink.Current.Should().BeNull();
+
+        // Act
+        var result = await _handler.Handle(CreateCommand(), CancellationToken.None);
+
+        // Assert — blocking path returns the full text without a sink.
+        result.Success.Should().BeTrue();
+        result.Response.Should().Be("AB");
+    }
+
+    [Fact]
     public async Task Handle_ValidRequest_UpdatedHistoryContainsUserAndAssistantMessages()
     {
         // Arrange

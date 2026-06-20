@@ -41,6 +41,19 @@ public sealed class FakeChatClient : IChatClient
         return this;
     }
 
+    /// <summary>
+    /// Enqueues a response whose assistant message carries a tool call, for tool-capture tests.
+    /// </summary>
+    public FakeChatClient EnqueueResponseWithToolCall(string toolName, string callId)
+    {
+        var message = new ChatMessage(ChatRole.Assistant, new List<AIContent>
+        {
+            new FunctionCallContent(callId, toolName, new Dictionary<string, object?>())
+        });
+        _responses.Enqueue(new ChatResponse(message));
+        return this;
+    }
+
     /// <inheritdoc />
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
@@ -60,8 +73,16 @@ public sealed class FakeChatClient : IChatClient
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var response = await GetResponseAsync(messages, options, cancellationToken);
-        var text = string.Join("", response.Messages.Select(m => m.Text));
-        yield return new ChatResponseUpdate(ChatRole.Assistant, text);
+
+        // Stream each content item (text, tool calls) as its own update so middleware
+        // reconstructing via ToChatResponse() sees the same shape as the blocking path.
+        foreach (var message in response.Messages)
+            foreach (var content in message.Contents)
+                yield return new ChatResponseUpdate(message.Role, new List<AIContent> { content });
+
+        // Mirror real providers: token usage arrives as a UsageContent item in a final chunk.
+        if (response.Usage is { } usage)
+            yield return new ChatResponseUpdate(ChatRole.Assistant, new List<AIContent> { new UsageContent(usage) });
     }
 
     /// <inheritdoc />

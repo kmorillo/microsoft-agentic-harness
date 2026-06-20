@@ -60,22 +60,7 @@ public sealed class ObservabilityMiddleware : DelegatingChatClient
 
         var response = await base.GetResponseAsync(messageList, options, cancellationToken);
 
-        if (response.Usage is { } usage)
-        {
-            _logger.LogInformation(
-                "Token usage — Input: {InputTokens}, Output: {OutputTokens}, Total: {TotalTokens}",
-                usage.InputTokenCount,
-                usage.OutputTokenCount,
-                usage.TotalTokenCount);
-
-            var inputTokens = (int)Math.Min(usage.InputTokenCount ?? 0, int.MaxValue);
-            var outputTokens = (int)Math.Min(usage.OutputTokenCount ?? 0, int.MaxValue);
-            var cacheRead = GetAdditionalCount(usage, "cache_read_input_tokens");
-            var cacheWrite = GetAdditionalCount(usage, "cache_creation_input_tokens");
-            var model = options?.ModelId;
-
-            (_usageCapture ?? LlmUsageCapture.Current)?.Record(inputTokens, outputTokens, cacheRead, cacheWrite, model);
-        }
+        RecordUsage(response, options);
 
         return response;
     }
@@ -89,17 +74,43 @@ public sealed class ObservabilityMiddleware : DelegatingChatClient
         var messageList = messages as ICollection<ChatMessage> ?? messages.ToList();
         _logger.LogInformation("Invoking streaming ChatClient with {MessageCount} messages", messageList.Count);
 
-        int chunkCount = 0;
+        // Accumulate updates so usage capture matches the non-streaming path exactly.
+        // Streaming providers emit token counts as a UsageContent item in the final
+        // chunk; ToChatResponse() coalesces the stream and surfaces it as Usage.
+        var updates = new List<ChatResponseUpdate>();
         await foreach (var chunk in base.GetStreamingResponseAsync(messageList, options, cancellationToken))
         {
-            chunkCount++;
+            updates.Add(chunk);
             _logger.LogDebug("Received chunk with {ContentCount} content item(s)", chunk.Contents?.Count ?? 0);
             yield return chunk;
         }
 
-        // ChatResponseUpdate does not expose UsageDetails — token usage is not captured for streaming calls.
-        // When accurate usage tracking is required, prefer the non-streaming GetResponseAsync path.
-        _logger.LogDebug("Streaming completed: {ChunkCount} chunks. Token usage unavailable for streaming path", chunkCount);
+        _logger.LogDebug("Streaming completed: {ChunkCount} chunks", updates.Count);
+        RecordUsage(updates.ToChatResponse(), options);
+    }
+
+    /// <summary>
+    /// Logs and records token usage from a (possibly stream-reconstructed) response.
+    /// Shared by the streaming and non-streaming paths so both capture identically.
+    /// </summary>
+    private void RecordUsage(ChatResponse response, ChatOptions? options)
+    {
+        if (response.Usage is not { } usage)
+            return;
+
+        _logger.LogInformation(
+            "Token usage — Input: {InputTokens}, Output: {OutputTokens}, Total: {TotalTokens}",
+            usage.InputTokenCount,
+            usage.OutputTokenCount,
+            usage.TotalTokenCount);
+
+        var inputTokens = (int)Math.Min(usage.InputTokenCount ?? 0, int.MaxValue);
+        var outputTokens = (int)Math.Min(usage.OutputTokenCount ?? 0, int.MaxValue);
+        var cacheRead = GetAdditionalCount(usage, "cache_read_input_tokens");
+        var cacheWrite = GetAdditionalCount(usage, "cache_creation_input_tokens");
+        var model = options?.ModelId;
+
+        (_usageCapture ?? LlmUsageCapture.Current)?.Record(inputTokens, outputTokens, cacheRead, cacheWrite, model);
     }
 
     private static int GetAdditionalCount(UsageDetails usage, string key)

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Text;
 using System.Text.Json;
 using Application.AI.Common.Exceptions;
 using Application.AI.Common.Helpers;
@@ -112,7 +113,15 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 			var turnSw = Stopwatch.StartNew();
 			try
 			{
-				response = await agent.RunAsync(messages, cancellationToken: cancellationToken);
+				// When a transport has attached a streaming sink, stream assistant text
+				// deltas as the model generates them (real perceived-latency win). Usage
+				// and tool capture still flow through the chat-client middleware, so the
+				// post-turn accounting below is identical to the blocking path. With no
+				// sink (tests, batch callers) fall back to a single blocking call.
+				var streamSink = AgentTurnStreamSink.Current;
+				response = streamSink is not null
+					? await RunStreamingTurnAsync(agent, messages, streamSink, cancellationToken)
+					: await agent.RunAsync(messages, cancellationToken: cancellationToken);
 				turnSw.Stop();
 			}
 			finally
@@ -280,6 +289,34 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 				ErrorKind = AgentTurnErrorKind.Internal
 			};
 		}
+	}
+
+	/// <summary>
+	/// Runs the turn in streaming mode, emitting each assistant text delta to
+	/// <paramref name="sink"/> as it arrives and returning the concatenated full text.
+	/// Tool invocation, usage, and tool-call capture happen transparently in the
+	/// chat-client middleware pipeline (which instruments the streaming path), so the
+	/// caller's post-turn accounting is unchanged. The same <paramref name="cancellationToken"/>
+	/// flows to <c>RunStreamingAsync</c>, so a disconnected consumer aborts the model call.
+	/// </summary>
+	private static async Task<string> RunStreamingTurnAsync(
+		AIAgent agent,
+		IReadOnlyList<ChatMessage> messages,
+		IAgentTurnStreamSink sink,
+		CancellationToken cancellationToken)
+	{
+		var builder = new StringBuilder();
+		await foreach (var update in agent.RunStreamingAsync(messages, cancellationToken: cancellationToken))
+		{
+			var delta = update.Text;
+			if (string.IsNullOrEmpty(delta))
+				continue;
+
+			builder.Append(delta);
+			await sink.EmitAsync(delta, cancellationToken);
+		}
+
+		return builder.ToString();
 	}
 
 	private static void RecordTurnError(string agentName)

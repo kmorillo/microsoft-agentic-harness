@@ -149,16 +149,24 @@ public sealed class ToolDiagnosticsMiddleware : DelegatingChatClient
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         options = DeduplicateTools(options);
+        var toolsWereConfigured = options?.Tools is { Count: > 0 };
         LogToolsInOptions(options, nameof(GetStreamingResponseAsync));
 
         // Unconditional: records tool stdout via LlmUsageCapture even when the trace
         // writer is null (the writer is null-checked inside the method).
         await AppendFunctionResultTracesAsync(messages, cancellationToken);
 
+        // Accumulate updates so tool-call capture (names, args, call ids) matches the
+        // non-streaming path. ToChatResponse() coalesces the stream into the same
+        // ChatResponse shape LogToolCallsInResponse already understands.
+        var updates = new List<ChatResponseUpdate>();
         await foreach (var chunk in base.GetStreamingResponseAsync(messages, options, cancellationToken))
         {
+            updates.Add(chunk);
             yield return chunk;
         }
+
+        LogToolCallsInResponse(updates.ToChatResponse(), toolsWereConfigured);
     }
 
     private void LogToolsInOptions(ChatOptions? options, string method)

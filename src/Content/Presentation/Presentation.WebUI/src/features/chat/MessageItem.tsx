@@ -204,7 +204,7 @@ export function MessageItem({
           ) : isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : (
-            <Markdown content={message.content} />
+            <Markdown content={message.content} isStreaming={isStreaming} />
           )}
 
           {isStreaming && (

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Application.AI.Common.Exceptions;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.OpenTelemetry.Metrics;
+using Application.AI.Common.Services;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using Domain.AI.Telemetry.Conventions;
 using MediatR;
@@ -260,7 +261,14 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
             ObservabilitySessionId = obsSessionId,
         };
 
+        // Attach the streaming sink so the agent-turn handler streams real model token
+        // deltas to the caller as they arrive. Flowing it ambiently (AsyncLocal) keeps the
+        // MediatR command a pure data record. Restored in finally so nested/subsequent
+        // dispatches on this async flow are unaffected.
         AgentTurnResult result;
+        var previousSink = AgentTurnStreamSink.Current;
+        if (onChunk is not null)
+            AgentTurnStreamSink.Current = new AgentTurnStreamSink(onChunk);
         try
         {
             result = await _mediator.Send(command, ct);
@@ -270,6 +278,10 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
             _healthTracker.RecordError(agentName);
             var kind = ex is AiProviderNotConfiguredException ? AgentTurnErrorKind.Configuration : AgentTurnErrorKind.Internal;
             return await HandleTurnErrorAsync(conversationId, ex, kind, ct);
+        }
+        finally
+        {
+            AgentTurnStreamSink.Current = previousSink;
         }
 
         if (!result.Success)
@@ -292,9 +304,8 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
 
         await UpdateSessionMetricsAsync(sessionKey, result);
 
-        if (onChunk is not null)
-            await StreamChunksAsync(result.Response, onChunk, ct);
-
+        // Token deltas were already streamed to the caller during dispatch via the
+        // ambient AgentTurnStreamSink. The final authoritative text rides TurnComplete.
         var assistantMessageId = Guid.NewGuid();
         var assistantMsg = new ConversationMessage(
             assistantMessageId, MessageRole.Assistant, result.Response, DateTimeOffset.UtcNow);
@@ -374,17 +385,6 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Failed to persist session metrics for session {SessionId}", updated.ObservabilitySessionId);
-        }
-    }
-
-    private static async Task StreamChunksAsync(
-        string response, Func<string, CancellationToken, Task> onChunk, CancellationToken ct)
-    {
-        const int chunkSize = 50;
-        for (var i = 0; i < response.Length; i += chunkSize)
-        {
-            var chunk = response.Substring(i, Math.Min(chunkSize, response.Length - i));
-            await onChunk(chunk, ct);
         }
     }
 
