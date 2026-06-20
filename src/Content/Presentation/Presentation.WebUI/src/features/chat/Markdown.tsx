@@ -4,6 +4,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
 import { CodeBlock } from './CodeBlock';
+import { completeStreamingMarkdown } from './completeStreamingMarkdown';
 
 const sanitizeSchema = {
   ...defaultSchema,
@@ -16,9 +17,16 @@ const sanitizeSchema = {
 
 interface MarkdownProps {
   content: string;
+  /**
+   * When the message is still streaming, close any dangling code fence so an
+   * in-progress code block renders as a styled block instead of flickering as
+   * raw backticks until its closing fence arrives. No-op for finished messages.
+   */
+  isStreaming?: boolean;
 }
 
-export function Markdown({ content }: MarkdownProps) {
+export function Markdown({ content, isStreaming = false }: MarkdownProps) {
+  const source = isStreaming ? completeStreamingMarkdown(content) : content;
   return (
     <div className="markdown-body prose prose-sm prose-invert max-w-none break-words text-foreground">
       <ReactMarkdown
@@ -83,7 +91,7 @@ export function Markdown({ content }: MarkdownProps) {
           hr: () => <hr className="my-4 border-border/50" />,
         }}
       >
-        {content}
+        {source}
       </ReactMarkdown>
     </div>
   );

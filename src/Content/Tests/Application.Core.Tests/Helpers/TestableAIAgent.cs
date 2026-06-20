@@ -12,6 +12,7 @@ namespace Application.Core.Tests.Helpers;
 public sealed class TestableAIAgent : AIAgent
 {
     private readonly Func<IEnumerable<ChatMessage>, CancellationToken, Task<AgentResponse>> _runHandler;
+    private readonly IReadOnlyList<string>? _streamingChunks;
 
     public TestableAIAgent(string responseText)
         : this(_ => new AgentResponse(new ChatMessage(ChatRole.Assistant, responseText)))
@@ -24,8 +25,29 @@ public sealed class TestableAIAgent : AIAgent
     }
 
     public TestableAIAgent(Func<IEnumerable<ChatMessage>, CancellationToken, Task<AgentResponse>> handler)
+        : this(handler, streamingChunks: null)
+    {
+    }
+
+    private TestableAIAgent(
+        Func<IEnumerable<ChatMessage>, CancellationToken, Task<AgentResponse>> handler,
+        IReadOnlyList<string>? streamingChunks)
     {
         _runHandler = handler;
+        _streamingChunks = streamingChunks;
+    }
+
+    /// <summary>
+    /// Creates a TestableAIAgent that emits the given <paramref name="chunks"/> as distinct
+    /// streaming updates (and their concatenation for the blocking path), so streaming
+    /// callers can assert per-delta emission.
+    /// </summary>
+    public static TestableAIAgent Streaming(params string[] chunks)
+    {
+        var full = string.Concat(chunks);
+        return new TestableAIAgent(
+            (_, _) => Task.FromResult(new AgentResponse(new ChatMessage(ChatRole.Assistant, full))),
+            chunks);
     }
 
     /// <summary>
@@ -51,6 +73,15 @@ public sealed class TestableAIAgent : AIAgent
         AgentRunOptions? options,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
+        if (_streamingChunks is not null)
+        {
+            // Surface configured failures (e.g. Throwing) on the streaming path too.
+            await _runHandler(messages, cancellationToken);
+            foreach (var chunk in _streamingChunks)
+                yield return new AgentResponseUpdate(ChatRole.Assistant, chunk);
+            yield break;
+        }
+
         var response = await _runHandler(messages, cancellationToken);
         yield return new AgentResponseUpdate(ChatRole.Assistant, response.Text ?? string.Empty);
     }
