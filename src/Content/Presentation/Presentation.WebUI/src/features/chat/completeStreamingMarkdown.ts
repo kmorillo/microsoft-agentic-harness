@@ -26,28 +26,34 @@ export function completeStreamingMarkdown(content: string): string {
 
   // A fence is a line whose first non-whitespace characters are ``` or ~~~.
   // Counting line-anchored fences (rather than every ``` occurrence) avoids
-  // miscounting triple backticks that appear mid-line inside prose.
+  // miscounting triple backticks that appear mid-line inside prose. The capture
+  // group is the full run of markers so we know the fence's length.
   const fencePattern = /^[ \t]*(`{3,}|~{3,})/;
 
-  // Tracks the marker family (` or ~) of the currently open fence, or null when
-  // no fence is open. A fence only closes against the same family.
-  let openFence: string | null = null;
+  // The currently open fence's marker family (` or ~) and length, or null when no
+  // fence is open. Per CommonMark a fence is closed only by a later line using the
+  // same marker family with a run at least as long as the opening fence; a shorter
+  // (or different-family) run is content inside the block.
+  let open: { marker: string; length: number } | null = null;
 
   for (const line of content.split('\n')) {
     const match = fencePattern.exec(line);
     if (match === null) continue;
 
-    const marker = match[1][0]; // ` or ~
-    if (openFence === null) {
-      openFence = marker;
-    } else if (openFence === marker) {
-      openFence = null;
+    const run = match[1];
+    const marker = run[0]; // ` or ~
+    if (open === null) {
+      open = { marker, length: run.length };
+    } else if (marker === open.marker && run.length >= open.length) {
+      open = null;
     }
   }
 
-  if (openFence === null) return content;
+  if (open === null) return content;
 
-  const closer = openFence === '`' ? '```' : '~~~';
+  // Close with a run matching the opening fence's length so a 4+-marker fence is
+  // actually closed (a fixed 3-char closer would not satisfy CommonMark).
+  const closer = open.marker.repeat(open.length);
   const separator = content.endsWith('\n') ? '' : '\n';
   return `${content}${separator}${closer}`;
 }

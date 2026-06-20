@@ -273,6 +273,16 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         {
             result = await _mediator.Send(command, ct);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The connection token cancelled mid-turn: a routine client disconnect, not an
+            // agent error. Abort without recording health errors or a synthetic message. A
+            // genuine timeout cancels a linked token (surfaced as TimeoutException with `ct`
+            // uncancelled) and falls through to the error handler below.
+            _logger.LogInformation(
+                "Turn dispatch for conversation {ConversationId} cancelled by client disconnect.", conversationId);
+            throw;
+        }
         catch (Exception ex)
         {
             _healthTracker.RecordError(agentName);
@@ -286,6 +296,17 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
 
         if (!result.Success)
         {
+            // A disconnect can also surface as a failed result with `ct` already cancelled
+            // (the handler catches the cancellation internally). Treat that as routine
+            // cancellation, not an agent error — same reasoning as the catch above.
+            if (ct.IsCancellationRequested)
+            {
+                _logger.LogInformation(
+                    "Turn for conversation {ConversationId} aborted by client disconnect; not recorded as an error.",
+                    conversationId);
+                throw new OperationCanceledException(ct);
+            }
+
             _healthTracker.RecordError(agentName);
             return await HandleTurnErrorAsync(conversationId,
                 new InvalidOperationException(result.Error ?? "Agent returned a failure result."),
