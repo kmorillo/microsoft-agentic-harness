@@ -490,6 +490,127 @@ public class ConversationOrchestratorTests
 
     // ── Streaming ────────────────────────────────────────────────────────
 
+    // ── Disconnect vs timeout ────────────────────────────────────────────
+
+    [Fact]
+    public async Task SendMessage_ClientDisconnectMidTurn_AbortsWithoutRecordingError()
+    {
+        var record = new ConversationRecord("c1", "agent", "user1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []);
+        _store.Setup(s => s.GetAsync("c1", It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        _store.Setup(s => s.GetHistoryForDispatch("c1", 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConversationMessage>());
+        _obsStore.Setup(s => s.StartSessionAsync("c1", "agent", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
+
+        using var cts = new CancellationTokenSource();
+        // Simulate a client disconnect during the turn: the connection token cancels and
+        // the handler surfaces a failed result tagged Cancelled.
+        _mediator.Setup(m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                await cts.CancelAsync();
+                return new AgentTurnResult
+                {
+                    Success = false, Response = "", UpdatedHistory = [],
+                    Error = "cancelled", ErrorKind = AgentTurnErrorKind.Cancelled,
+                };
+            });
+
+        var orchestrator = CreateOrchestrator();
+        var act = () => orchestrator.SendMessageAsync(
+            "conn1", "c1", Guid.NewGuid(), "Hello", "user1", null, cts.Token);
+
+        // A disconnect is routine cancellation — abort, don't classify as an agent error.
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        _healthTracker.Verify(h => h.RecordError(It.IsAny<string>()), Times.Never);
+        _store.Verify(s => s.AppendMessageAsync("c1",
+            It.Is<ConversationMessage>(m => m.Content.Contains("[Error]")),
+            It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SendMessage_GenuineFailureCoincidingWithDisconnect_StillRecordsError()
+    {
+        // The tightening: discrimination is by ErrorKind, not raw token state. A genuine
+        // agent failure (ErrorKind.Internal) that happens to coincide with the connection
+        // dropping must still be recorded — not silently reclassified as a disconnect.
+        var record = new ConversationRecord("c1", "agent", "user1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []);
+        _store.Setup(s => s.GetAsync("c1", It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        _store.Setup(s => s.GetHistoryForDispatch("c1", 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConversationMessage>());
+        _obsStore.Setup(s => s.StartSessionAsync("c1", "agent", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
+
+        using var cts = new CancellationTokenSource();
+        _mediator.Setup(m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                await cts.CancelAsync(); // client drops at the same instant
+                return new AgentTurnResult
+                {
+                    Success = false, Response = "", UpdatedHistory = [],
+                    Error = "provider error", ErrorKind = AgentTurnErrorKind.Internal,
+                };
+            });
+
+        var orchestrator = CreateOrchestrator();
+        var outcome = await orchestrator.SendMessageAsync(
+            "conn1", "c1", Guid.NewGuid(), "Hello", "user1", null, cts.Token);
+
+        outcome.Success.Should().BeFalse();
+        _healthTracker.Verify(h => h.RecordError("agent"), Times.Once);
+    }
+
+    [Fact]
+    public async Task SendMessage_ClientDisconnect_OceFromDispatch_RethrowsWithoutRecordingError()
+    {
+        var record = new ConversationRecord("c1", "agent", "user1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []);
+        _store.Setup(s => s.GetAsync("c1", It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        _store.Setup(s => s.GetHistoryForDispatch("c1", 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConversationMessage>());
+        _obsStore.Setup(s => s.StartSessionAsync("c1", "agent", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
+
+        using var cts = new CancellationTokenSource();
+        _mediator.Setup(m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                await cts.CancelAsync();
+                throw new OperationCanceledException(cts.Token);
+            });
+
+        var orchestrator = CreateOrchestrator();
+        var act = () => orchestrator.SendMessageAsync(
+            "conn1", "c1", Guid.NewGuid(), "Hello", "user1", null, cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        _healthTracker.Verify(h => h.RecordError(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task SendMessage_Timeout_StillRecordsErrorAndReturnsFailedOutcome()
+    {
+        // A timeout cancels a linked token (TimeoutException), leaving the connection
+        // token uncancelled — so it must still be treated as a genuine agent error,
+        // unlike a client disconnect.
+        var record = new ConversationRecord("c1", "agent", "user1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []);
+        _store.Setup(s => s.GetAsync("c1", It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        _store.Setup(s => s.GetHistoryForDispatch("c1", 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConversationMessage>());
+        _obsStore.Setup(s => s.StartSessionAsync("c1", "agent", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
+
+        _mediator.Setup(m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TimeoutException("Request exceeded timeout."));
+
+        var orchestrator = CreateOrchestrator();
+        var outcome = await orchestrator.SendMessageAsync(
+            "conn1", "c1", Guid.NewGuid(), "Hello", "user1", null, CancellationToken.None);
+
+        outcome.Success.Should().BeFalse();
+        _healthTracker.Verify(h => h.RecordError("agent"), Times.Once);
+    }
+
     [Fact]
     public async Task SendMessage_ForwardsHandlerDeltasVerbatim_WithoutRechunking()
     {

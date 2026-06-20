@@ -42,6 +42,25 @@ describe('completeStreamingMarkdown', () => {
     expect(completeStreamingMarkdown(partial)).toBe('```\ncode\n~~~\n```');
   });
 
+  it('closes a 4-backtick fence with a 4-backtick closer (not a fixed 3)', () => {
+    // A 4-marker fence (used when the code itself contains triple backticks) must
+    // be closed by a run at least as long, or CommonMark would not close it.
+    const partial = '````md\n```\nnested\n```';
+    expect(completeStreamingMarkdown(partial)).toBe('````md\n```\nnested\n```\n````');
+  });
+
+  it('treats a shorter same-family fence inside a longer fence as content', () => {
+    // Opened with 4 backticks; the inner 3-backtick line is content, so the block
+    // stays open and is closed with 4 backticks.
+    const partial = '````\n```';
+    expect(completeStreamingMarkdown(partial)).toBe('````\n```\n````');
+  });
+
+  it('closes a longer fence opened after the standard three', () => {
+    const partial = '`````python\nprint(1)';
+    expect(completeStreamingMarkdown(partial)).toBe('`````python\nprint(1)\n`````');
+  });
+
   it('returns empty string unchanged', () => {
     expect(completeStreamingMarkdown('')).toBe('');
   });
