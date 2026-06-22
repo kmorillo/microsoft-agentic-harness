@@ -108,7 +108,10 @@ public sealed class ObservabilityMiddleware : DelegatingChatClient
         var outputTokens = (int)Math.Min(usage.OutputTokenCount ?? 0, int.MaxValue);
         var cacheRead = GetAdditionalCount(usage, "cache_read_input_tokens");
         var cacheWrite = GetAdditionalCount(usage, "cache_creation_input_tokens");
-        var model = options?.ModelId;
+        // Prefer the model the provider actually reported on the response; the per-call
+        // ChatOptions.ModelId is usually null because the model is configured on the client.
+        // A still-null model is defaulted to a priced model downstream in LlmUsageCapture.
+        var model = response.ModelId ?? options?.ModelId;
 
         (_usageCapture ?? LlmUsageCapture.Current)?.Record(inputTokens, outputTokens, cacheRead, cacheWrite, model);
     }

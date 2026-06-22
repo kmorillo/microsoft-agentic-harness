@@ -27,6 +27,7 @@ public sealed class LlmUsageCapture : ILlmUsageCapture
     }
 
     private readonly Dictionary<string, ModelPricingEntry> _pricing;
+    private readonly string _defaultModel;
     private readonly object _lock = new();
 
     private int _inputTokens;
@@ -59,6 +60,7 @@ public sealed class LlmUsageCapture : ILlmUsageCapture
         _pricing = new Dictionary<string, ModelPricingEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var entry in config.Models)
             _pricing[entry.Name] = entry;
+        _defaultModel = config.DefaultModel;
     }
 
     public void Record(int inputTokens, int outputTokens, int cacheRead, int cacheWrite, string? model)
@@ -137,7 +139,12 @@ public sealed class LlmUsageCapture : ILlmUsageCapture
     {
         lock (_lock)
         {
-            var cost = ComputeCost(_inputTokens, _outputTokens, _cacheRead, _cacheWrite, _model);
+            // A null per-call model (the chat client frequently doesn't surface ModelId
+            // per request — the model is configured on the client) must still price. Fall
+            // back to the configured DefaultModel so cost is computed and the stored model
+            // is meaningful instead of null — the cause of $0 cost on 216/217 prod messages.
+            var model = _model ?? _defaultModel;
+            var cost = ComputeCost(_inputTokens, _outputTokens, _cacheRead, _cacheWrite, model);
             var totalInput = _inputTokens + _cacheRead;
             var cacheHitPct = totalInput > 0 ? (decimal)_cacheRead / totalInput : 0m;
 
@@ -154,7 +161,7 @@ public sealed class LlmUsageCapture : ILlmUsageCapture
 
             var snapshot = new LlmUsageSnapshot(
                 _inputTokens, _outputTokens, _cacheRead, _cacheWrite,
-                _model, cost, Math.Round(cacheHitPct, 4), toolNames)
+                model, cost, Math.Round(cacheHitPct, 4), toolNames)
             {
                 ToolInvocations = invocations
             };

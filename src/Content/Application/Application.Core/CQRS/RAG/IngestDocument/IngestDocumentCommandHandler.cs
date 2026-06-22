@@ -106,6 +106,7 @@ public sealed class IngestDocumentCommandHandler
 
 			sw.Stop();
 
+			RagIngestionMetrics.Documents.Add(1);
 			RagIngestionMetrics.ChunksProduced.Add(chunks.Count);
 			RagIngestionMetrics.TokensEmbedded.Add(totalTokens);
 			RagIngestionMetrics.Duration.Record(sw.Elapsed.TotalMilliseconds);

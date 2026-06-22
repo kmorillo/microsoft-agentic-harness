@@ -156,4 +156,47 @@ public class LlmUsageCaptureTests
 
         snapshot.ToolNames.Should().BeEquivalentTo(new[] { "ReadFile", "WriteFile" });
     }
+
+    // ── Cost: a null per-call model must still be priced ──
+    // Repro for the dashboard cost-tile bug. The chat client often does not surface
+    // a per-call ModelId, so the recorded model is null and cost silently computes
+    // to $0 — even though the configured DefaultModel (claude-sonnet-4-6) IS priced.
+    // Verified in prod: 216/217 session_messages had model=(null) and cost 0.0000,
+    // while the one row with a real model priced correctly.
+
+    [Fact]
+    public void TakeSnapshot_NullModel_FallsBackToConfiguredDefaultModel()
+    {
+        var sut = CreateSut(); // default config: DefaultModel = claude-sonnet-4-6
+
+        sut.Record(inputTokens: 1_000_000, outputTokens: 0, cacheRead: 0, cacheWrite: 0, model: null);
+        var snapshot = sut.TakeSnapshot();
+
+        snapshot.Model.Should().Be("claude-sonnet-4-6",
+            "a null per-call model must fall back to the configured DefaultModel so cost can be priced");
+    }
+
+    [Fact]
+    public void TakeSnapshot_NullModel_PricesCostAtDefaultModelRate()
+    {
+        var sut = CreateSut(); // claude-sonnet-4-6 input rate = $3.00 / 1M tokens
+
+        sut.Record(inputTokens: 1_000_000, outputTokens: 0, cacheRead: 0, cacheWrite: 0, model: null);
+        var snapshot = sut.TakeSnapshot();
+
+        snapshot.CostUsd.Should().Be(3.00m,
+            "1M input tokens at the default model's $3.00/M rate — was $0 because a null model skipped pricing");
+    }
+
+    [Fact]
+    public void TakeSnapshot_ExplicitModel_StillTakesPrecedenceOverDefault()
+    {
+        var sut = CreateSut(); // claude-haiku-4-5 input rate = $0.80 / 1M tokens
+
+        sut.Record(inputTokens: 1_000_000, outputTokens: 0, cacheRead: 0, cacheWrite: 0, model: "claude-haiku-4-5");
+        var snapshot = sut.TakeSnapshot();
+
+        snapshot.Model.Should().Be("claude-haiku-4-5", "an explicitly recorded model must not be overridden by the default");
+        snapshot.CostUsd.Should().Be(0.80m);
+    }
 }
