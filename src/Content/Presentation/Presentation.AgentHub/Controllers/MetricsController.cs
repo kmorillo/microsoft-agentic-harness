@@ -206,7 +206,7 @@ internal static class MetricCatalog
         new() { Id = "sessions_turns_avg", Title = "Avg Turns/Session", Description = "Average conversation turns per session", Query = "agentic_harness_agent_orchestration_turns_per_conversation_sum / agentic_harness_agent_orchestration_turns_per_conversation_count or vector(0)", ChartType = "stat", Unit = "turns", Category = "sessions" },
         new() { Id = "sessions_duration_avg", Title = "Avg Duration", Description = "Average session duration", Query = "agentic_harness_agent_orchestration_conversation_duration_sum / agentic_harness_agent_orchestration_conversation_duration_count or vector(0)", ChartType = "stat", Unit = "ms", Category = "sessions" },
         new() { Id = "sessions_active_ts", Title = "Active Sessions Over Time", Description = "Session concurrency over time", Query = "agentic_harness_agent_session_active or vector(0)", ChartType = "timeseries", Unit = "count", Category = "sessions" },
-        new() { Id = "sessions_turns_ts", Title = "Turns Over Time", Description = "Conversation turns per minute", Query = "rate(agentic_harness_agent_orchestration_turns_total_total[5m]) * 60", ChartType = "timeseries", Unit = "turns/min", Category = "sessions" },
+        new() { Id = "sessions_turns_ts", Title = "Turns Over Time", Description = "Conversation turns per minute", Query = "rate(agentic_harness_agent_orchestration_turns_total[5m]) * 60", ChartType = "timeseries", Unit = "turns/min", Category = "sessions" },
 
         // --- RAG ---
         new() { Id = "rag_ingestion_total", Title = "Documents Ingested", Description = "Total documents processed for RAG", Query = "sum(agentic_harness_rag_ingestion_documents_total) or vector(0)", ChartType = "stat", Unit = "count", Category = "rag" },

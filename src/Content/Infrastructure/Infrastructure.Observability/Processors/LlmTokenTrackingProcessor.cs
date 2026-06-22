@@ -93,7 +93,13 @@ public sealed class LlmTokenTrackingProcessor : BaseProcessor<Activity>
         // Compute and record cost
         // Note: gen_ai.usage.input_tokens is the non-cached input portion.
         // Cache-read tokens are reported separately and priced at the lower cache rate.
-        if (_pricingLookup.TryGetValue(model, out var pricing))
+        // Fall back to the configured default model's pricing when the span's model isn't
+        // in the pricing table (e.g. a deployment alias or an unpriced model). The prior
+        // `?? _defaultModel` only covered a *null* model — a non-null unpriced model skipped
+        // cost entirely, the cause of the empty Prometheus cost tiles. Mirrors LlmUsageCapture.
+        if (!_pricingLookup.TryGetValue(model, out var pricing))
+            _pricingLookup.TryGetValue(_defaultModel, out pricing);
+        if (pricing is not null)
         {
             var cost = ComputeCost(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, pricing);
             if (cost > 0)
@@ -137,9 +143,10 @@ public sealed class LlmTokenTrackingProcessor : BaseProcessor<Activity>
             var userAgentTag = new KeyValuePair<string, object?>(AgentConventions.Name, agentName);
             UserActivityMetrics.TokensConsumed.Add(totalTokens, userTag, userAgentTag);
 
-            if (_pricingLookup.TryGetValue(model, out var userPricing))
+            // Reuse the pricing resolved above (already includes the default-model fallback).
+            if (pricing is not null)
             {
-                var userCost = ComputeCost(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, userPricing);
+                var userCost = ComputeCost(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, pricing);
                 if (userCost > 0)
                     UserActivityMetrics.CostAccrued.Add(userCost, userTag, userAgentTag);
             }

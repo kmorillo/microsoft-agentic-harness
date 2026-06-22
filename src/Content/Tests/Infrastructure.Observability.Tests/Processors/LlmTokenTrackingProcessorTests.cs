@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
 using Application.AI.Common.Interfaces;
 using Domain.AI.Telemetry.Conventions;
 using Domain.Common.Config;
@@ -129,5 +130,66 @@ public sealed class LlmTokenTrackingProcessorTests : IDisposable
 
         var act = () => processor.OnEnd(activity);
         act.Should().NotThrow();
+    }
+
+    /// <summary>
+    /// Regression guard for the empty Prometheus cost tiles: a span carrying a non-null model
+    /// that is NOT in the pricing table (e.g. a deployment alias) must still emit cost, priced
+    /// at the configured default model. Before the fix, only a *null* model fell back to the
+    /// default, so an unpriced non-null model skipped cost entirely.
+    /// </summary>
+    [Fact]
+    public void OnEnd_NonNullUnpricedModel_StillEmitsCostViaDefaultPricing()
+    {
+        const string uniqueAgent = "cost-fallback-guard-agent";
+        var config = new LlmPricingConfig
+        {
+            DefaultModel = "claude-sonnet-4-6",
+            Models =
+            [
+                new ModelPricingEntry
+                {
+                    Name = "claude-sonnet-4-6",
+                    InputPerMillion = 3.00m,
+                    OutputPerMillion = 15.00m,
+                    CacheReadPerMillion = 0.30m,
+                    CacheWritePerMillion = 3.75m
+                }
+            ]
+        };
+        var processor = CreateProcessor(config);
+
+        var costs = new List<double>();
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, l) =>
+            {
+                if (instrument.Name == TokenConventions.CostEstimated)
+                    l.EnableMeasurementEvents(instrument);
+            }
+        };
+        listener.SetMeasurementEventCallback<double>((_, value, tags, _) =>
+        {
+            // Filter by our unique agent so concurrent tests recording the same
+            // process-global instrument can't leak measurements into this assertion.
+            foreach (var tag in tags)
+                if (tag.Key == AgentConventions.Name && tag.Value as string == uniqueAgent)
+                    costs.Add(value);
+        });
+        listener.Start();
+
+        using (var activity = _source.StartActivity("llm-call")!)
+        {
+            activity.SetTag(TokenConventions.GenAiInputTokens, 1_000_000);
+            activity.SetTag(TokenConventions.GenAiOutputTokens, 0);
+            activity.SetTag(TokenConventions.GenAiRequestModel, "gpt-4o"); // non-null, NOT in the pricing table
+            activity.SetTag(AgentConventions.Name, uniqueAgent);
+            processor.OnEnd(activity);
+        }
+
+        costs.Should().NotBeEmpty(
+            "a non-null unpriced model must still emit cost via the default-model pricing fallback");
+        costs.Sum().Should().BeApproximately(3.00, 0.0001,
+            "1,000,000 input tokens priced at the default model's $3.00/M rate");
     }
 }

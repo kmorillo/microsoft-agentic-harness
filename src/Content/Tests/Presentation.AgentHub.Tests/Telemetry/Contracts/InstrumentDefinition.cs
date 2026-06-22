@@ -15,11 +15,11 @@ public sealed record InstrumentDefinition(
 {
     public string ToPrometheusName(string @namespace)
     {
-        var baseName = Name.Replace('.', '_');
-        var unitSuffix = GetUnitSuffix();
-        var typeSuffix = GetTypeSuffix();
+        var core = Name.Replace('.', '_') + GetUnitSuffix();
 
-        return $"{@namespace}_{baseName}{unitSuffix}{typeSuffix}";
+        return Type == InstrumentType.Counter
+            ? $"{@namespace}_{WithCounterTotal(core)}"
+            : $"{@namespace}_{core}";
     }
 
     public IReadOnlyList<string> ToAllPrometheusNames(string @namespace)
@@ -37,7 +37,8 @@ public sealed record InstrumentDefinition(
             },
             InstrumentType.Counter => new[]
             {
-                $"{@namespace}_{baseName}{unitSuffix}_total"
+                // Exporter appends _total but does not double it when already present.
+                $"{@namespace}_{WithCounterTotal(baseName + unitSuffix)}"
             },
             InstrumentType.UpDownCounter => new[]
             {
@@ -68,12 +69,11 @@ public sealed record InstrumentDefinition(
         };
     }
 
-    private string GetTypeSuffix()
-    {
-        return Type switch
-        {
-            InstrumentType.Counter => "_total",
-            _ => string.Empty
-        };
-    }
+    /// <summary>
+    /// Appends the Prometheus counter <c>_total</c> suffix, matching the OTel Prometheus
+    /// exporter which does NOT double the suffix when the instrument name already ends in
+    /// <c>_total</c> (e.g. <c>agent.orchestration.turns_total</c> → <c>..._turns_total</c>).
+    /// </summary>
+    private static string WithCounterTotal(string core) =>
+        core.EndsWith("_total", StringComparison.Ordinal) ? core : $"{core}_total";
 }
