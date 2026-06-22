@@ -16,6 +16,7 @@ import {
 } from '@/lib/categories';
 import { aggregateLoadedItems, totalTokensInCategory } from '@/lib/loadedItems';
 import { useSessionGemState } from './gem/useSessionGemState';
+import { useResolvedDrawerBody } from './gem/useResolvedDrawerBody';
 import type { LoadedItem } from '@/api/types';
 
 /**
@@ -48,6 +49,12 @@ export default function ContextInspectorPage() {
     messages: data?.messages ?? [],
     tools: data?.tools ?? [],
   });
+
+  // Resolve the open drawer item's full body (composed system prompt, skill
+  // instructions, tool/MCP schema, sub-agent description) via the shared hook —
+  // the same resolution SessionDetailPage uses, so both surfaces behave
+  // identically instead of this page being stuck on the "Loading…" placeholder.
+  const drawerBody = useResolvedDrawerBody(sessionId, gem.drawerItem);
 
   const lanes = useMemo(() => aggregateLoadedItems(snapshots), [snapshots]);
   // Maintain a parallel { item, turnIndex } map so each row knows which
@@ -130,7 +137,7 @@ export default function ContextInspectorPage() {
         name={gem.drawerItem?.name ?? ''}
         path={gem.drawerItem?.path ?? ''}
         role={gem.drawerItem?.content.role}
-        body={gem.drawerItem?.content.body ?? ''}
+        body={drawerBody}
         lang={gem.drawerItem?.content.lang}
         onPrev={() => gem.walkDrawer(-1)}
         onNext={() => gem.walkDrawer(1)}
