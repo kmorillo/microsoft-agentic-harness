@@ -73,9 +73,12 @@ const LOADING_BODY =
  * - `tools` → synthetic metadata card (name / status / duration / size)
  *   as JSON, plus an `idRef` so the drawer renderer can swap in the full
  *   args + stdout from `/api/sessions/:id/tools/:invocationId`.
- * - `skills` / `agents` / `mcp` / `system` → static "no body captured"
- *   note. The observability store does not currently record full bodies
- *   for these categories; the drawer shows the ref and label only.
+ * - `skills` / `agents` / `mcp` / `system` → a "Loading…" fallback plus a
+ *   `loaded-body` `idRef` (when a snapshotLoadedIndex is supplied) so the
+ *   drawer renderer fetches the captured body — composed system prompt, skill
+ *   instructions, tool/MCP schema, or sub-agent description — from
+ *   `/api/sessions/:id/turns/:turn/loaded/:idx/body` on open. The body itself
+ *   is resolved by `useResolvedDrawerBody`, shared by both drawer surfaces.
  *
  * Pure function — easy to test, easy to change content sources.
  */
