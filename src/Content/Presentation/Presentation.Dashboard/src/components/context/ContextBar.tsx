@@ -40,7 +40,7 @@ const HEIGHT_BY_SIZE: Record<ContextBarSize, string> = {
  * tiny mini-bar in a table row and the full-width hero rail on the session page.
  *
  * Order, color, and shape are identical at every scale by design — see
- * HANDOFF.md §3.1.
+ * foresight-dashboard-spec.md §3.1.
  */
 export function ContextBar({
   breakdown,

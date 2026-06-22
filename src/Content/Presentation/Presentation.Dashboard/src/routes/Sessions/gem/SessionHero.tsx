@@ -24,7 +24,7 @@ interface SessionHeroProps {
 
 /**
  * Composes the four Foresight hero primitives plus the contents panel into
- * the "gem" header that crowns the session page (HANDOFF.md §4). State is
+ * the "gem" header that crowns the session page (foresight-dashboard-spec.md §4). State is
  * owned externally by {@link useSessionGemState}; this component is a thin
  * presentational shell so the same composition can later be lifted to the
  * design-system sandbox or to an embedded preview.

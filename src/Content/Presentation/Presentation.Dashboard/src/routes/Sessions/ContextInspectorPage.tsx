@@ -19,7 +19,7 @@ import { useSessionGemState } from './gem/useSessionGemState';
 import type { LoadedItem } from '@/api/types';
 
 /**
- * Standalone Context Inspector — HANDOFF.md §9.3. Renders every loaded
+ * Standalone Context Inspector — foresight-dashboard-spec.md §9.3. Renders every loaded
  * artifact across the whole session, grouped into six category lanes.
  * Click any row → ContextDrawer opens with the (currently truncated)
  * preview body resolved by `buildDrawerContent` per category.

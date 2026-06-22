@@ -51,7 +51,7 @@ const STATUS_ACCENT_BORDER: Record<MetricStatus, string> = {
  *
  * Pattern intentionally collapses the gauge axis — a 42% gauge says the same
  * thing as `42% used · ▁▂▃▅▇ +3.2%` but takes a fraction of the visual
- * budget. HANDOFF.md §3.4 restraint rule: no decorative arcs.
+ * budget. foresight-dashboard-spec.md §3.4 restraint rule: no decorative arcs.
  */
 export function MetricPanel({
   title,

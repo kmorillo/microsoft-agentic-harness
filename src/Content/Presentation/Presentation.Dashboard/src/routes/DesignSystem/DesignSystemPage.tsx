@@ -68,7 +68,7 @@ export default function DesignSystemPage() {
         <h1 className="text-2xl font-bold text-foreground">Foresight Design System</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Dev-only sandbox for the load-bearing Foresight primitives. See
-          <code className="font-mono text-xs ml-1">HANDOFF.md</code> for the full design spec.
+          <code className="font-mono text-xs ml-1">documentation/design/foresight-dashboard-spec.md</code> for the full design spec.
         </p>
       </header>
 

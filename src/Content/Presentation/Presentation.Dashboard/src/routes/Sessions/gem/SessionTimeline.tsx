@@ -33,7 +33,7 @@ interface SessionTimelineProps {
 }
 
 /**
- * Per-turn rail under the hero. Each row mirrors HANDOFF.md §4: turn id +
+ * Per-turn rail under the hero. Each row mirrors foresight-dashboard-spec.md §4: turn id +
  * role pill + time + cumulative tokens, a body excerpt, a small ContextBar
  * snapshot, and the per-turn `loaded[]` items. Clicking the turn header
  * rewinds the hero; clicking any loaded item opens the drawer.

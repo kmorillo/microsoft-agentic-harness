@@ -3,7 +3,7 @@
  *
  * Single source of truth for the six context-window segments. Every visualization
  * in the Foresight design language groups tokens by these keys. Order is
- * load-bearing — see HANDOFF.md §3.1 ("same color, same order, same shape everywhere").
+ * load-bearing — see foresight-dashboard-spec.md §3.1 ("same color, same order, same shape everywhere").
  *
  * If you change keys, labels, or order here, every Foresight component picks it up
  * automatically. CSS variables live in `src/index.css` under `--cat-*`.
@@ -76,7 +76,7 @@ export const CATEGORY_BORDER_CLASS: Record<CategoryKey, string> = {
 };
 
 /**
- * Tokens consumed by one category. Shape mirrors HANDOFF.md §6.3 `CategoryBreakdown`.
+ * Tokens consumed by one category. Shape mirrors foresight-dashboard-spec.md §6.3 `CategoryBreakdown`.
  * Every Foresight visualization (context bar, legend, table mini-bar, timeline node)
  * accepts this exact shape.
  */
@@ -101,5 +101,5 @@ export function breakdownTotal(b: CategoryBreakdown): number {
   return CATEGORY_ORDER.reduce((sum, k) => sum + b[k], 0);
 }
 
-/** Default context budget used when no per-model value is supplied. See HANDOFF.md §6.1. */
+/** Default context budget used when no per-model value is supplied. See foresight-dashboard-spec.md §6.1. */
 export const DEFAULT_CONTEXT_BUDGET = 200_000;

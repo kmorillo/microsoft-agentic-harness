@@ -4,7 +4,7 @@ namespace Domain.AI.Context;
 /// The state of the model's context window immediately after turn
 /// <paramref name="TurnIndex"/> completes. <see cref="CtxAfter"/> is the
 /// per-category total at that moment; <see cref="Loaded"/> is the delta
-/// for this specific turn. Per HANDOFF.md §6.6 the invariant holds:
+/// for this specific turn. Per foresight-dashboard-spec.md §6.6 the invariant holds:
 /// <c>CtxAfter[N] = CtxAfter[N-1] + sum(Loaded[N] by category)</c>.
 /// </summary>
 /// <param name="ConversationId">Stable conversation identifier; matches the SignalR group name.</param>
