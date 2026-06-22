@@ -39,7 +39,7 @@ const ROLE_LABEL: Record<DrawerRole, string> = {
  * Right-side drawer for drilling into any loaded artifact (file or message).
  * Sticky header (category mark + name + path), line-numbered body, sticky
  * footer (prev/next + keyboard hints). Esc closes; ← / → walk through the
- * current category. See HANDOFF.md §4.2.
+ * current category. See foresight-dashboard-spec.md §4.2.
  *
  * Built on Radix Dialog — focus trap, scroll lock, and overlay come for free.
  */

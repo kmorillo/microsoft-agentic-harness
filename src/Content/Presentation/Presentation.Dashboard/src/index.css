@@ -76,7 +76,7 @@
   --otel-panel-2: oklch(0.94 0 0);
 
   /* Foresight category colors (six segments of the context bar)
-     Order is load-bearing — see src/lib/categories.ts and HANDOFF.md §3.2 */
+     Order is load-bearing — see src/lib/categories.ts and foresight-dashboard-spec.md §3.2 */
   --cat-system:   #2F6FEB;
   --cat-agents:   #B45309;
   --cat-skills:   #17A34A;
@@ -84,7 +84,7 @@
   --cat-mcp:      #0284C7;
   --cat-messages: #4B5563;
 
-  /* Single accent (≤2 uses per screen per HANDOFF.md §3.2)
+  /* Single accent (≤2 uses per screen per foresight-dashboard-spec.md §3.2)
      Aliases --cat-system intentionally so the hero color reads as the accent */
   --cat-accent:   #2F6FEB;
 

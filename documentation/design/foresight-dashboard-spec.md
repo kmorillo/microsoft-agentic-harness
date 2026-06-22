@@ -1,4 +1,4 @@
-# Foresight — Handoff
+# Foresight — Dashboard Design Spec
 
 A calm, readable dashboard for inspecting **what an agent actually loaded, said, and did** during a session. This document explains the design approach behind it and the data shape needed to power it.
 
@@ -131,7 +131,7 @@ project-root/
 ├── session.html              ← timeline + scrub + drawer (the gem)
 ├── context-inspector.html    ← all loaded files in category lanes
 ├── tool-drilldown.html       ← one tool invocation in depth
-├── HANDOFF.md                ← this document
+├── foresight-dashboard-spec.md  ← this document
 └── assets/
     ├── tokens.css            ← Neutral Modern design tokens + dark mode + category colors
     ├── app.css               ← shared component classes used across all four screens

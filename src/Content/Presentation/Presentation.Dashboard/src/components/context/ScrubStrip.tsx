@@ -32,7 +32,7 @@ const DOT_FILL_BY_ROLE: Record<TurnRole, string> = {
  * The active dot is haloed in cobalt; an optional sparkline above plots
  * cumulative tokens-in-context turn by turn.
  *
- * Used inside the hero of `session.html` per HANDOFF.md §4.3.
+ * Used inside the hero of `session.html` per foresight-dashboard-spec.md §4.3.
  */
 export function ScrubStrip({
   turns,

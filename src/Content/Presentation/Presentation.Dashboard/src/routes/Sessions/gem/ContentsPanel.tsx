@@ -47,7 +47,7 @@ function emptyLanes(): ContentsLanes {
  * renders one lane per category — or only the filtered lane when
  * `activeCategory` is set.
  *
- * Implements HANDOFF.md §4 ("CONTENTS panel — populated for active category").
+ * Implements foresight-dashboard-spec.md §4 ("CONTENTS panel — populated for active category").
  */
 export function ContentsPanel({
   snapshots,

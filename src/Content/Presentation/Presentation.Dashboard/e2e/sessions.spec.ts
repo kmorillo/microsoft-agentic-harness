@@ -193,7 +193,7 @@ test.describe('Session Detail Page', () => {
   });
 
   test('tools panel is a collapsible details with the tool count', async ({ page }) => {
-    // CostWaterfall was dropped intentionally (HANDOFF.md §4 pure gem). The
+    // CostWaterfall was dropped intentionally (foresight-dashboard-spec.md §4 pure gem). The
     // replacement surface for tool executions is the collapsible Tool
     // executions details below the timeline.
     const toolsPanel = page.locator('[data-testid="session-tools-panel"]');
