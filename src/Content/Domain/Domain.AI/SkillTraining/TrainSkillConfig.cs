@@ -76,4 +76,19 @@ public sealed record TrainSkillConfig
     /// what it can and cannot alter" guardrail of Self-Harness Phase 2.
     /// </remarks>
     public HarnessSurface TargetSurface { get; init; } = HarnessSurface.SkillDocument;
+
+    /// <summary>
+    /// Whether this run may emit bounded, never-applied harness-change suggestions (Self-Harness Phase 2
+    /// Step 2). Defaults to <see langword="false"/> — off. When true, the loop asks the registered
+    /// <c>IHarnessChangeSuggester</c> once, at end of run, for advisory config-dial suggestions (e.g.
+    /// raising <c>RetryConfig.MaxAttempts</c>); each is bounds-checked by the code-owned
+    /// <c>ConfigSurfaceConstraint</c>, audited, and surfaced on <c>SkillTrainingRunResult</c>.
+    /// </summary>
+    /// <remarks>
+    /// This is a suggestion-only path: nothing it produces ever mutates running configuration. It is
+    /// inert twice over by default — this flag is off, and the default <c>NoHarnessChangeSuggester</c>
+    /// returns nothing even when it is on. Turning it on without registering a real suggester therefore
+    /// changes nothing.
+    /// </remarks>
+    public bool EmitHarnessChangeSuggestions { get; init; }
 }

@@ -88,13 +88,16 @@ public sealed class SkillTrainingExample
         var applier = new PatchApplier();
         var gate = new GateEvaluator();
         var fence = new HarnessPatchValidator(new EditableSurfaceRegistry());
+        var suggester = new NoHarnessChangeSuggester();
+        var suggestionValidator = new HarnessChangeSuggestionValidator(new ConfigSurfaceConstraint());
         var store = new InMemorySkillTrainingCheckpointStore();
         var runner = new DeterministicRolloutRunner();
         var proposer = new DeterministicProposer();
         ILogger<TrainSkillCommandHandler> logger = NullLogger<TrainSkillCommandHandler>.Instance;
 
         return new TrainSkillCommandHandler(
-            runner, proposer, aggregator, selector, applier, gate, fence, store,
+            runner, proposer, aggregator, selector, applier, gate, fence,
+            suggester, suggestionValidator, store,
             new NoOpMediator(), TimeProvider.System, logger);
     }
 
