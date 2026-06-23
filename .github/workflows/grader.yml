@@ -75,6 +75,6 @@ jobs:
             changed files, then POST your verdict as a single PR comment. Update the
             same comment on re-runs rather than stacking new ones.
           claude_args: |
-            --model opus
+            --model sonnet
             --max-turns 20
             --allowedTools Bash,Read,Grep,Glob
