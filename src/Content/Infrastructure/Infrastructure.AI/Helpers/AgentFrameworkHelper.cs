@@ -1,4 +1,6 @@
+using System.ClientModel.Primitives;
 using Azure.AI.OpenAI;
+using Infrastructure.AI.Caching;
 using OpenAI;
 
 namespace Infrastructure.AI.Helpers;
@@ -39,10 +41,16 @@ public static class AgentFrameworkHelper
     /// <c>https://openrouter.ai/api/v1</c>). When null/blank/invalid, the SDK default
     /// (<c>https://api.openai.com/v1</c>) is used.
     /// </param>
+    /// <param name="enablePromptCaching">
+    /// When true, adds the <see cref="PromptCachingPipelinePolicy"/> so each chat-completions
+    /// request stamps an Anthropic prompt-cache breakpoint on its system prefix. Intended for
+    /// Claude-via-OpenRouter; harmless against providers that ignore <c>cache_control</c>.
+    /// </param>
     /// <param name="networkTimeoutSeconds">Network timeout in seconds. Default: 300.</param>
     /// <returns>Configured <see cref="OpenAIClientOptions"/>.</returns>
     public static OpenAIClientOptions GetOpenAIClientOptions(
         string? endpoint = null,
+        bool enablePromptCaching = false,
         int networkTimeoutSeconds = DefaultNetworkTimeoutSeconds)
     {
         var options = new OpenAIClientOptions
@@ -65,6 +73,11 @@ public static class AgentFrameworkHelper
             }
 
             options.Endpoint = endpointUri;
+        }
+
+        if (enablePromptCaching)
+        {
+            options.AddPolicy(new PromptCachingPipelinePolicy(), PipelinePosition.PerCall);
         }
 
         return options;

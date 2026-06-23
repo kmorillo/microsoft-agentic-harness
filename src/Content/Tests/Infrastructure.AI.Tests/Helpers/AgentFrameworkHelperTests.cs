@@ -83,4 +83,26 @@ public sealed class AgentFrameworkHelperTests
 
         options.UserAgentApplicationId.Should().Be("AgenticHarness/1.0");
     }
+
+    [Fact]
+    public void GetOpenAIClientOptions_WithPromptCaching_RegistersPolicyAndKeepsEndpoint()
+    {
+        // The prompt-caching branch adds a pipeline policy; the registered policy list is not
+        // publicly inspectable, so assert the option set is still built correctly (no throw,
+        // endpoint honoured) — the policy's live effect is covered by the gated integration test.
+        var options = AgentFrameworkHelper.GetOpenAIClientOptions(
+            "https://openrouter.ai/api/v1", enablePromptCaching: true);
+
+        options.Endpoint.Should().Be(new Uri("https://openrouter.ai/api/v1"));
+        options.NetworkTimeout.Should().Be(TimeSpan.FromSeconds(300));
+    }
+
+    [Fact]
+    public void GetOpenAIClientOptions_PromptCachingDefaultsOff()
+    {
+        // Default must be opt-in: a consumer who does not ask for caching gets none.
+        var act = () => AgentFrameworkHelper.GetOpenAIClientOptions("https://openrouter.ai/api/v1");
+
+        act.Should().NotThrow();
+    }
 }

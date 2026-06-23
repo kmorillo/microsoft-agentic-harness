@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Application.AI.Common.Interfaces;
 using Application.AI.Common.OpenTelemetry.Metrics;
+using Application.AI.Common.Pricing;
 using Domain.AI.Telemetry.Conventions;
 using Domain.Common.Config.Observability;
 using Microsoft.Extensions.Logging;
@@ -101,7 +102,7 @@ public sealed class LlmTokenTrackingProcessor : BaseProcessor<Activity>
             _pricingLookup.TryGetValue(_defaultModel, out pricing);
         if (pricing is not null)
         {
-            var cost = ComputeCost(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, pricing);
+            var cost = (double)LlmCostCalculator.Compute(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, pricing);
             if (cost > 0)
             {
                 LlmUsageMetrics.EstimatedCost.Add(cost, tags);
@@ -118,9 +119,16 @@ public sealed class LlmTokenTrackingProcessor : BaseProcessor<Activity>
             }
         }
 
-        // Cache hit rate
+        // Cache hit rate — only when the span actually carried cache attributes. On the
+        // OpenAI-compatible OpenRouter path the cache counts never reach the span (they are
+        // fetched out-of-band by CacheStatsEnrichingChatClient, which records the real rate);
+        // without this guard the processor would record a 0 hit rate for every such call and
+        // drag the histogram average down to roughly half the true value.
+        var hasCacheAttributes =
+            data.GetTagItem(TokenConventions.GenAiCacheReadTokens) is (int or long)
+            || data.GetTagItem(TokenConventions.GenAiCacheWriteTokens) is (int or long);
         var totalInput = inputTokens + cacheReadTokens;
-        if (totalInput > 0)
+        if (hasCacheAttributes && totalInput > 0)
         {
             var hitRate = (double)cacheReadTokens / totalInput;
             LlmUsageMetrics.CacheHitRate.Record(hitRate, new TagList { { TokenConventions.GenAiRequestModel, model } });
@@ -146,22 +154,11 @@ public sealed class LlmTokenTrackingProcessor : BaseProcessor<Activity>
             // Reuse the pricing resolved above (already includes the default-model fallback).
             if (pricing is not null)
             {
-                var userCost = ComputeCost(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, pricing);
+                var userCost = (double)LlmCostCalculator.Compute(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, pricing);
                 if (userCost > 0)
                     UserActivityMetrics.CostAccrued.Add(userCost, userTag, userAgentTag);
             }
         }
-    }
-
-    private static double ComputeCost(
-        long input, long output, long cacheRead, long cacheWrite,
-        ModelPricingEntry pricing)
-    {
-        return (double)(
-            (input * pricing.InputPerMillion / 1_000_000m) +
-            (output * pricing.OutputPerMillion / 1_000_000m) +
-            (cacheRead * pricing.CacheReadPerMillion / 1_000_000m) +
-            (cacheWrite * pricing.CacheWritePerMillion / 1_000_000m));
     }
 
     private static long GetLongTag(Activity data, string key)

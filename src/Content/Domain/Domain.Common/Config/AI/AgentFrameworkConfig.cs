@@ -53,6 +53,21 @@ public class AgentFrameworkConfig
     public int DefaultTokenBudget { get; set; } = 200_000;
 
     /// <summary>
+    /// Gets or sets whether to enable Anthropic prompt caching on the OpenAI-compatible client path
+    /// (e.g. Claude via OpenRouter). When true, a request-pipeline policy stamps a
+    /// <c>cache_control</c> breakpoint on the stable system prefix of each chat-completions call so
+    /// the provider caches and reuses it, cutting the cost of the repeated prefix by ~90%.
+    /// </summary>
+    /// <remarks>
+    /// Off by default — it is a no-op (and a small net cost from the cache-write premium) for
+    /// single-shot calls or prefixes below the provider's minimum cacheable size, so consumers opt
+    /// in deliberately. Only affects the <see cref="AIAgentFrameworkClientType.OpenAI"/> path; other
+    /// providers (Azure OpenAI caches automatically; native Anthropic uses a different mechanism)
+    /// ignore this flag.
+    /// </remarks>
+    public bool EnablePromptCaching { get; set; }
+
+    /// <summary>
     /// Returns true when minimum configuration is present to create a chat client.
     /// </summary>
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey);

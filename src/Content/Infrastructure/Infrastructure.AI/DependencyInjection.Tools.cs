@@ -91,6 +91,7 @@ public static partial class DependencyInjection
         if (framework.IsConfigured)
             RegisterChatClient(services, framework);
 
+        RegisterGenerationStatsClient(services, framework);
         RegisterEmbeddingGenerator(services, appConfig);
     }
 
@@ -115,7 +116,8 @@ public static partial class DependencyInjection
                 // such as OpenRouter (https://openrouter.ai/api/v1).
                 services.AddSingleton(new OpenAIClient(
                     new System.ClientModel.ApiKeyCredential(framework.ApiKey!),
-                    AgentFrameworkHelper.GetOpenAIClientOptions(framework.Endpoint)));
+                    AgentFrameworkHelper.GetOpenAIClientOptions(
+                        framework.Endpoint, framework.EnablePromptCaching)));
                 break;
 
             case AIAgentFrameworkClientType.AzureAIInference:
