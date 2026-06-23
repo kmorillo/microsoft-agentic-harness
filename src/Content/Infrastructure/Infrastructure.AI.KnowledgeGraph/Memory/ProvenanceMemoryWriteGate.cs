@@ -3,6 +3,7 @@ using Application.AI.Common.Interfaces.KnowledgeGraph;
 using Domain.AI.Governance;
 using Domain.AI.KnowledgeGraph.Models;
 using Domain.Common.Config;
+using Domain.Common.Config.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -97,30 +98,21 @@ public sealed class ProvenanceMemoryWriteGate : IMemoryWriteGate
             return MemoryWriteDecision.Allow();
 
         var scan = _scanner?.Scan(content ?? string.Empty) ?? InjectionScanResult.Clean();
-
-        // Reject is the more severe action and must never sit below the quarantine bar — otherwise a
-        // misconfiguration (RejectThreshold < QuarantineThreshold) would silently drop facts that
-        // should be quarantine-and-retained for forensics. Clamp defensively to honor the documented
-        // contract regardless of config order.
-        var rejectThreshold = guard.RejectThreshold < guard.QuarantineThreshold
-            ? guard.QuarantineThreshold
-            : guard.RejectThreshold;
+        var (outcome, classification) = ClassifyInjection(scan, guard);
 
         // Reject: never persist content that trips the reject threshold; audit only the decision.
-        if (scan.IsInjection && scan.ThreatLevel >= rejectThreshold)
+        if (outcome == InjectionOutcome.Reject)
         {
-            var rejectReason = $"rejected: {scan.ThreatLevel}/{scan.InjectionType}";
-            Audit(key, entityType, persist: false, rejectReason);
+            Audit(key, entityType, persist: false, classification);
             return new MemoryWriteDecision
             {
                 Persist = false,
                 Trust = MemoryTrust.Untrusted,
-                Reason = rejectReason
+                Reason = classification
             };
         }
 
-        var quarantine = scan.IsInjection && scan.ThreatLevel >= guard.QuarantineThreshold;
-        var classification = quarantine ? $"quarantined: injection/{scan.InjectionType}" : "trusted";
+        var quarantine = outcome == InjectionOutcome.Quarantine;
 
         // Optional intent ("Task Adherence") check — only when not already quarantined.
         if (!quarantine && guard.IntentCheckEnabled)
@@ -136,7 +128,6 @@ public sealed class ProvenanceMemoryWriteGate : IMemoryWriteGate
             }
         }
 
-        var trust = quarantine ? MemoryTrust.Untrusted : MemoryTrust.Trusted;
         var provenance = config.Rag.GraphRag.ProvenanceEnabled
             ? _provenanceStamper.CreateStamp(MemoryPipeline, MemoryTask)
             : null;
@@ -146,10 +137,35 @@ public sealed class ProvenanceMemoryWriteGate : IMemoryWriteGate
         return new MemoryWriteDecision
         {
             Persist = true,
-            Trust = trust,
+            Trust = quarantine ? MemoryTrust.Untrusted : MemoryTrust.Trusted,
             Provenance = provenance,
             Reason = classification
         };
+    }
+
+    private enum InjectionOutcome { Allow, Quarantine, Reject }
+
+    // Maps an injection scan to a write outcome + audit-safe classification string. Reject is the more
+    // severe action and must never sit below the quarantine bar — a misconfiguration
+    // (RejectThreshold < QuarantineThreshold) would otherwise silently drop facts that should be
+    // quarantine-and-retained for forensics, so the reject bar is clamped up defensively.
+    private static (InjectionOutcome Outcome, string Classification) ClassifyInjection(
+        InjectionScanResult scan, MemoryGuardConfig guard)
+    {
+        if (!scan.IsInjection)
+            return (InjectionOutcome.Allow, "trusted");
+
+        var rejectThreshold = guard.RejectThreshold < guard.QuarantineThreshold
+            ? guard.QuarantineThreshold
+            : guard.RejectThreshold;
+
+        if (scan.ThreatLevel >= rejectThreshold)
+            return (InjectionOutcome.Reject, $"rejected: {scan.ThreatLevel}/{scan.InjectionType}");
+
+        if (scan.ThreatLevel >= guard.QuarantineThreshold)
+            return (InjectionOutcome.Quarantine, $"quarantined: injection/{scan.InjectionType}");
+
+        return (InjectionOutcome.Allow, "trusted");
     }
 
     private void Audit(string key, string entityType, bool persist, string classification)

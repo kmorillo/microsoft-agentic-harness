@@ -222,6 +222,9 @@ public sealed class KnowledgeMemoryServiceTests
         var persisted = await _graphStore.GetNodeAsync($"{DefaultNs}:azure");
         persisted.Should().NotBeNull();
         persisted!.GetTrust().Should().Be(MemoryTrust.Trusted);
+        // Trusted facts stay unmarked (GetTrust defaults to Trusted) — assert the key is genuinely
+        // absent, so an accidental future stamp of "trusted" can't pass this test silently.
+        persisted.Properties.Should().NotContainKey(GraphNodeMemoryExtensions.TrustPropertyKey);
     }
 
     [Fact]

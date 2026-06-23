@@ -169,7 +169,7 @@ public static class DependencyInjection
                 sp.GetService<IFeedbackStore>(),
                 sp.GetRequiredService<IOptionsMonitor<AppConfig>>(),
                 sp.GetRequiredService<ILogger<KnowledgeMemoryService>>(),
-                sp.GetService<IMemoryWriteGate>()));
+                sp.GetRequiredService<IMemoryWriteGate>()));
 
         // Conversation-to-Knowledge Bridge — LLM-based fact extraction from agent turns
         services.AddTransient<IConversationFactExtractor, ConversationFactExtractor>();
