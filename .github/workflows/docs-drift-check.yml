@@ -77,6 +77,6 @@ jobs:
             If you find NO drift, do not open a PR. Write a one-line "no drift" note to the
             job summary ($GITHUB_STEP_SUMMARY) and stop. Never open an empty PR.
           claude_args: |
-            --model opus
+            --model sonnet
             --max-turns 30
             --allowedTools Bash,Read,Grep,Glob,Write,Edit
