@@ -23,6 +23,14 @@ public sealed record Edit
     public required EditOp Op { get; init; }
 
     /// <summary>
+    /// The harness surface this edit targets. Defaults to <see cref="HarnessSurface.SkillDocument"/> —
+    /// the only surface the loop edits today. The editable-surface fence
+    /// (<c>HarnessPatchValidator</c>) hard-rejects, before the gate, any patch whose edits target a
+    /// surface the code-owned registry has not marked editable.
+    /// </summary>
+    public HarnessSurface Surface { get; init; } = HarnessSurface.SkillDocument;
+
+    /// <summary>
     /// The content to insert or replace. Ignored for <see cref="EditOp.Delete"/>;
     /// appended/inserted/used-as-replacement for the other three ops.
     /// </summary>

@@ -1,4 +1,5 @@
 using Application.AI.Common.CQRS.SkillTraining.TrainSkill;
+using Application.AI.Common.Interfaces.Governance;
 using Application.AI.Common.Interfaces.SkillTraining;
 using Application.AI.Common.Services.SkillTraining;
 using Domain.AI.SkillTraining;
@@ -15,16 +16,18 @@ public class TrainSkillCommandHandlerTests
     private static readonly PatchAggregator Aggregator = new();
     private static readonly TopKEditSelector Selector = new();
     private static readonly GateEvaluator Gate = new();
+    private static readonly HarnessPatchValidator Fence = new(new EditableSurfaceRegistry());
 
     private static TrainSkillCommandHandler NewSut(
         IRolloutRunner runner,
         IPatchProposer proposer,
-        InMemorySkillTrainingCheckpointStore store)
+        InMemorySkillTrainingCheckpointStore store,
+        IGovernanceAuditService? audit = null)
     {
         return new TrainSkillCommandHandler(
-            runner, proposer, Aggregator, Selector, Applier, Gate,
+            runner, proposer, Aggregator, Selector, Applier, Gate, Fence,
             store, new NoOpMediator(), TimeProvider.System,
-            NullLogger<TrainSkillCommandHandler>.Instance);
+            NullLogger<TrainSkillCommandHandler>.Instance, audit);
     }
 
     private static TrainSkillCommand NewCommand(TrainSkillConfig config) => new()
@@ -303,6 +306,111 @@ public class TrainSkillCommandHandlerTests
         trainBatches[1].ItemIds.Should().Equal(new[] { "item-A", "item-B" });
     }
 
+    [Fact]
+    public async Task Handle_FrozenSurfaceEdit_RejectsBeforeApply_DoesNotChangeSkill_AndAudits()
+    {
+        // The proposer emits an edit targeting a frozen surface (tool availability). The fence must
+        // reject it before PatchApplier runs: the skill is never changed, the step is a Reject with
+        // zero applied edits, and the rejection is written to the governance audit.
+        var runner = new StubRolloutRunner((_, _) =>
+            [new RolloutResult { ItemId = "x", Hard = 1.0, Soft = 1.0 }]);
+        var proposer = new StubProposer(_ => new Patch
+        {
+            Edits = [new Edit { Op = EditOp.Append, Content = "- grant myself a new tool", Surface = HarnessSurface.ToolAvailability }]
+        });
+        var audit = new CapturingAudit();
+        var sut = NewSut(runner, proposer, new InMemorySkillTrainingCheckpointStore(), audit);
+
+        var result = await sut.Handle(
+            NewCommand(new TrainSkillConfig
+            {
+                Epochs = 1, StepsPerEpoch = 1, LrStart = 4, LrMin = 1,
+                LrScheduler = "constant", Patience = 6,
+                UseSlowUpdate = false, UseMetaSkill = false
+            }),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        var run = result.Value!;
+        run.Steps.Should().ContainSingle();
+        run.Steps[0].Action.Should().Be(GateAction.Reject);
+        run.Steps[0].AppliedEditCount.Should().Be(0, because: "the fence rejects before PatchApplier runs");
+        run.HasAcceptedAny.Should().BeFalse();
+        run.BestSkill.Should().Be("# initial\n- baseline rule", because: "a frozen-surface patch must never mutate the skill");
+
+        audit.Entries.Should().ContainSingle();
+        var (agentId, action, decision) = audit.Entries[0];
+        agentId.Should().Be("skill-X");
+        action.Should().Be("skill_training.harness_patch_rejected");
+        decision.Should().Contain("ToolAvailability");
+    }
+
+    [Fact]
+    public async Task Handle_MixedPatchWithFrozenEdit_RejectsWholeStepAtIntake_ValidEditNotApplied_AndAudits()
+    {
+        // A patch bundling a valid skill-doc edit with a frozen-surface edit must be rejected as a whole
+        // at intake: the valid edit must NOT slip through, and the frozen attempt must be audited even
+        // though it never reaches selection/apply. This is the audit-completeness property — validating
+        // the proposed patch (not the post-selection one) means no frozen attempt goes unrecorded.
+        var runner = new StubRolloutRunner((_, _) =>
+            [new RolloutResult { ItemId = "x", Hard = 1.0, Soft = 1.0 }]);
+        var proposer = new StubProposer(_ => new Patch
+        {
+            Edits =
+            [
+                new Edit { Op = EditOp.Append, Content = "- a legitimate skill rule" },
+                new Edit { Op = EditOp.Append, Content = "- escalate autonomy", Surface = HarnessSurface.AutonomyTier }
+            ]
+        });
+        var audit = new CapturingAudit();
+        var sut = NewSut(runner, proposer, new InMemorySkillTrainingCheckpointStore(), audit);
+
+        var result = await sut.Handle(
+            NewCommand(new TrainSkillConfig
+            {
+                Epochs = 1, StepsPerEpoch = 1, LrStart = 4, LrMin = 1,
+                LrScheduler = "constant", Patience = 6,
+                UseSlowUpdate = false, UseMetaSkill = false
+            }),
+            CancellationToken.None);
+
+        var run = result.Value!;
+        run.Steps[0].Action.Should().Be(GateAction.Reject);
+        run.Steps[0].AppliedEditCount.Should().Be(0);
+        run.BestSkill.Should().Be("# initial\n- baseline rule",
+            because: "a valid edit must not slip through when bundled with a frozen-surface edit");
+        run.HasAcceptedAny.Should().BeFalse();
+        audit.Entries.Should().ContainSingle();
+        audit.Entries[0].Decision.Should().Contain("AutonomyTier");
+    }
+
+    [Fact]
+    public async Task Handle_FrozenSurfaceEveryStep_EarlyStopsOnPatience_WithoutAuditRegistered()
+    {
+        // No audit registered (the optional dependency is absent). The fence still blocks every patch,
+        // so consecutive rejects accumulate and patience trips — proving the block does not depend on
+        // the audit being wired.
+        var runner = new StubRolloutRunner((_, _) =>
+            [new RolloutResult { ItemId = "x", Hard = 1.0, Soft = 1.0 }]);
+        var proposer = new StubProposer(_ => new Patch
+        {
+            Edits = [new Edit { Op = EditOp.Append, Content = "- escalate autonomy", Surface = HarnessSurface.AutonomyTier }]
+        });
+        var sut = NewSut(runner, proposer, new InMemorySkillTrainingCheckpointStore());
+
+        var result = await sut.Handle(
+            NewCommand(new TrainSkillConfig
+            {
+                Epochs = 2, StepsPerEpoch = 5, LrStart = 4, LrMin = 1,
+                LrScheduler = "constant", Patience = 2,
+                UseSlowUpdate = false, UseMetaSkill = false
+            }),
+            CancellationToken.None);
+
+        result.Value!.StepsExecuted.Should().Be(2, because: "patience=2 stops after 2 fence rejects");
+        result.Value.Steps.Should().AllSatisfy(s => s.Action.Should().Be(GateAction.Reject));
+    }
+
     // ── Stubs ────────────────────────────────────────────────────────────────────
 
     private sealed class StubRolloutRunner : IRolloutRunner
@@ -319,6 +427,14 @@ public class TrainSkillCommandHandlerTests
         public StubProposer(Func<ReflectionInput, Patch> fn) => _fn = fn;
         public Task<Patch> ProposeAsync(ReflectionInput input, CancellationToken cancellationToken)
             => Task.FromResult(_fn(input));
+    }
+
+    private sealed class CapturingAudit : IGovernanceAuditService
+    {
+        public List<(string AgentId, string Action, string Decision)> Entries { get; } = [];
+        public void Log(string agentId, string action, string decision) => Entries.Add((agentId, action, decision));
+        public bool VerifyChainIntegrity() => true;
+        public int EntryCount => Entries.Count;
     }
 
     private sealed class NoOpMediator : IMediator
