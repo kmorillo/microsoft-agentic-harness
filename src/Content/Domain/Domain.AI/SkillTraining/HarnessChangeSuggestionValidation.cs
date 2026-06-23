@@ -29,9 +29,6 @@ public sealed record HarnessChangeSuggestionValidation
     /// </summary>
     public string? NormalizedValue { get; init; }
 
-    /// <summary>A shared allowed result carrying no normalized value.</summary>
-    public static HarnessChangeSuggestionValidation Allowed { get; } = new() { IsAllowed = true };
-
     /// <summary>Builds an allowed result carrying the scrubbed canonical <paramref name="normalizedValue"/>.</summary>
     /// <param name="normalizedValue">The validated value in canonical form, safe to audit.</param>
     public static HarnessChangeSuggestionValidation AllowedWith(string normalizedValue) =>

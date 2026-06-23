@@ -39,8 +39,9 @@ public sealed class HarnessChangeSuggestionValidator
     /// </summary>
     /// <param name="suggestion">The suggestion to check.</param>
     /// <returns>
-    /// <see cref="HarnessChangeSuggestionValidation.Allowed"/> when all checks pass; otherwise a
-    /// rejection carrying the first failing <see cref="HarnessChangeRejectionReason"/>.
+    /// An allowed result (<see cref="HarnessChangeSuggestionValidation.AllowedWith(string)"/>) carrying
+    /// the scrubbed canonical value when all checks pass; otherwise a rejection carrying the first failing
+    /// <see cref="HarnessChangeRejectionReason"/>.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="suggestion"/> is <see langword="null"/>.</exception>
     public HarnessChangeSuggestionValidation Validate(HarnessChangeSuggestion suggestion)
