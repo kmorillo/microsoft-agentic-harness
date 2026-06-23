@@ -41,4 +41,18 @@ public sealed record GateResult
 
     /// <summary>The gate-metric-projected score for the candidate.</summary>
     public required double CandidateScore { get; init; }
+
+    /// <summary>
+    /// The candidate's metric-projected score on the held-in (proposer-visible) split. Populated by
+    /// the two-split non-regression gate so the audit record shows the held-in evidence behind the
+    /// decision. Remains <c>0.0</c> for the single-split gate, which never consults a held-in split.
+    /// </summary>
+    public double CandidateHeldInScore { get; init; }
+
+    /// <summary>
+    /// The current skill's metric-projected held-in score at gate time, i.e. the baseline the
+    /// candidate's held-in score was compared against. Populated by the two-split gate; <c>0.0</c>
+    /// for the single-split gate.
+    /// </summary>
+    public double CurrentHeldInScore { get; init; }
 }

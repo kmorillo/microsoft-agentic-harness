@@ -34,18 +34,36 @@ public sealed class GateCandidateSkillCommandHandler
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var result = _gate.Evaluate(
-            candidateSkill: request.CandidateSkill,
-            candidateHard: request.CandidateHard,
-            candidateSoft: request.CandidateSoft,
-            currentSkill: request.CurrentSkill,
-            currentScore: request.CurrentScore,
-            bestSkill: request.BestSkill,
-            bestScore: request.BestScore,
-            bestStep: request.BestStep,
-            globalStep: request.GlobalStep,
-            metric: request.Metric,
-            mixedWeight: request.MixedWeight);
+        var result = request.Mode == GateMode.TwoSplitNonRegression
+            ? _gate.EvaluateTwoSplit(new GateEvaluation
+            {
+                CandidateSkill = request.CandidateSkill,
+                CandidateHard = request.CandidateHard,
+                CandidateSoft = request.CandidateSoft,
+                CandidateHeldInHard = request.CandidateHeldInHard,
+                CandidateHeldInSoft = request.CandidateHeldInSoft,
+                CurrentSkill = request.CurrentSkill,
+                CurrentScore = request.CurrentScore,
+                CurrentHeldInScore = request.CurrentHeldInScore,
+                BestSkill = request.BestSkill,
+                BestScore = request.BestScore,
+                BestStep = request.BestStep,
+                GlobalStep = request.GlobalStep,
+                Metric = request.Metric,
+                MixedWeight = request.MixedWeight
+            })
+            : _gate.Evaluate(
+                candidateSkill: request.CandidateSkill,
+                candidateHard: request.CandidateHard,
+                candidateSoft: request.CandidateSoft,
+                currentSkill: request.CurrentSkill,
+                currentScore: request.CurrentScore,
+                bestSkill: request.BestSkill,
+                bestScore: request.BestScore,
+                bestStep: request.BestStep,
+                globalStep: request.GlobalStep,
+                metric: request.Metric,
+                mixedWeight: request.MixedWeight);
 
         return Task.FromResult(Result<GateResult>.Success(result));
     }
