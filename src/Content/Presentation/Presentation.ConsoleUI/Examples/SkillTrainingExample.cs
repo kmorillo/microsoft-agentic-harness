@@ -87,13 +87,14 @@ public sealed class SkillTrainingExample
         var selector = new TopKEditSelector();
         var applier = new PatchApplier();
         var gate = new GateEvaluator();
+        var fence = new HarnessPatchValidator(new EditableSurfaceRegistry());
         var store = new InMemorySkillTrainingCheckpointStore();
         var runner = new DeterministicRolloutRunner();
         var proposer = new DeterministicProposer();
         ILogger<TrainSkillCommandHandler> logger = NullLogger<TrainSkillCommandHandler>.Instance;
 
         return new TrainSkillCommandHandler(
-            runner, proposer, aggregator, selector, applier, gate, store,
+            runner, proposer, aggregator, selector, applier, gate, fence, store,
             new NoOpMediator(), TimeProvider.System, logger);
     }
 

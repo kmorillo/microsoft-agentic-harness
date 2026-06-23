@@ -18,6 +18,8 @@ namespace Application.AI.Common.Extensions;
 /// <item><see cref="IGateEvaluator"/> → <see cref="GateEvaluator"/>.</item>
 /// <item><see cref="IPatchAggregator"/> → <see cref="PatchAggregator"/>.</item>
 /// <item><see cref="IEditSelector"/> → <see cref="TopKEditSelector"/>.</item>
+/// <item><see cref="EditableSurfaceRegistry"/> — code-owned editable-surface fence allowlist.</item>
+/// <item><see cref="HarnessPatchValidator"/> — concrete fence (no interface seam, by design).</item>
 /// <item><see cref="ISkillTrainingCheckpointStore"/> → <see cref="InMemorySkillTrainingCheckpointStore"/>.</item>
 /// <item><see cref="IPatchProposer"/> → <see cref="NotConfiguredPatchProposer"/> (fail-fast default).</item>
 /// <item><see cref="IRolloutRunner"/> → <see cref="NotConfiguredRolloutRunner"/> (fail-fast default).</item>
@@ -42,6 +44,8 @@ public static class SkillTrainingDependencyInjection
         services.TryAddSingleton<IGateEvaluator, GateEvaluator>();
         services.TryAddSingleton<IPatchAggregator, PatchAggregator>();
         services.TryAddSingleton<IEditSelector, TopKEditSelector>();
+        services.TryAddSingleton<EditableSurfaceRegistry>();
+        services.TryAddSingleton<HarnessPatchValidator>();
         services.TryAddSingleton<ISkillTrainingCheckpointStore, InMemorySkillTrainingCheckpointStore>();
         services.TryAddSingleton<IPatchProposer, NotConfiguredPatchProposer>();
         services.TryAddSingleton<IRolloutRunner, NotConfiguredRolloutRunner>();

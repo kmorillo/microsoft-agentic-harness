@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Application.AI.Common.Interfaces.Governance;
 using Application.AI.Common.Interfaces.SkillTraining;
 using Application.AI.Common.Services.SkillTraining;
 using Application.AI.Common.Services.SkillTraining.Schedulers;
@@ -37,12 +38,21 @@ public sealed class TrainSkillCommandHandler
     private readonly IEditSelector _selector;
     private readonly PatchApplier _applier;
     private readonly IGateEvaluator _gate;
+    private readonly HarnessPatchValidator _fence;
     private readonly ISkillTrainingCheckpointStore _checkpointStore;
     private readonly IMediator _mediator;
     private readonly TimeProvider _time;
     private readonly ILogger<TrainSkillCommandHandler> _logger;
+    private readonly IGovernanceAuditService? _audit;
 
     /// <summary>Initializes a new instance of the <see cref="TrainSkillCommandHandler"/> class.</summary>
+    /// <remarks>
+    /// <paramref name="audit"/> is optional: when a tamper-evident governance audit service is
+    /// registered (the full-harness composition root), fence rejections are written to the hash-chain;
+    /// when it is absent (a consumer wiring only the skill-training subsystem), rejections are still
+    /// logged via <see cref="ILogger{TCategoryName}"/> and the patch is still blocked. The fence is the
+    /// security control; the audit is the record of it.
+    /// </remarks>
     public TrainSkillCommandHandler(
         IRolloutRunner rolloutRunner,
         IPatchProposer proposer,
@@ -50,10 +60,12 @@ public sealed class TrainSkillCommandHandler
         IEditSelector selector,
         PatchApplier applier,
         IGateEvaluator gate,
+        HarnessPatchValidator fence,
         ISkillTrainingCheckpointStore checkpointStore,
         IMediator mediator,
         TimeProvider time,
-        ILogger<TrainSkillCommandHandler> logger)
+        ILogger<TrainSkillCommandHandler> logger,
+        IGovernanceAuditService? audit = null)
     {
         ArgumentNullException.ThrowIfNull(rolloutRunner);
         ArgumentNullException.ThrowIfNull(proposer);
@@ -61,6 +73,7 @@ public sealed class TrainSkillCommandHandler
         ArgumentNullException.ThrowIfNull(selector);
         ArgumentNullException.ThrowIfNull(applier);
         ArgumentNullException.ThrowIfNull(gate);
+        ArgumentNullException.ThrowIfNull(fence);
         ArgumentNullException.ThrowIfNull(checkpointStore);
         ArgumentNullException.ThrowIfNull(mediator);
         ArgumentNullException.ThrowIfNull(time);
@@ -72,10 +85,12 @@ public sealed class TrainSkillCommandHandler
         _selector = selector;
         _applier = applier;
         _gate = gate;
+        _fence = fence;
         _checkpointStore = checkpointStore;
         _mediator = mediator;
         _time = time;
         _logger = logger;
+        _audit = audit;
     }
 
     /// <inheritdoc />
@@ -170,6 +185,42 @@ public sealed class TrainSkillCommandHandler
                     // No edits proposed — record as a Reject no-op and continue.
                     steps.Add(NewStepRecord(globalStep, epoch, GateAction.Reject,
                         candidateScore: 0.0, proposed.Edits.Count, 0));
+                    consecutiveRejects++;
+                    if (consecutiveRejects >= cfg.Patience) goto EarlyStop;
+                    continue;
+                }
+
+                // ── Governance fence (Self-Harness Phase 1) ───────────────────
+                // Hard-reject — below and independent of the gate — any patch whose edits target a
+                // harness surface the code-owned registry has not marked editable. Running beneath the
+                // gate is the whole point: a frozen-surface edit can never be accepted by improving the
+                // score. Today only SkillDocument is editable, so legitimate skill-prose patches pass
+                // untouched; this is the lock that must already exist before the edit target is ever
+                // widened to system prompt / tools / policies (Phase 2/3).
+                var fenceResult = _fence.Validate(selected);
+                if (!fenceResult.IsAllowed)
+                {
+                    var surfaces = string.Join(", ", fenceResult.Violations.Select(v => v.Surface));
+                    _logger.LogWarning(
+                        "Harness patch fence rejected step {Step}: {Count} edit(s) target frozen surface(s) [{Surfaces}]. Patch not applied or gated.",
+                        globalStep, fenceResult.Violations.Count, surfaces);
+                    // The fence — not the audit — is the control: an audit-write failure must not abort
+                    // the run or let a frozen-surface patch through. Record the rejection best-effort.
+                    try
+                    {
+                        _audit?.Log(
+                            request.SkillId,
+                            "skill_training.harness_patch_rejected",
+                            $"deny: frozen surface(s) [{surfaces}]");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex,
+                            "Governance audit write failed for fence rejection at step {Step}; rejection still enforced.",
+                            globalStep);
+                    }
+                    steps.Add(NewStepRecord(globalStep, epoch, GateAction.Reject,
+                        candidateScore: 0.0, proposed.Edits.Count, applied: 0));
                     consecutiveRejects++;
                     if (consecutiveRejects >= cfg.Patience) goto EarlyStop;
                     continue;
