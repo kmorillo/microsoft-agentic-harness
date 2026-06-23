@@ -205,13 +205,62 @@ public sealed class TrainSkillCommandHandler
                 var (candHard, candSoft) = RolloutBatchScorer.Score(valRollouts);
 
                 // ── Gate ─────────────────────────────────────────────────────
-                var gateResult = _gate.Evaluate(
-                    candidateSkill: applyReport.NewSkillContent,
-                    candidateHard: candHard, candidateSoft: candSoft,
-                    currentSkill: currentSkill, currentScore: currentScore,
-                    bestSkill: bestSkill, bestScore: bestScore, bestStep: bestStep,
-                    globalStep: globalStep,
-                    metric: cfg.GateMetric, mixedWeight: cfg.MixedWeight);
+                GateResult gateResult;
+                if (cfg.GateMode == GateMode.TwoSplitNonRegression)
+                {
+                    // Held-in non-regression guard: score the candidate on the EXACT items the
+                    // current skill was just scored on (pin trainRollouts' ids), then compare the two
+                    // means. Pairing by id — the same mechanism SlowUpdate uses for longitudinal
+                    // comparison — makes Δ_in a true paired delta instead of trusting the runner to
+                    // re-sample an identical batch. The current skill's held-in score reuses this
+                    // step's trainRollouts, so only the candidate needs a fresh rollout: the one
+                    // extra rollout per step this mode costs. (If trainRollouts is empty the id list
+                    // is empty and the runner falls back to sampling — handled by the 0-rollout warn.)
+                    var heldInItemIds = trainRollouts.Select(r => r.ItemId).ToArray();
+                    var candidateTrainBatch = trainBatch with { ItemIds = heldInItemIds };
+                    var candidateTrainRollouts = await _rolloutRunner
+                        .RunAsync(applyReport.NewSkillContent, candidateTrainBatch, cancellationToken).ConfigureAwait(false);
+                    if (candidateTrainRollouts.Count == 0)
+                    {
+                        _logger.LogWarning(
+                            "Candidate train split returned 0 rollouts at step {Step}. With GateMode=TwoSplitNonRegression this scores the candidate's held-in performance as 0 and will Reject. Check TrainBatchSize and IRolloutRunner configuration.",
+                            globalStep);
+                    }
+                    var (candHardIn, candSoftIn) = RolloutBatchScorer.Score(candidateTrainRollouts);
+                    var (curHardIn, curSoftIn) = RolloutBatchScorer.Score(trainRollouts);
+                    // Project held-in current the same way the gate projects everything, so the
+                    // delta is computed in a single consistent metric space.
+                    var currentHeldInScore = _gate.SelectGateScore(
+                        curHardIn, curSoftIn, cfg.GateMetric, cfg.MixedWeight);
+
+                    gateResult = _gate.EvaluateTwoSplit(new GateEvaluation
+                    {
+                        CandidateSkill = applyReport.NewSkillContent,
+                        CandidateHard = candHard,
+                        CandidateSoft = candSoft,
+                        CandidateHeldInHard = candHardIn,
+                        CandidateHeldInSoft = candSoftIn,
+                        CurrentSkill = currentSkill,
+                        CurrentScore = currentScore,
+                        CurrentHeldInScore = currentHeldInScore,
+                        BestSkill = bestSkill,
+                        BestScore = bestScore,
+                        BestStep = bestStep,
+                        GlobalStep = globalStep,
+                        Metric = cfg.GateMetric,
+                        MixedWeight = cfg.MixedWeight
+                    });
+                }
+                else
+                {
+                    gateResult = _gate.Evaluate(
+                        candidateSkill: applyReport.NewSkillContent,
+                        candidateHard: candHard, candidateSoft: candSoft,
+                        currentSkill: currentSkill, currentScore: currentScore,
+                        bestSkill: bestSkill, bestScore: bestScore, bestStep: bestStep,
+                        globalStep: globalStep,
+                        metric: cfg.GateMetric, mixedWeight: cfg.MixedWeight);
+                }
 
                 steps.Add(NewStepRecord(globalStep, epoch, gateResult.Action,
                     candidateScore: gateResult.CandidateScore,

@@ -62,4 +62,52 @@ public class GateCandidateSkillCommandHandlerTests
 
         await act.Should().ThrowAsync<ArgumentNullException>();
     }
+
+    [Fact]
+    public async Task Handle_TwoSplitMode_HeldInRegression_Rejects()
+    {
+        var sut = NewSut();
+        var cmd = new GateCandidateSkillCommand
+        {
+            Mode = GateMode.TwoSplitNonRegression,
+            CandidateSkill = "cand", CandidateHard = 0.9, CandidateSoft = 0.0,
+            CandidateHeldInHard = 0.4, CandidateHeldInSoft = 0.0,
+            CurrentSkill = "curr", CurrentScore = 0.5, CurrentHeldInScore = 0.6,
+            BestSkill = "best", BestScore = 0.8, BestStep = 3,
+            GlobalStep = 9,
+            Metric = GateMetric.Hard
+        };
+
+        var result = await sut.Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Action.Should().Be(
+            GateAction.Reject,
+            because: "held-out improved (0.5→0.9) but held-in regressed (0.6→0.4)");
+        result.Value.CandidateHeldInScore.Should().Be(0.4);
+        result.Value.CurrentHeldInScore.Should().Be(0.6);
+    }
+
+    [Fact]
+    public async Task Handle_TwoSplitMode_BothSplitsImprove_AcceptsNewBest()
+    {
+        var sut = NewSut();
+        var cmd = new GateCandidateSkillCommand
+        {
+            Mode = GateMode.TwoSplitNonRegression,
+            CandidateSkill = "cand", CandidateHard = 0.9, CandidateSoft = 0.0,
+            CandidateHeldInHard = 0.7, CandidateHeldInSoft = 0.0,
+            CurrentSkill = "curr", CurrentScore = 0.5, CurrentHeldInScore = 0.6,
+            BestSkill = "best", BestScore = 0.8, BestStep = 3,
+            GlobalStep = 9,
+            Metric = GateMetric.Hard
+        };
+
+        var result = await sut.Handle(cmd, CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Action.Should().Be(GateAction.AcceptNewBest);
+        result.Value.BestScore.Should().Be(0.9);
+        result.Value.CandidateHeldInScore.Should().Be(0.7);
+    }
 }

@@ -61,4 +61,30 @@ public interface IGateEvaluator
         int globalStep,
         GateMetric metric,
         double mixedWeight = 0.5);
+
+    /// <summary>
+    /// Evaluates a candidate under the two-split non-regression policy (Self-Harness, arXiv
+    /// 2606.09498): accept only if the candidate does not regress on either the held-out or the
+    /// held-in split and strictly improves at least one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Distinct from <see cref="Evaluate"/> (which maximizes the held-out score alone and ignores
+    /// held-in regression) so that the single-split path — and the exhaustive tests that pin its
+    /// behavior — stay untouched. The orchestrator selects between the two via
+    /// <see cref="GateMode"/>. Best-so-far is tracked on the held-out metric in both modes, so a
+    /// candidate is promoted to new best only when its held-out score strictly beats the running
+    /// best.
+    /// </para>
+    /// <para>
+    /// Accept rule, with <c>Δ_ho = candidate_ho − current_ho</c> and
+    /// <c>Δ_in = candidate_in − current_in</c> (both metric-projected):
+    /// <c>Δ_ho ≥ 0 ∧ Δ_in ≥ 0 ∧ max(Δ_ho, Δ_in) &gt; 0</c>. Anything else is
+    /// <see cref="GateAction.Reject"/>, including a candidate that improves one split while
+    /// regressing the other.
+    /// </para>
+    /// </remarks>
+    /// <param name="evaluation">The held-out and held-in score bundle plus lineage state.</param>
+    /// <returns>The gate decision plus the new (current, best) state, with held-in audit scores.</returns>
+    GateResult EvaluateTwoSplit(GateEvaluation evaluation);
 }

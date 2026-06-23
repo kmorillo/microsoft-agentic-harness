@@ -170,6 +170,139 @@ public class TrainSkillCommandHandlerTests
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
+    [Fact]
+    public async Task Handle_TwoSplit_HeldOutUpHeldInDownCandidate_Rejects()
+    {
+        // Candidate improves held-out (val) but regresses held-in (train) vs the initial skill.
+        // The default GateMode (TwoSplitNonRegression) must reject it.
+        var runner = new StubRolloutRunner((skill, batch) => (batch.Split, regressed: skill.Contains("regressing")) switch
+        {
+            ("train", true) => [new RolloutResult { ItemId = "t", Hard = 0.0, Soft = 0.0 }],  // candidate worse on held-in
+            ("train", false) => [new RolloutResult { ItemId = "t", Hard = 0.5, Soft = 0.5 }], // current/initial baseline
+            ("val", _) => [new RolloutResult { ItemId = "v", Hard = 1.0, Soft = 1.0 }],       // candidate better on held-out
+            _ => []
+        });
+        var proposer = new StubProposer(_ => new Patch
+        {
+            Edits = [new Edit { Op = EditOp.Append, Content = "- regressing rule" }]
+        });
+        var sut = NewSut(runner, proposer, new InMemorySkillTrainingCheckpointStore());
+
+        var result = await sut.Handle(
+            NewCommand(new TrainSkillConfig
+            {
+                Epochs = 1, StepsPerEpoch = 1, LrStart = 4, LrMin = 1,
+                LrScheduler = "constant", Patience = 6,
+                UseSlowUpdate = false, UseMetaSkill = false
+                // GateMode defaults to TwoSplitNonRegression
+            }),
+            CancellationToken.None);
+
+        result.Value!.Steps[0].Action.Should().Be(GateAction.Reject);
+        result.Value.HasAcceptedAny.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Handle_StrictMode_SameHeldInRegressingCandidate_Accepts()
+    {
+        // Identical setup to the two-split reject test; StrictImprovementHeldOut ignores the held-in
+        // split and accepts on the val improvement alone — proving the two modes genuinely differ.
+        var runner = new StubRolloutRunner((skill, batch) => (batch.Split, regressed: skill.Contains("regressing")) switch
+        {
+            ("train", true) => [new RolloutResult { ItemId = "t", Hard = 0.0, Soft = 0.0 }],
+            ("train", false) => [new RolloutResult { ItemId = "t", Hard = 0.5, Soft = 0.5 }],
+            ("val", _) => [new RolloutResult { ItemId = "v", Hard = 1.0, Soft = 1.0 }],
+            _ => []
+        });
+        var proposer = new StubProposer(_ => new Patch
+        {
+            Edits = [new Edit { Op = EditOp.Append, Content = "- regressing rule" }]
+        });
+        var sut = NewSut(runner, proposer, new InMemorySkillTrainingCheckpointStore());
+
+        var result = await sut.Handle(
+            NewCommand(new TrainSkillConfig
+            {
+                Epochs = 1, StepsPerEpoch = 1, LrStart = 4, LrMin = 1,
+                LrScheduler = "constant", Patience = 6,
+                UseSlowUpdate = false, UseMetaSkill = false,
+                GateMode = GateMode.StrictImprovementHeldOut
+            }),
+            CancellationToken.None);
+
+        result.Value!.Steps[0].Action.Should().Be(GateAction.AcceptNewBest);
+    }
+
+    [Fact]
+    public async Task Handle_TwoSplit_ScoresCandidateOnTrainSplit_OneExtraRolloutPerStep()
+    {
+        var trainCalls = 0;
+        var valCalls = 0;
+        var runner = new StubRolloutRunner((skill, batch) =>
+        {
+            if (batch.Split == "train") trainCalls++;
+            else if (batch.Split == "val") valCalls++;
+            return batch.Split == "val"
+                ? [new RolloutResult { ItemId = "v", Hard = 1.0, Soft = 1.0 }]
+                : [new RolloutResult { ItemId = "t", Hard = 0.5, Soft = 0.5 }];
+        });
+        var proposer = new StubProposer(_ => new Patch
+        {
+            Edits = [new Edit { Op = EditOp.Append, Content = "- rule" }]
+        });
+        var sut = NewSut(runner, proposer, new InMemorySkillTrainingCheckpointStore());
+
+        await sut.Handle(
+            NewCommand(new TrainSkillConfig
+            {
+                Epochs = 1, StepsPerEpoch = 1, LrStart = 4, LrMin = 1,
+                LrScheduler = "constant", Patience = 6,
+                UseSlowUpdate = false, UseMetaSkill = false
+            }),
+            CancellationToken.None);
+
+        trainCalls.Should().Be(2, because: "the proposer's reflection rollout plus the candidate's held-in rollout");
+        valCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Handle_TwoSplit_PinsCandidateHeldInRolloutToCurrentItems()
+    {
+        // The candidate's held-in rollout must be scored on the SAME items the current skill saw,
+        // so Δ_in is a true paired comparison rather than a mean over a re-sampled batch.
+        var trainBatches = new List<RolloutBatch>();
+        var runner = new StubRolloutRunner((skill, batch) =>
+        {
+            if (batch.Split == "train") trainBatches.Add(batch);
+            return batch.Split == "val"
+                ? [new RolloutResult { ItemId = "v", Hard = 1.0, Soft = 1.0 }]
+                :
+                [
+                    new RolloutResult { ItemId = "item-A", Hard = 0.5, Soft = 0.5 },
+                    new RolloutResult { ItemId = "item-B", Hard = 0.5, Soft = 0.5 }
+                ];
+        });
+        var proposer = new StubProposer(_ => new Patch
+        {
+            Edits = [new Edit { Op = EditOp.Append, Content = "- rule" }]
+        });
+        var sut = NewSut(runner, proposer, new InMemorySkillTrainingCheckpointStore());
+
+        await sut.Handle(
+            NewCommand(new TrainSkillConfig
+            {
+                Epochs = 1, StepsPerEpoch = 1, LrStart = 4, LrMin = 1,
+                LrScheduler = "constant", Patience = 6,
+                UseSlowUpdate = false, UseMetaSkill = false
+            }),
+            CancellationToken.None);
+
+        trainBatches.Should().HaveCount(2);
+        trainBatches[0].ItemIds.Should().BeEmpty(because: "the current skill's reflection rollout samples freely");
+        // The candidate is pinned to exactly the items the current skill was scored on.
+        trainBatches[1].ItemIds.Should().Equal(new[] { "item-A", "item-B" });
+    }
+
     // ── Stubs ────────────────────────────────────────────────────────────────────
 
     private sealed class StubRolloutRunner : IRolloutRunner

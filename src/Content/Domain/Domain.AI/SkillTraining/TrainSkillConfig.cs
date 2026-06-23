@@ -31,6 +31,21 @@ public sealed record TrainSkillConfig
     /// <summary>Which metric the gate compares on.</summary>
     public GateMetric GateMetric { get; init; } = GateMetric.Hard;
 
+    /// <summary>
+    /// Gate acceptance policy. Defaults to <see cref="GateMode.TwoSplitNonRegression"/>, which
+    /// requires a candidate to avoid regressing on the held-in (train) split as well as improving
+    /// on the held-out (val) split. Set to <see cref="GateMode.StrictImprovementHeldOut"/> for the
+    /// original single-split behavior (maximize held-out score only). The two-split mode costs one
+    /// extra rollout per step (the candidate scored on the train split).
+    /// <para>
+    /// Note: this orchestrated loop defaults to the safer two-split mode because it can produce the
+    /// held-in scores itself. The lower-level <c>GateCandidateSkillCommand.Mode</c> intentionally
+    /// defaults to <see cref="GateMode.StrictImprovementHeldOut"/> instead — its caller must supply
+    /// held-in inputs explicitly, so it cannot assume they exist.
+    /// </para>
+    /// </summary>
+    public GateMode GateMode { get; init; } = GateMode.TwoSplitNonRegression;
+
     /// <summary>Soft weight when <see cref="GateMetric"/> is Mixed; [0, 1].</summary>
     public double MixedWeight { get; init; } = 0.5;
 

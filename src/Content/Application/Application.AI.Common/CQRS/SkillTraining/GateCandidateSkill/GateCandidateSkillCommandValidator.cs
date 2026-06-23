@@ -53,6 +53,15 @@ public sealed class GateCandidateSkillCommandValidator : AbstractValidator<GateC
         RuleFor(x => x.MixedWeight)
             .InclusiveBetween(0.0, 1.0).WithMessage("MixedWeight must be in [0, 1].");
 
+        RuleFor(x => x.CandidateHeldInHard)
+            .InclusiveBetween(0.0, 1.0).WithMessage("CandidateHeldInHard must be in [0, 1].");
+
+        RuleFor(x => x.CandidateHeldInSoft)
+            .InclusiveBetween(0.0, 1.0).WithMessage("CandidateHeldInSoft must be in [0, 1].");
+
+        RuleFor(x => x.CurrentHeldInScore)
+            .InclusiveBetween(0.0, 1.0).WithMessage("CurrentHeldInScore must be in [0, 1].");
+
         // Cross-field: a best snapshot taken at a future step is incoherent — it would
         // mean we accepted a best before it had been evaluated. Almost always signals
         // a checkpoint-resume bug that reset GlobalStep without resetting BestStep.

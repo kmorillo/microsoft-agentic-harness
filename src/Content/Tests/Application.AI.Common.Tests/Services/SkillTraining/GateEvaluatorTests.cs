@@ -194,4 +194,186 @@ public class GateEvaluatorTests
         var act = () => Sut.SelectGateScore(0, 0, (GateMetric)999);
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
+
+    // ── EvaluateTwoSplit (non-regression) ────────────────────────────────────────
+    //
+    // Δ_ho = candidate_ho − current_ho,  Δ_in = candidate_in − current_in (metric-projected).
+    // Accept iff Δ_ho ≥ 0 ∧ Δ_in ≥ 0 ∧ max(Δ_ho, Δ_in) > 0. Best tracked on held-out.
+
+    /// <summary>Builds a Hard-metric evaluation where projected score == the supplied value
+    /// (hard == soft), so callers reason purely in projected-score space.</summary>
+    private static GateEvaluation Eval(
+        double candHo, double candIn, double curHo, double curIn,
+        double bestHo = 0.8, int bestStep = 3, int globalStep = 9) => new()
+    {
+        CandidateSkill = "cand",
+        CandidateHard = candHo,
+        CandidateSoft = candHo,
+        CandidateHeldInHard = candIn,
+        CandidateHeldInSoft = candIn,
+        CurrentSkill = "curr",
+        CurrentScore = curHo,
+        CurrentHeldInScore = curIn,
+        BestSkill = "best",
+        BestScore = bestHo,
+        BestStep = bestStep,
+        GlobalStep = globalStep,
+        Metric = GateMetric.Hard
+    };
+
+    [Fact]
+    public void EvaluateTwoSplit_BothSplitsImproveAndBeatsBest_PromotesToNewBest()
+    {
+        var result = Sut.EvaluateTwoSplit(Eval(candHo: 0.9, candIn: 0.7, curHo: 0.5, curIn: 0.6));
+
+        result.Action.Should().Be(GateAction.AcceptNewBest);
+        result.CurrentSkill.Should().Be("cand");
+        result.CurrentScore.Should().Be(0.9);
+        result.BestSkill.Should().Be("cand");
+        result.BestScore.Should().Be(0.9);
+        result.BestStep.Should().Be(9);
+        result.CandidateScore.Should().Be(0.9);
+        result.CandidateHeldInScore.Should().Be(0.7, because: "held-in evidence is recorded for audit");
+        result.CurrentHeldInScore.Should().Be(0.6);
+    }
+
+    [Fact]
+    public void EvaluateTwoSplit_HeldOutUpHeldInDown_Rejects()
+    {
+        // The core regression this gate exists to catch: a candidate that wins on the held-out
+        // split while quietly breaking the held-in tasks the proposer reflected on.
+        var result = Sut.EvaluateTwoSplit(Eval(candHo: 0.9, candIn: 0.4, curHo: 0.5, curIn: 0.6));
+
+        result.Action.Should().Be(GateAction.Reject);
+        result.CurrentSkill.Should().Be("curr", because: "reject preserves prior state");
+        result.CurrentScore.Should().Be(0.5);
+        result.BestSkill.Should().Be("best");
+        result.CandidateScore.Should().Be(0.9, because: "candidate scores are still recorded on reject");
+        result.CandidateHeldInScore.Should().Be(0.4);
+        result.CurrentHeldInScore.Should().Be(0.6);
+    }
+
+    [Fact]
+    public void EvaluateTwoSplit_HeldInUpHeldOutDown_Rejects()
+    {
+        var result = Sut.EvaluateTwoSplit(Eval(candHo: 0.4, candIn: 0.9, curHo: 0.5, curIn: 0.6));
+
+        result.Action.Should().Be(GateAction.Reject);
+    }
+
+    [Fact]
+    public void EvaluateTwoSplit_BothSplitsFlat_Rejects()
+    {
+        // No regression, but no improvement either: max(Δ) is not > 0.
+        var result = Sut.EvaluateTwoSplit(Eval(candHo: 0.5, candIn: 0.6, curHo: 0.5, curIn: 0.6));
+
+        result.Action.Should().Be(GateAction.Reject);
+    }
+
+    [Fact]
+    public void EvaluateTwoSplit_HeldOutFlatHeldInUp_AcceptsWithoutPromotion()
+    {
+        // Held-out unchanged (so never a new best), held-in strictly better → keep the candidate.
+        var result = Sut.EvaluateTwoSplit(
+            Eval(candHo: 0.5, candIn: 0.7, curHo: 0.5, curIn: 0.6, bestHo: 0.8));
+
+        result.Action.Should().Be(GateAction.Accept);
+        result.CurrentSkill.Should().Be("cand");
+        result.CurrentScore.Should().Be(0.5);
+        result.BestSkill.Should().Be("best", because: "held-out did not improve, so best is unchanged");
+        result.BestScore.Should().Be(0.8);
+        result.BestStep.Should().Be(3);
+        result.CandidateHeldInScore.Should().Be(0.7);
+    }
+
+    [Fact]
+    public void EvaluateTwoSplit_HeldInFlatHeldOutUp_PromotesToNewBest()
+    {
+        var result = Sut.EvaluateTwoSplit(
+            Eval(candHo: 0.9, candIn: 0.6, curHo: 0.5, curIn: 0.6, bestHo: 0.8));
+
+        result.Action.Should().Be(GateAction.AcceptNewBest);
+        result.BestScore.Should().Be(0.9);
+    }
+
+    [Fact]
+    public void EvaluateTwoSplit_BeatsCurrentButTiesBestOnHeldOut_AcceptsWithoutPromotion()
+    {
+        // candidate_ho 0.8 beats current 0.5 but only ties best 0.8 → Accept, not new best.
+        var result = Sut.EvaluateTwoSplit(
+            Eval(candHo: 0.8, candIn: 0.7, curHo: 0.5, curIn: 0.6, bestHo: 0.8));
+
+        result.Action.Should().Be(GateAction.Accept);
+        result.BestSkill.Should().Be("best", because: "a tie with best does not promote");
+        result.BestStep.Should().Be(3);
+    }
+
+    [Fact]
+    public void EvaluateTwoSplit_Soft_ProjectsBothSplitsOntoSoft()
+    {
+        // Hard scores would reject (candidate_in hard 0.1 < current_in 0.6); soft must drive Accept.
+        var evaluation = new GateEvaluation
+        {
+            CandidateSkill = "cand",
+            CandidateHard = 0.3, CandidateSoft = 0.9,
+            CandidateHeldInHard = 0.1, CandidateHeldInSoft = 0.7,
+            CurrentSkill = "curr", CurrentScore = 0.5, CurrentHeldInScore = 0.6,
+            BestSkill = "best", BestScore = 0.8, BestStep = 3, GlobalStep = 9,
+            Metric = GateMetric.Soft
+        };
+
+        var result = Sut.EvaluateTwoSplit(evaluation);
+
+        result.Action.Should().Be(GateAction.AcceptNewBest);
+        result.CandidateScore.Should().Be(0.9);
+        result.CandidateHeldInScore.Should().Be(0.7);
+    }
+
+    [Fact]
+    public void EvaluateTwoSplit_Mixed_ProjectsBothSplits_HeldInRegressionRejects()
+    {
+        // held-out projects to 0.6 (Δ +0.1), held-in projects to 0.5 (Δ −0.1) → Reject.
+        var evaluation = new GateEvaluation
+        {
+            CandidateSkill = "cand",
+            CandidateHard = 0.4, CandidateSoft = 0.8,        // → 0.6
+            CandidateHeldInHard = 0.5, CandidateHeldInSoft = 0.5, // → 0.5
+            CurrentSkill = "curr", CurrentScore = 0.5, CurrentHeldInScore = 0.6,
+            BestSkill = "best", BestScore = 0.55, BestStep = 3, GlobalStep = 9,
+            Metric = GateMetric.Mixed, MixedWeight = 0.5
+        };
+
+        var result = Sut.EvaluateTwoSplit(evaluation);
+
+        result.Action.Should().Be(GateAction.Reject);
+        result.CandidateScore.Should().BeApproximately(0.6, 1e-9);
+        result.CandidateHeldInScore.Should().BeApproximately(0.5, 1e-9);
+    }
+
+    [Fact]
+    public void EvaluateTwoSplit_NullEvaluation_Throws()
+    {
+        var act = () => Sut.EvaluateTwoSplit(null!);
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    [Theory]
+    [InlineData(double.NaN, 0.6)]
+    [InlineData(0.5, double.PositiveInfinity)]
+    public void EvaluateTwoSplit_NonFiniteCurrentScores_Throws(double curHo, double curIn)
+    {
+        var act = () => Sut.EvaluateTwoSplit(Eval(candHo: 0.9, candIn: 0.7, curHo: curHo, curIn: curIn));
+        act.Should().Throw<ArgumentException>();
+    }
+
+    [Fact]
+    public void EvaluateTwoSplit_NonFiniteCandidateHeldIn_Throws()
+    {
+        var evaluation = Eval(candHo: 0.9, candIn: 0.7, curHo: 0.5, curIn: 0.6) with
+        {
+            CandidateHeldInHard = double.NaN
+        };
+        var act = () => Sut.EvaluateTwoSplit(evaluation);
+        act.Should().Throw<ArgumentException>();
+    }
 }
