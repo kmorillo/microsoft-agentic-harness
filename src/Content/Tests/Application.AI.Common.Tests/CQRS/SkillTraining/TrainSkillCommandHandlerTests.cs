@@ -17,16 +17,19 @@ public class TrainSkillCommandHandlerTests
     private static readonly TopKEditSelector Selector = new();
     private static readonly GateEvaluator Gate = new();
     private static readonly HarnessPatchValidator Fence = new(new EditableSurfaceRegistry());
+    private static readonly HarnessChangeSuggestionValidator SuggestionValidator = new(new ConfigSurfaceConstraint());
 
     private static TrainSkillCommandHandler NewSut(
         IRolloutRunner runner,
         IPatchProposer proposer,
         InMemorySkillTrainingCheckpointStore store,
         IGovernanceAuditService? audit = null,
-        HarnessPatchValidator? fence = null)
+        HarnessPatchValidator? fence = null,
+        IHarnessChangeSuggester? suggester = null)
     {
         return new TrainSkillCommandHandler(
             runner, proposer, Aggregator, Selector, Applier, Gate, fence ?? Fence,
+            suggester ?? new NoHarnessChangeSuggester(), SuggestionValidator,
             store, new NoOpMediator(), TimeProvider.System,
             NullLogger<TrainSkillCommandHandler>.Instance, audit);
     }
@@ -537,6 +540,166 @@ public class TrainSkillCommandHandlerTests
             .Subject.Decision.Should().Contain("SkillDocument");
     }
 
+    // ── Harness-change suggestions (Phase 2 Step 2) ───────────────────────────────
+
+    private static StubRolloutRunner AcceptingRunner() => new((_, batch) => batch.Split == "val"
+        ? [new RolloutResult { ItemId = "v", Hard = 1.0, Soft = 1.0 }]
+        : [new RolloutResult { ItemId = "t", Hard = 0.5, Soft = 0.5 }]);
+
+    private static StubProposer AppendProposer() => new(_ => new Patch
+    {
+        Edits = [new Edit { Op = EditOp.Append, Content = "- new rule" }]
+    });
+
+    private static TrainSkillConfig SuggestConfig(bool emit) => new()
+    {
+        Epochs = 1, StepsPerEpoch = 1, LrStart = 4, LrMin = 1,
+        LrScheduler = "constant", Patience = 6,
+        UseSlowUpdate = false, UseMetaSkill = false,
+        EmitHarnessChangeSuggestions = emit
+    };
+
+    private static HarnessChangeSuggestion RetrySuggestion(string proposedValue) => new()
+    {
+        Surface = HarnessSurface.ToolErrorRetryLimit,
+        Field = ConfigSurfaceConstraint.MaxAttemptsField,
+        CurrentValue = "2",
+        ProposedValue = proposedValue,
+        Rationale = "many transient tool failures"
+    };
+
+    [Fact]
+    public async Task Handle_SuggestionsDisabledByDefault_NeverCallsSuggester_AndSurfacesNone()
+    {
+        // The default config leaves EmitHarnessChangeSuggestions false. The suggester must never be
+        // invoked (it throws if it is) and the result carries no suggestions.
+        var suggester = new StubSuggester(_ => throw new InvalidOperationException("must not be called when disabled"));
+        var sut = NewSut(AcceptingRunner(), AppendProposer(), new InMemorySkillTrainingCheckpointStore(),
+            suggester: suggester);
+
+        var result = await sut.Handle(NewCommand(SuggestConfig(emit: false)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.HarnessChangeSuggestions.Should().BeEmpty();
+        suggester.Calls.Should().Be(0, because: "the path is gated off by default");
+    }
+
+    [Fact]
+    public async Task Handle_SuggestionsEnabled_DefaultNoOpSuggester_SurfacesNothing()
+    {
+        // Enabled, but the registered suggester is the inert default — the path is still silent.
+        var sut = NewSut(AcceptingRunner(), AppendProposer(), new InMemorySkillTrainingCheckpointStore());
+
+        var result = await sut.Handle(NewCommand(SuggestConfig(emit: true)), CancellationToken.None);
+
+        result.Value!.HarnessChangeSuggestions.Should().BeEmpty(
+            because: "the default NoHarnessChangeSuggester proposes nothing even when the run opts in");
+    }
+
+    [Fact]
+    public async Task Handle_SuggestionsEnabled_ValidSuggestion_SurfacedAndAudited_FromRunRollouts()
+    {
+        var suggester = new StubSuggester(_ => [RetrySuggestion("3")]);
+        var audit = new CapturingAudit();
+        var sut = NewSut(AcceptingRunner(), AppendProposer(), new InMemorySkillTrainingCheckpointStore(),
+            audit, suggester: suggester);
+
+        var result = await sut.Handle(NewCommand(SuggestConfig(emit: true)), CancellationToken.None);
+
+        var run = result.Value!;
+        run.HarnessChangeSuggestions.Should().ContainSingle();
+        run.HarnessChangeSuggestions[0].Field.Should().Be(ConfigSurfaceConstraint.MaxAttemptsField);
+        run.HarnessChangeSuggestions[0].ProposedValue.Should().Be("3");
+
+        // The suggester reflects on the run's val rollouts.
+        suggester.LastInput!.SkillId.Should().Be("skill-X");
+        suggester.LastInput.Rollouts.Should().ContainSingle(r => r.ItemId == "v");
+
+        audit.Entries.Should().ContainSingle(e => e.Action == "skill_training.harness_change_suggested")
+            .Subject.Decision.Should().Contain("ToolErrorRetryLimit.MaxAttempts=3");
+    }
+
+    [Fact]
+    public async Task Handle_SuggestionsEnabled_NonCanonicalAcceptedValue_SurfacedAndAuditedCanonically()
+    {
+        // A lenient-but-in-bounds raw value (' +03 ') is accepted; both the surfaced run-result suggestion
+        // and the audit must carry the scrubbed canonical form ('3'), never the raw proposer string.
+        var suggester = new StubSuggester(_ => [RetrySuggestion(" +03 ")]);
+        var audit = new CapturingAudit();
+        var sut = NewSut(AcceptingRunner(), AppendProposer(), new InMemorySkillTrainingCheckpointStore(),
+            audit, suggester: suggester);
+
+        var result = await sut.Handle(NewCommand(SuggestConfig(emit: true)), CancellationToken.None);
+
+        result.Value!.HarnessChangeSuggestions.Should().ContainSingle()
+            .Which.ProposedValue.Should().Be("3", because: "the surfaced value is normalized, not the raw proposer string");
+        audit.Entries.Should().ContainSingle(e => e.Action == "skill_training.harness_change_suggested")
+            .Subject.Decision.Should().Contain("MaxAttempts=3").And.NotContain("+03");
+    }
+
+    [Fact]
+    public async Task Handle_SuggestionsEnabled_OutOfBoundsSuggestion_RejectedNotSurfaced_AndAuditedWithoutRawValue()
+    {
+        // 99 exceeds ConfigSurfaceConstraint.MaxMaxAttempts. The suggestion must be dropped (not
+        // surfaced) and audited with the stable reason category only — never the raw proposer value.
+        var suggester = new StubSuggester(_ => [RetrySuggestion("99")]);
+        var audit = new CapturingAudit();
+        var sut = NewSut(AcceptingRunner(), AppendProposer(), new InMemorySkillTrainingCheckpointStore(),
+            audit, suggester: suggester);
+
+        var result = await sut.Handle(NewCommand(SuggestConfig(emit: true)), CancellationToken.None);
+
+        result.Value!.HarnessChangeSuggestions.Should().BeEmpty();
+        var rejected = audit.Entries.Should()
+            .ContainSingle(e => e.Action == "skill_training.harness_change_rejected").Subject;
+        rejected.Decision.Should().Contain(nameof(HarnessChangeRejectionReason.ValueOutOfBounds));
+        rejected.Decision.Should().NotContain("99", because: "the audit records the reason, not the rejected value");
+    }
+
+    [Fact]
+    public async Task Handle_SuggestionsEnabled_FrozenField_Rejected_AndNotSurfaced()
+    {
+        // A suggestion targeting a frozen field (BaseDelaySeconds) is refused by the constraint.
+        var suggester = new StubSuggester(_ =>
+        [
+            new HarnessChangeSuggestion
+            {
+                Surface = HarnessSurface.ToolErrorRetryLimit,
+                Field = "BaseDelaySeconds",
+                CurrentValue = "1.0",
+                ProposedValue = "3",
+                Rationale = "slow down"
+            }
+        ]);
+        var audit = new CapturingAudit();
+        var sut = NewSut(AcceptingRunner(), AppendProposer(), new InMemorySkillTrainingCheckpointStore(),
+            audit, suggester: suggester);
+
+        var result = await sut.Handle(NewCommand(SuggestConfig(emit: true)), CancellationToken.None);
+
+        result.Value!.HarnessChangeSuggestions.Should().BeEmpty();
+        var rejected = audit.Entries.Should()
+            .ContainSingle(e => e.Action == "skill_training.harness_change_rejected").Subject;
+        rejected.Decision.Should().Contain(nameof(HarnessChangeRejectionReason.FieldNotAllowed));
+        rejected.Decision.Should().NotContain("BaseDelaySeconds",
+            because: "the raw proposer-supplied field must never enter the tamper-evident audit chain");
+    }
+
+    [Fact]
+    public async Task Handle_SuggestionsEnabled_SuggesterThrows_RunStillSucceeds_NoSuggestions()
+    {
+        // The suggestion path is advisory: a faulty suggester must never fail an already-completed run.
+        var suggester = new StubSuggester(_ => throw new InvalidOperationException("suggester boom"));
+        var sut = NewSut(AcceptingRunner(), AppendProposer(), new InMemorySkillTrainingCheckpointStore(),
+            suggester: suggester);
+
+        var result = await sut.Handle(NewCommand(SuggestConfig(emit: true)), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(because: "the suggestion path must never fail a completed run");
+        result.Value!.HarnessChangeSuggestions.Should().BeEmpty();
+        result.Value.Steps.Should().ContainSingle(because: "the optimization loop ran to completion regardless");
+    }
+
     // ── Stubs ────────────────────────────────────────────────────────────────────
 
     private sealed class StubRolloutRunner : IRolloutRunner
@@ -553,6 +716,20 @@ public class TrainSkillCommandHandlerTests
         public StubProposer(Func<ReflectionInput, Patch> fn) => _fn = fn;
         public Task<Patch> ProposeAsync(ReflectionInput input, CancellationToken cancellationToken)
             => Task.FromResult(_fn(input));
+    }
+
+    private sealed class StubSuggester : IHarnessChangeSuggester
+    {
+        private readonly Func<HarnessSuggestionInput, IReadOnlyList<HarnessChangeSuggestion>> _fn;
+        public int Calls { get; private set; }
+        public HarnessSuggestionInput? LastInput { get; private set; }
+        public StubSuggester(Func<HarnessSuggestionInput, IReadOnlyList<HarnessChangeSuggestion>> fn) => _fn = fn;
+        public Task<IReadOnlyList<HarnessChangeSuggestion>> SuggestAsync(HarnessSuggestionInput input, CancellationToken cancellationToken)
+        {
+            Calls++;
+            LastInput = input;
+            return Task.FromResult(_fn(input));
+        }
     }
 
     private sealed class CapturingAudit : IGovernanceAuditService

@@ -1,4 +1,5 @@
 using Application.AI.Common.Extensions;
+using Application.AI.Common.Interfaces.SkillTraining;
 using Application.AI.Common.Services.SkillTraining;
 using Domain.AI.SkillTraining;
 using FluentAssertions;
@@ -50,5 +51,17 @@ public class SkillTrainingDependencyInjectionTests
 
         act.Should().Throw<ArgumentException>(
             because: "governance surfaces can never be unlocked, even by an explicit human opt-in");
+    }
+
+    [Fact]
+    public void Default_RegistersInertSuggestionPath()
+    {
+        // Phase 2 Step 2: the config-surface fence and an inert suggester are always wired, so the
+        // suggestion path resolves out of the box but produces nothing until a real suggester is added.
+        var provider = new ServiceCollection().AddSkillTrainingDependencies().BuildServiceProvider();
+
+        provider.GetRequiredService<ConfigSurfaceConstraint>().Should().NotBeNull();
+        provider.GetRequiredService<HarnessChangeSuggestionValidator>().Should().NotBeNull();
+        provider.GetRequiredService<IHarnessChangeSuggester>().Should().BeOfType<NoHarnessChangeSuggester>();
     }
 }

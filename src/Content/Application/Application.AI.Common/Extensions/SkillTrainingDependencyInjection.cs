@@ -21,6 +21,9 @@ namespace Application.AI.Common.Extensions;
 /// <item><see cref="IEditSelector"/> → <see cref="TopKEditSelector"/>.</item>
 /// <item><see cref="EditableSurfaceRegistry"/> — code-owned editable-surface fence allowlist.</item>
 /// <item><see cref="HarnessPatchValidator"/> — concrete fence (no interface seam, by design).</item>
+/// <item><see cref="ConfigSurfaceConstraint"/> — code-owned config-surface bounds (Phase 2 Step 2).</item>
+/// <item><see cref="HarnessChangeSuggestionValidator"/> — concrete config-surface fence (no interface seam).</item>
+/// <item><see cref="IHarnessChangeSuggester"/> → <see cref="NoHarnessChangeSuggester"/> (inert advisory default).</item>
 /// <item><see cref="ISkillTrainingCheckpointStore"/> → <see cref="InMemorySkillTrainingCheckpointStore"/>.</item>
 /// <item><see cref="IPatchProposer"/> → <see cref="NotConfiguredPatchProposer"/> (fail-fast default).</item>
 /// <item><see cref="IRolloutRunner"/> → <see cref="NotConfiguredRolloutRunner"/> (fail-fast default).</item>
@@ -72,6 +75,15 @@ public static class SkillTrainingDependencyInjection
         // locks every surface — including SkillDocument — and silently breaking the loop's own edits.
         services.TryAddSingleton(_ => new EditableSurfaceRegistry());
         services.TryAddSingleton<HarnessPatchValidator>();
+
+        // Phase 2 Step 2 — suggestion-only harness-change path. The constraint + validator are the
+        // code-owned config-surface fence (bounded fields, fixed ranges); the suggester is the optional
+        // producer seam. Its default returns nothing, so the path stays inert until a consumer plugs in
+        // a real suggester AND a run opts in via TrainSkillConfig.EmitHarnessChangeSuggestions.
+        services.TryAddSingleton<ConfigSurfaceConstraint>();
+        services.TryAddSingleton<HarnessChangeSuggestionValidator>();
+        services.TryAddSingleton<IHarnessChangeSuggester, NoHarnessChangeSuggester>();
+
         services.TryAddSingleton<ISkillTrainingCheckpointStore, InMemorySkillTrainingCheckpointStore>();
         services.TryAddSingleton<IPatchProposer, NotConfiguredPatchProposer>();
         services.TryAddSingleton<IRolloutRunner, NotConfiguredRolloutRunner>();

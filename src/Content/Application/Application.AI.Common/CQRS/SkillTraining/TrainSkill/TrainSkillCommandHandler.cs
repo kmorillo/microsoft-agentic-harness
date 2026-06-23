@@ -39,6 +39,8 @@ public sealed class TrainSkillCommandHandler
     private readonly PatchApplier _applier;
     private readonly IGateEvaluator _gate;
     private readonly HarnessPatchValidator _fence;
+    private readonly IHarnessChangeSuggester _suggester;
+    private readonly HarnessChangeSuggestionValidator _suggestionValidator;
     private readonly ISkillTrainingCheckpointStore _checkpointStore;
     private readonly IMediator _mediator;
     private readonly TimeProvider _time;
@@ -61,6 +63,8 @@ public sealed class TrainSkillCommandHandler
         PatchApplier applier,
         IGateEvaluator gate,
         HarnessPatchValidator fence,
+        IHarnessChangeSuggester suggester,
+        HarnessChangeSuggestionValidator suggestionValidator,
         ISkillTrainingCheckpointStore checkpointStore,
         IMediator mediator,
         TimeProvider time,
@@ -74,6 +78,8 @@ public sealed class TrainSkillCommandHandler
         ArgumentNullException.ThrowIfNull(applier);
         ArgumentNullException.ThrowIfNull(gate);
         ArgumentNullException.ThrowIfNull(fence);
+        ArgumentNullException.ThrowIfNull(suggester);
+        ArgumentNullException.ThrowIfNull(suggestionValidator);
         ArgumentNullException.ThrowIfNull(checkpointStore);
         ArgumentNullException.ThrowIfNull(mediator);
         ArgumentNullException.ThrowIfNull(time);
@@ -86,6 +92,8 @@ public sealed class TrainSkillCommandHandler
         _applier = applier;
         _gate = gate;
         _fence = fence;
+        _suggester = suggester;
+        _suggestionValidator = suggestionValidator;
         _checkpointStore = checkpointStore;
         _mediator = mediator;
         _time = time;
@@ -432,6 +440,13 @@ public sealed class TrainSkillCommandHandler
         }
 
     EarlyStop:
+        // Suggestion-only harness-change path (Self-Harness Phase 2 Step 2). Off by default; when a run
+        // opts in, the loop asks for advisory config-dial suggestions, bounds-checks each against the
+        // code-owned constraint, audits both outcomes, and surfaces the survivors. It NEVER mutates live
+        // config and runs after the optimization loop, so it cannot influence the gated result above.
+        var suggestions = await EmitHarnessChangeSuggestionsAsync(
+            request, cfg, lastValRollouts, globalStep, cancellationToken).ConfigureAwait(false);
+
         return Result<SkillTrainingRunResult>.Success(new SkillTrainingRunResult
         {
             RunId = request.RunId,
@@ -441,8 +456,96 @@ public sealed class TrainSkillCommandHandler
             StepsExecuted = globalStep,
             ConsecutiveRejects = consecutiveRejects,
             HasAcceptedAny = hasAcceptedAny,
-            Steps = steps
+            Steps = steps,
+            HarnessChangeSuggestions = suggestions
         });
+    }
+
+    /// <summary>
+    /// Emits bounded, never-applied harness-change suggestions at end of run when the config opts in.
+    /// Returns the suggestions that passed the code-owned <see cref="ConfigSurfaceConstraint"/>; rejects
+    /// and a thrown suggester are isolated so the suggestion path can never fail the run.
+    /// </summary>
+    private async Task<IReadOnlyList<HarnessChangeSuggestion>> EmitHarnessChangeSuggestionsAsync(
+        TrainSkillCommand request,
+        TrainSkillConfig cfg,
+        IReadOnlyList<RolloutResult> rollouts,
+        int finalStep,
+        CancellationToken cancellationToken)
+    {
+        if (!cfg.EmitHarnessChangeSuggestions)
+        {
+            return [];
+        }
+
+        IReadOnlyList<HarnessChangeSuggestion> proposed;
+        try
+        {
+            proposed = await _suggester.SuggestAsync(
+                new HarnessSuggestionInput { SkillId = request.SkillId, Rollouts = rollouts },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Advisory by design: a faulty suggester must never fail an already-completed run.
+            _logger.LogError(ex,
+                "Harness-change suggester threw; no suggestions surfaced. The optimization result is unaffected.");
+            return [];
+        }
+
+        if (proposed is null || proposed.Count == 0)
+        {
+            return [];
+        }
+
+        var accepted = new List<HarnessChangeSuggestion>(proposed.Count);
+        foreach (var suggestion in proposed)
+        {
+            var surfaced = ValidateAndAuditSuggestion(suggestion, request.SkillId, finalStep);
+            if (surfaced is not null)
+            {
+                accepted.Add(surfaced);
+            }
+        }
+
+        return accepted;
+    }
+
+    /// <summary>
+    /// Validates one suggestion against the config-surface constraint and audits the outcome. Returns the
+    /// suggestion to surface — with its value replaced by the scrubbed canonical form — when allowed, or
+    /// <see langword="null"/> when rejected.
+    /// </summary>
+    private HarnessChangeSuggestion? ValidateAndAuditSuggestion(
+        HarnessChangeSuggestion suggestion, string skillId, int finalStep)
+    {
+        var validation = _suggestionValidator.Validate(suggestion);
+        if (validation.IsAllowed)
+        {
+            _logger.LogInformation(
+                "Harness-change suggestion surfaced: {Surface}.{Field} = {Value} (advisory only, not applied).",
+                suggestion.Surface, suggestion.Field, validation.NormalizedValue);
+            // Safe to audit Field (validation passed → it is the allow-listed constant, not raw input)
+            // and NormalizedValue (the scrubbed canonical value), never the raw ProposedValue.
+            SafeAudit(skillId, "skill_training.harness_change_suggested",
+                $"suggest: {suggestion.Surface}.{suggestion.Field}={validation.NormalizedValue}", finalStep);
+            // Surface the canonical value too, so consumers of the run result never see raw proposer text.
+            return suggestion with { ProposedValue = validation.NormalizedValue ?? suggestion.ProposedValue };
+        }
+
+        // Audit rejections too (audit-everything guardrail). The raw, unvalidated proposer Field and value
+        // are logged operationally below but kept OUT of the tamper-evident chain — only the enum surface
+        // and the stable reason category are recorded there.
+        _logger.LogWarning(
+            "Harness-change suggestion rejected: {Surface}.{Field} — {Reason}.",
+            suggestion.Surface, suggestion.Field, validation.RejectionReason);
+        SafeAudit(skillId, "skill_training.harness_change_rejected",
+            $"deny: {suggestion.Surface} reason {validation.RejectionReason}", finalStep);
+        return null;
     }
 
     private ILrScheduler ResolveScheduler(string key) => key.ToLowerInvariant() switch

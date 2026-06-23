@@ -33,6 +33,15 @@ public sealed record SkillTrainingRunResult
 
     /// <summary>Per-step audit trail in chronological order.</summary>
     public IReadOnlyList<SkillTrainingStepRecord> Steps { get; init; } = [];
+
+    /// <summary>
+    /// Bounded, never-applied harness-change suggestions surfaced by the run (Self-Harness Phase 2
+    /// Step 2). Empty unless the run opted in via <c>TrainSkillConfig.EmitHarnessChangeSuggestions</c>
+    /// and a registered <c>IHarnessChangeSuggester</c> proposed at least one suggestion that passed the
+    /// code-owned <c>ConfigSurfaceConstraint</c>. These are advisory notes for a human — the loop never
+    /// applies them.
+    /// </summary>
+    public IReadOnlyList<HarnessChangeSuggestion> HarnessChangeSuggestions { get; init; } = [];
 }
 
 /// <summary>
