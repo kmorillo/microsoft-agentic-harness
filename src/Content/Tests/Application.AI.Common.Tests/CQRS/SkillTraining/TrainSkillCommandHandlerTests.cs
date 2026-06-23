@@ -620,6 +620,24 @@ public class TrainSkillCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_SuggestionsEnabled_NonCanonicalAcceptedValue_SurfacedAndAuditedCanonically()
+    {
+        // A lenient-but-in-bounds raw value (' +03 ') is accepted; both the surfaced run-result suggestion
+        // and the audit must carry the scrubbed canonical form ('3'), never the raw proposer string.
+        var suggester = new StubSuggester(_ => [RetrySuggestion(" +03 ")]);
+        var audit = new CapturingAudit();
+        var sut = NewSut(AcceptingRunner(), AppendProposer(), new InMemorySkillTrainingCheckpointStore(),
+            audit, suggester: suggester);
+
+        var result = await sut.Handle(NewCommand(SuggestConfig(emit: true)), CancellationToken.None);
+
+        result.Value!.HarnessChangeSuggestions.Should().ContainSingle()
+            .Which.ProposedValue.Should().Be("3", because: "the surfaced value is normalized, not the raw proposer string");
+        audit.Entries.Should().ContainSingle(e => e.Action == "skill_training.harness_change_suggested")
+            .Subject.Decision.Should().Contain("MaxAttempts=3").And.NotContain("+03");
+    }
+
+    [Fact]
     public async Task Handle_SuggestionsEnabled_OutOfBoundsSuggestion_RejectedNotSurfaced_AndAuditedWithoutRawValue()
     {
         // 99 exceeds ConfigSurfaceConstraint.MaxMaxAttempts. The suggestion must be dropped (not

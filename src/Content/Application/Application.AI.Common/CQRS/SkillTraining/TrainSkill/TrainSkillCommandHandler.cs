@@ -505,32 +505,47 @@ public sealed class TrainSkillCommandHandler
         var accepted = new List<HarnessChangeSuggestion>(proposed.Count);
         foreach (var suggestion in proposed)
         {
-            var validation = _suggestionValidator.Validate(suggestion);
-            if (validation.IsAllowed)
+            var surfaced = ValidateAndAuditSuggestion(suggestion, request.SkillId, finalStep);
+            if (surfaced is not null)
             {
-                accepted.Add(suggestion);
-                _logger.LogInformation(
-                    "Harness-change suggestion surfaced: {Surface}.{Field} = {Value} (advisory only, not applied).",
-                    suggestion.Surface, suggestion.Field, suggestion.ProposedValue);
-                // Safe to audit Field (validation passed → it is the allow-listed constant, not raw input)
-                // and NormalizedValue (the scrubbed canonical value), never the raw ProposedValue.
-                SafeAudit(request.SkillId, "skill_training.harness_change_suggested",
-                    $"suggest: {suggestion.Surface}.{suggestion.Field}={validation.NormalizedValue}", finalStep);
-            }
-            else
-            {
-                // Audit rejections too (audit-everything guardrail). The raw, unvalidated proposer Field
-                // and value are logged operationally below but kept OUT of the tamper-evident chain — only
-                // the enum surface and the stable reason category are recorded there.
-                _logger.LogWarning(
-                    "Harness-change suggestion rejected: {Surface}.{Field} — {Reason}.",
-                    suggestion.Surface, suggestion.Field, validation.RejectionReason);
-                SafeAudit(request.SkillId, "skill_training.harness_change_rejected",
-                    $"deny: {suggestion.Surface} reason {validation.RejectionReason}", finalStep);
+                accepted.Add(surfaced);
             }
         }
 
         return accepted;
+    }
+
+    /// <summary>
+    /// Validates one suggestion against the config-surface constraint and audits the outcome. Returns the
+    /// suggestion to surface — with its value replaced by the scrubbed canonical form — when allowed, or
+    /// <see langword="null"/> when rejected.
+    /// </summary>
+    private HarnessChangeSuggestion? ValidateAndAuditSuggestion(
+        HarnessChangeSuggestion suggestion, string skillId, int finalStep)
+    {
+        var validation = _suggestionValidator.Validate(suggestion);
+        if (validation.IsAllowed)
+        {
+            _logger.LogInformation(
+                "Harness-change suggestion surfaced: {Surface}.{Field} = {Value} (advisory only, not applied).",
+                suggestion.Surface, suggestion.Field, validation.NormalizedValue);
+            // Safe to audit Field (validation passed → it is the allow-listed constant, not raw input)
+            // and NormalizedValue (the scrubbed canonical value), never the raw ProposedValue.
+            SafeAudit(skillId, "skill_training.harness_change_suggested",
+                $"suggest: {suggestion.Surface}.{suggestion.Field}={validation.NormalizedValue}", finalStep);
+            // Surface the canonical value too, so consumers of the run result never see raw proposer text.
+            return suggestion with { ProposedValue = validation.NormalizedValue ?? suggestion.ProposedValue };
+        }
+
+        // Audit rejections too (audit-everything guardrail). The raw, unvalidated proposer Field and value
+        // are logged operationally below but kept OUT of the tamper-evident chain — only the enum surface
+        // and the stable reason category are recorded there.
+        _logger.LogWarning(
+            "Harness-change suggestion rejected: {Surface}.{Field} — {Reason}.",
+            suggestion.Surface, suggestion.Field, validation.RejectionReason);
+        SafeAudit(skillId, "skill_training.harness_change_rejected",
+            $"deny: {suggestion.Surface} reason {validation.RejectionReason}", finalStep);
+        return null;
     }
 
     private ILrScheduler ResolveScheduler(string key) => key.ToLowerInvariant() switch
