@@ -2,7 +2,9 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Interfaces.AI;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
+using Domain.AI.Budget;
 using FluentAssertions;
 using MediatR;
 using Microsoft.Extensions.AI;
@@ -141,7 +143,8 @@ public sealed class AgUiRunHandlerTests
         Mock<IMediator> mediator,
         Mock<IConversationStore> store,
         Mock<IObservabilityStore>? observability = null,
-        string environmentName = "Development")
+        string environmentName = "Development",
+        Mock<IConversationBudgetTracker>? budget = null)
     {
         if (observability is null)
         {
@@ -149,6 +152,13 @@ public sealed class AgUiRunHandlerTests
             observability.Setup(o => o.StartSessionAsync(
                     It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(Guid.NewGuid());
+        }
+
+        if (budget is null)
+        {
+            // Budget disabled by default — most tests don't exercise the conversation budget.
+            budget = new Mock<IConversationBudgetTracker>();
+            budget.Setup(b => b.GetStatus(It.IsAny<string>())).Returns(ConversationBudgetStatus.Disabled);
         }
 
         var environment = new Mock<IHostEnvironment>();
@@ -160,6 +170,7 @@ public sealed class AgUiRunHandlerTests
             observability.Object,
             new ConversationLockRegistry(),
             new AgUiEventWriterAccessor(),
+            budget.Object,
             environment.Object,
             NullLogger<AgUiRunHandler>.Instance);
     }
@@ -217,6 +228,42 @@ public sealed class AgUiRunHandlerTests
         frames.Should().NotContain(f => EventType(f) == AgUiEventType.RunFinished);
 
         mediator.Verify(m => m.Send(It.IsAny<IRequest<AgentTurnResult>>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task HandleRunAsync_ConversationBudgetExhausted_EmitsAssistantMessageThenRunFinished_NoDispatch()
+    {
+        const string threadId = "conv-budget";
+        const string userId = "user-1";
+
+        var mediator = new Mock<IMediator>();
+        var store = new Mock<IConversationStore>();
+        store.Setup(s => s.GetAsync(threadId, It.IsAny<CancellationToken>()))
+             .ReturnsAsync(MakeRecord(threadId, userId));
+        store.Setup(s => s.GetHistoryForDispatch(threadId, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+             .ReturnsAsync(new List<ConversationMessage>());
+
+        var budget = new Mock<IConversationBudgetTracker>();
+        budget.Setup(b => b.GetStatus(threadId)).Returns(new ConversationBudgetStatus(true, 100, 100));
+
+        var handler = BuildHandler(mediator, store, budget: budget);
+        var input = MakeInput(threadId, "hello");
+        var user = MakeUser(userId);
+
+        using var ms = new MemoryStream();
+        var writer = new AgUiEventWriter(ms);
+
+        await handler.HandleRunAsync(input, writer, user);
+
+        var frames = ParseSseFrames(ms);
+        // Graceful: a normal assistant text message + RunFinished, never a RunError.
+        frames.Should().Contain(f => EventType(f) == AgUiEventType.TextMessageContent);
+        frames.Should().Contain(f => EventType(f) == AgUiEventType.RunFinished);
+        frames.Should().NotContain(f => EventType(f) == AgUiEventType.RunError);
+
+        mediator.Verify(
+            m => m.Send(It.IsAny<IRequest<AgentTurnResult>>(), It.IsAny<CancellationToken>()), Times.Never,
+            "no LLM turn should be dispatched once the conversation budget is exhausted");
     }
 
     [Fact]

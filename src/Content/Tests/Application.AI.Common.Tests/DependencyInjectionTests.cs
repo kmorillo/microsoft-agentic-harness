@@ -1,6 +1,7 @@
 using Application.AI.Common;
 using Application.AI.Common.Evaluation.Interfaces;
 using Application.AI.Common.Factories;
+using Application.AI.Common.Interfaces.AI;
 using Application.AI.Common.Interfaces.Agent;
 using Application.AI.Common.Interfaces.Context;
 using Application.AI.Common.Interfaces.Governance;
@@ -40,6 +41,17 @@ public class DependencyInjectionTests
         descriptor.Should().NotBeNull();
         descriptor!.Lifetime.Should().Be(ServiceLifetime.Scoped);
         descriptor.ImplementationType.Should().Be(typeof(AgentExecutionContext));
+    }
+
+    [Fact]
+    public void AddApplicationAIDependencies_RegistersConversationBudgetTracker_AsSingleton()
+    {
+        var services = CreateServicesWithAIDependencies();
+
+        var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(IConversationBudgetTracker));
+        descriptor.Should().NotBeNull();
+        descriptor!.Lifetime.Should().Be(ServiceLifetime.Singleton);
+        descriptor.ImplementationType.Should().Be(typeof(Application.AI.Common.Services.AI.ConversationBudgetTracker));
     }
 
     [Fact]

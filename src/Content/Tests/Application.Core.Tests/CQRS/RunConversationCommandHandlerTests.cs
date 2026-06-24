@@ -1,6 +1,8 @@
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Interfaces.AI;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using Application.Core.CQRS.Agents.RunConversation;
+using Domain.AI.Budget;
 using FluentAssertions;
 using MediatR;
 using Microsoft.Extensions.AI;
@@ -13,13 +15,18 @@ namespace Application.Core.Tests.CQRS;
 public class RunConversationCommandHandlerTests
 {
     private readonly Mock<IMediator> _mediator = new();
+    private readonly Mock<IConversationBudgetTracker> _budget = new();
     private readonly RunConversationCommandHandler _handler;
 
     public RunConversationCommandHandlerTests()
     {
+        // Budget disabled by default — these tests don't exercise the conversation budget.
+        _budget.Setup(b => b.GetStatus(It.IsAny<string>())).Returns(ConversationBudgetStatus.Disabled);
+
         _handler = new RunConversationCommandHandler(
             _mediator.Object,
             new Mock<IAgentConversationCache>().Object,
+            _budget.Object,
             new Mock<IObservabilityStore>().Object,
             NullLogger<RunConversationCommandHandler>.Instance);
     }
@@ -62,6 +69,55 @@ public class RunConversationCommandHandlerTests
         result.Turns.Should().HaveCount(1);
         result.FinalResponse.Should().Be("Hello back");
         result.Error.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_ConversationBudgetExhausted_StopsGracefullyBeforeNextTurn()
+    {
+        // First turn's gate sees budget available; after it runs, the next gate sees it exhausted.
+        _budget.SetupSequence(b => b.GetStatus(It.IsAny<string>()))
+            .Returns(ConversationBudgetStatus.Disabled)              // turn 1 gate → allowed
+            .Returns(new ConversationBudgetStatus(true, 100, 100));  // turn 2 gate → exhausted
+
+        _mediator
+            .Setup(m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SuccessTurn("answer"));
+
+        var command = new RunConversationCommand
+        {
+            AgentName = "TestAgent",
+            ConversationId = "conv-budget",
+            UserMessages = ["one", "two", "three"],
+            MaxTurns = 10
+        };
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.Success.Should().BeTrue("a budget stop is graceful, not a failure");
+        result.BudgetExhausted.Should().BeTrue();
+        result.Turns.Should().HaveCount(1, "only the first turn ran before the budget gate tripped");
+        _mediator.Verify(
+            m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Handle_RecordsUsageAndReleasesBudget()
+    {
+        _mediator
+            .Setup(m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SuccessTurn("answer"));
+
+        var command = new RunConversationCommand
+        {
+            AgentName = "TestAgent",
+            ConversationId = "conv-release",
+            UserMessages = ["one"]
+        };
+
+        await _handler.Handle(command, CancellationToken.None);
+
+        _budget.Verify(b => b.RecordUsage("conv-release", It.IsAny<int>()), Times.Once);
+        _budget.Verify(b => b.Release("conv-release"), Times.Once);
     }
 
     [Fact]

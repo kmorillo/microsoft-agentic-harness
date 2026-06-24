@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Application.AI.Common.Exceptions;
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Interfaces.AI;
 using Application.AI.Common.OpenTelemetry.Metrics;
 using Application.AI.Common.Services;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
@@ -29,6 +30,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
     private readonly ISessionHealthTracker _healthTracker;
     private readonly IObservabilityStore _observabilityStore;
     private readonly IConnectionTracker _connectionTracker;
+    private readonly IConversationBudgetTracker _conversationBudget;
     private readonly AgentHubConfig _config;
     private readonly IHostEnvironment _environment;
     private readonly ILogger<ConversationOrchestrator> _logger;
@@ -40,6 +42,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         ISessionHealthTracker healthTracker,
         IObservabilityStore observabilityStore,
         IConnectionTracker connectionTracker,
+        IConversationBudgetTracker conversationBudget,
         IOptions<AgentHubConfig> config,
         IHostEnvironment environment,
         ILogger<ConversationOrchestrator> logger)
@@ -50,6 +53,7 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         _healthTracker = healthTracker;
         _observabilityStore = observabilityStore;
         _connectionTracker = connectionTracker;
+        _conversationBudget = conversationBudget;
         _config = config.Value;
         _environment = environment;
         _logger = logger;
@@ -246,6 +250,12 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         var updatedRecord = await _conversationStore.GetAsync(conversationId, ct);
         var turnNumber = updatedRecord?.Messages.Count ?? 0;
 
+        // Conversation-lifetime budget gate: if prior turns already exhausted the cumulative token
+        // ceiling, decline this turn gracefully (no LLM dispatch, no cost) with an explanatory
+        // assistant message rather than throwing or surfacing an error to the client.
+        if (_conversationBudget.GetStatus(conversationId).IsExhausted)
+            return await BuildBudgetExhaustedOutcomeAsync(conversationId, agentName, turnNumber, ct);
+
         var obsSessionId = _connectionTracker.Get(sessionKey)?.ObservabilitySessionId ?? Guid.Empty;
 
         var command = new ExecuteAgentTurnCommand
@@ -319,6 +329,10 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
             OrchestrationMetrics.ToolCalls.Add(result.ToolsInvoked.Count, agentTag);
 
         _healthTracker.RecordSuccess(agentName);
+
+        // Fold this turn's tokens into the conversation-lifetime budget so a subsequent turn is
+        // declined once the cumulative ceiling is crossed. No-op when the budget is disabled.
+        _conversationBudget.RecordUsage(conversationId, result.InputTokens + result.OutputTokens);
 
         var userTag = new KeyValuePair<string, object?>(UserConventions.UserId, callerId);
         var userAgentTag = new KeyValuePair<string, object?>(AgentConventions.Name, agentName);
@@ -442,6 +456,40 @@ public sealed class ConversationOrchestrator : IConversationOrchestrator
         {
             Success = false,
             ErrorMessage = clientMessage,
+        };
+    }
+
+    /// <summary>
+    /// Builds the graceful outcome for a turn declined because the conversation exhausted its
+    /// lifetime token budget: persists an explanatory assistant message, records the metric, and
+    /// returns a successful outcome flagged <see cref="TurnOutcome.BudgetExhausted"/> so the client can
+    /// surface it (e.g. disable further input) without treating it as an error. No LLM is dispatched.
+    /// </summary>
+    private async Task<TurnOutcome> BuildBudgetExhaustedOutcomeAsync(
+        string conversationId, string agentName, int turnNumber, CancellationToken ct)
+    {
+        var message = ConversationBudgetNotice.Message;
+
+        _logger.LogWarning(
+            "Conversation {ConversationId} declined a turn: lifetime token budget exhausted", conversationId);
+        OrchestrationMetrics.ConversationsBudgetStopped.Add(
+            1, new KeyValuePair<string, object?>(AgentConventions.Name, agentName));
+
+        var assistantMessageId = Guid.NewGuid();
+        var assistantMsg = new ConversationMessage(
+            assistantMessageId, MessageRole.Assistant, message, DateTimeOffset.UtcNow);
+        await _conversationStore.AppendMessageAsync(conversationId, assistantMsg, ct);
+
+        var finalRecord = await _conversationStore.GetAsync(conversationId, ct);
+        var finalTurnNumber = finalRecord?.Messages.Count ?? turnNumber + 1;
+
+        return new TurnOutcome
+        {
+            Success = true,
+            Response = message,
+            AssistantMessageId = assistantMessageId,
+            FinalTurnNumber = finalTurnNumber,
+            BudgetExhausted = true,
         };
     }
 

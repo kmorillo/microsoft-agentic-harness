@@ -63,6 +63,14 @@ public class AgentPipelineIntegrationTests
             .Returns(Application.AI.Common.Interfaces.Governance.ProgressVerdict.Continue());
         services.AddScoped(_ => progressMock.Object);
 
+        // Conversation-lifetime budget — not under test here; permissive mock (disabled) so the
+        // RunConversation handler resolves and never reports exhaustion.
+        var budgetMock = new Mock<Application.AI.Common.Interfaces.AI.IConversationBudgetTracker>();
+        budgetMock
+            .Setup(b => b.GetStatus(It.IsAny<string>()))
+            .Returns(Domain.AI.Budget.ConversationBudgetStatus.Disabled);
+        services.AddSingleton(budgetMock.Object);
+
         // Agent conversation cache — mock returns testable agents
         services.AddSingleton(cacheMock.Object);
 

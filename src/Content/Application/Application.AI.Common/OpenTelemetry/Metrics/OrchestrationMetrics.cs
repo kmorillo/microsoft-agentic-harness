@@ -40,4 +40,8 @@ public static class OrchestrationMetrics
     /// <summary>Turns that ended with an error. Tags: agent.name.</summary>
     public static Counter<long> TurnErrors { get; } =
         AppInstrument.Meter.CreateCounter<long>(OrchestrationConventions.TurnErrors, "{turn}", "Turn errors");
+
+    /// <summary>Conversations stopped because they exhausted their lifetime token budget. Tags: agent.name.</summary>
+    public static Counter<long> ConversationsBudgetStopped { get; } =
+        AppInstrument.Meter.CreateCounter<long>(OrchestrationConventions.ConversationsBudgetStopped, "{conversation}", "Conversations stopped by lifetime token budget");
 }

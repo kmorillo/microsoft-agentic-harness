@@ -1,6 +1,8 @@
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Interfaces.AI;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using Application.Core.CQRS.Agents.RunConversation;
+using Domain.AI.Budget;
 using FluentAssertions;
 using MediatR;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -33,9 +35,13 @@ public class RunConversationCommandHandlerSolutionReviewFixTests
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(SessionId);
 
+        var budget = new Mock<IConversationBudgetTracker>();
+        budget.Setup(b => b.GetStatus(It.IsAny<string>())).Returns(ConversationBudgetStatus.Disabled);
+
         _handler = new RunConversationCommandHandler(
             _mediator.Object,
             _agentCache.Object,
+            budget.Object,
             _observabilityStore.Object,
             NullLogger<RunConversationCommandHandler>.Instance);
     }

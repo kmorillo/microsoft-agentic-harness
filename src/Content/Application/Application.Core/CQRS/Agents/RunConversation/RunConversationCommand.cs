@@ -63,6 +63,13 @@ public record ConversationResult
 	public string? Error { get; init; }
 
 	/// <summary>
+	/// True when the conversation stopped early because it exhausted its lifetime token budget
+	/// (<c>AppConfig.AI.AgentFramework.ConversationTokenBudget</c>). This is a graceful stop, not a
+	/// failure: <see cref="Success"/> stays true and <see cref="Turns"/> holds the turns that ran.
+	/// </summary>
+	public bool BudgetExhausted { get; init; }
+
+	/// <summary>
 	/// Aggregated snapshot of the per-invocation governance decisions across all turns of the
 	/// conversation. Null when tool-invocation governance was not engaged.
 	/// </summary>

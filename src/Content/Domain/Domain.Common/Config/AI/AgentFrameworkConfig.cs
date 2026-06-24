@@ -53,6 +53,21 @@ public class AgentFrameworkConfig
     public int DefaultTokenBudget { get; set; } = 200_000;
 
     /// <summary>
+    /// Gets or sets the conversation-lifetime token budget — the cumulative input+output token ceiling
+    /// across <em>all</em> turns of a single conversation. When a conversation reaches this ceiling, the
+    /// next turn is refused gracefully (the loop breaks / the live turn is declined with a message)
+    /// rather than throwing. Distinct from <see cref="DefaultTokenBudget"/>, which caps a single turn.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <c>0</c> = <strong>disabled</strong> (opt-in): conversations are unbounded across
+    /// turns unless a positive ceiling is configured, preserving existing multi-turn behaviour. Tune via
+    /// <c>AppConfig:AI:AgentFramework:ConversationTokenBudget</c>. Enforced by
+    /// <c>IConversationBudgetTracker</c> between turns, never mid-turn (intra-turn cost is bounded by
+    /// <see cref="DefaultTokenBudget"/>).
+    /// </remarks>
+    public int ConversationTokenBudget { get; set; }
+
+    /// <summary>
     /// Gets or sets whether to enable Anthropic prompt caching on the OpenAI-compatible client path
     /// (e.g. Claude via OpenRouter). When true, a request-pipeline policy stamps a
     /// <c>cache_control</c> breakpoint on the stable system prefix of each chat-completions call so

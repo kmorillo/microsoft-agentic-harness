@@ -1,6 +1,8 @@
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Interfaces.AI;
 using Application.AI.Common.Services;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
+using Domain.AI.Budget;
 using FluentAssertions;
 using MediatR;
 using Microsoft.Extensions.Hosting;
@@ -27,8 +29,15 @@ public class ConversationOrchestratorTests
     private readonly Mock<ISessionHealthTracker> _healthTracker = new();
     private readonly Mock<IObservabilityStore> _obsStore = new();
     private readonly Mock<IConnectionTracker> _connectionTracker = new();
+    private readonly Mock<IConversationBudgetTracker> _budget = new();
     private readonly ConversationLockRegistry _lockRegistry = new();
     private readonly AgentHubConfig _config = new() { MaxHistoryMessages = 20 };
+
+    public ConversationOrchestratorTests()
+    {
+        // Budget disabled by default — most tests don't exercise the conversation budget.
+        _budget.Setup(b => b.GetStatus(It.IsAny<string>())).Returns(ConversationBudgetStatus.Disabled);
+    }
 
     private ConversationOrchestrator CreateOrchestrator(string environmentName = "Development")
     {
@@ -41,6 +50,7 @@ public class ConversationOrchestratorTests
             _healthTracker.Object,
             _obsStore.Object,
             _connectionTracker.Object,
+            _budget.Object,
             Options.Create(_config),
             environment.Object,
             NullLogger<ConversationOrchestrator>.Instance);
@@ -167,6 +177,32 @@ public class ConversationOrchestratorTests
         outcome.Response.Should().Be("Hello from agent");
         outcome.AssistantMessageId.Should().NotBeEmpty();
         chunks.Should().Equal("Hello ", "from agent");
+    }
+
+    [Fact]
+    public async Task SendMessage_ConversationBudgetExhausted_DeclinesGracefullyWithoutDispatch()
+    {
+        var record = new ConversationRecord("c1", "agent", "user1", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, []);
+        _store.Setup(s => s.GetAsync("c1", It.IsAny<CancellationToken>())).ReturnsAsync(record);
+        _store.Setup(s => s.GetHistoryForDispatch("c1", 20, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<ConversationMessage>());
+        _obsStore.Setup(s => s.StartSessionAsync("c1", "agent", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Guid.NewGuid());
+
+        // Budget already exhausted before this turn.
+        _budget.Setup(b => b.GetStatus("c1")).Returns(new ConversationBudgetStatus(true, 100, 100));
+
+        var orchestrator = CreateOrchestrator();
+
+        var outcome = await orchestrator.SendMessageAsync(
+            "conn1", "c1", Guid.NewGuid(), "Hello", "user1", null, CancellationToken.None);
+
+        outcome.Success.Should().BeTrue("a budget decline is graceful, not an error");
+        outcome.BudgetExhausted.Should().BeTrue();
+        outcome.Response.Should().Contain("token budget");
+        _mediator.Verify(
+            m => m.Send(It.IsAny<ExecuteAgentTurnCommand>(), It.IsAny<CancellationToken>()), Times.Never,
+            "no LLM turn should be dispatched once the budget is exhausted");
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Interfaces.AI;
 using Application.AI.Common.OpenTelemetry.Metrics;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using Domain.AI.Governance;
@@ -18,17 +19,20 @@ public class RunConversationCommandHandler : IRequestHandler<RunConversationComm
 {
 	private readonly IMediator _mediator;
 	private readonly IAgentConversationCache _agentCache;
+	private readonly IConversationBudgetTracker _conversationBudget;
 	private readonly IObservabilityStore _observabilityStore;
 	private readonly ILogger<RunConversationCommandHandler> _logger;
 
 	public RunConversationCommandHandler(
 		IMediator mediator,
 		IAgentConversationCache agentCache,
+		IConversationBudgetTracker conversationBudget,
 		IObservabilityStore observabilityStore,
 		ILogger<RunConversationCommandHandler> logger)
 	{
 		_mediator = mediator;
 		_agentCache = agentCache;
+		_conversationBudget = conversationBudget;
 		_observabilityStore = observabilityStore;
 		_logger = logger;
 	}
@@ -43,6 +47,7 @@ public class RunConversationCommandHandler : IRequestHandler<RunConversationComm
 		var totalToolInvocations = 0;
 		var governanceTraces = new List<GovernanceTrace>();
 		AgentTurnResult? lastResult = null;
+		var stoppedForBudget = false;
 
 		// Running token/cost aggregates for session-level metrics
 		int totalInputTokens = 0, totalOutputTokens = 0, totalCacheRead = 0, totalCacheWrite = 0;
@@ -69,6 +74,19 @@ public class RunConversationCommandHandler : IRequestHandler<RunConversationComm
 				if (index >= request.MaxTurns)
 				{
 					_logger.LogWarning("Max turns ({MaxTurns}) reached for {AgentName}", request.MaxTurns, request.AgentName);
+					break;
+				}
+
+				// Conversation-lifetime budget gate: checked before starting a turn so a conversation
+				// that exhausted its cumulative token ceiling on a prior turn stops gracefully here
+				// rather than running another. The first turn always proceeds (nothing recorded yet).
+				if (_conversationBudget.GetStatus(request.ConversationId).IsExhausted)
+				{
+					stoppedForBudget = true;
+					_logger.LogWarning(
+						"Conversation {ConversationId} stopped: lifetime token budget exhausted after {Turns} turn(s)",
+						request.ConversationId, turns.Count);
+					OrchestrationMetrics.ConversationsBudgetStopped.Add(1, agentTag);
 					break;
 				}
 
@@ -139,6 +157,12 @@ public class RunConversationCommandHandler : IRequestHandler<RunConversationComm
 				totalCostUsd += lastResult.CostUsd;
 				sessionModel ??= lastResult.Model;
 
+				// Fold this turn's input+output into the conversation-lifetime budget (mirrors the
+				// per-turn TokenBudgetBehavior's accounting). The next loop iteration's gate decides
+				// whether the cumulative total has crossed the ceiling.
+				_conversationBudget.RecordUsage(
+					request.ConversationId, lastResult.InputTokens + lastResult.OutputTokens);
+
 				var totalInput = totalInputTokens + totalCacheRead;
 				var cacheHitRate = totalInput > 0 ? (decimal)totalCacheRead / totalInput : 0m;
 
@@ -181,6 +205,7 @@ public class RunConversationCommandHandler : IRequestHandler<RunConversationComm
 				Turns = turns,
 				FinalResponse = lastResult?.Response ?? string.Empty,
 				TotalToolInvocations = totalToolInvocations,
+				BudgetExhausted = stoppedForBudget,
 				Governance = governanceTraces.Count > 0 ? GovernanceTrace.Merge(governanceTraces) : null
 			};
 		}
@@ -210,6 +235,10 @@ public class RunConversationCommandHandler : IRequestHandler<RunConversationComm
 			// ActiveSessions metric cannot skew permanently when the try block throws.
 			SessionMetrics.ActiveSessions.Add(-1, sessionTags);
 			_agentCache.Evict(request.ConversationId);
+
+			// This handler owns the conversation's full lifecycle, so release its budget entry on
+			// every exit path to free the singleton's state (eviction is only a backstop).
+			_conversationBudget.Release(request.ConversationId);
 		}
 	}
 
