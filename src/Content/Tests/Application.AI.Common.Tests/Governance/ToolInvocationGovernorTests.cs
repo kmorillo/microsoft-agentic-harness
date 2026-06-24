@@ -192,6 +192,27 @@ public sealed class ToolInvocationGovernorTests
     }
 
     [Fact]
+    public async Task Reset_ClearsPriorTurnDecisions_NoCrossTurnDoubleCount()
+    {
+        // The governor is scoped but shared across turns of a conversation (nested MediatR sends
+        // share one DI scope), so each turn must Reset() or the trace accumulates and the merged
+        // conversation trace double-counts. This guards that regression.
+        var governor = Build();
+
+        // Turn 1
+        await governor.AuthorizeAsync(Tool, CancellationToken.None);
+        Assert.Equal(1, governor.GetTrace().ToolInvocationCount);
+
+        // Turn 2 begins
+        governor.Reset();
+        await governor.AuthorizeAsync(Tool, CancellationToken.None);
+
+        var trace = governor.GetTrace();
+        Assert.Equal(1, trace.ToolInvocationCount); // this turn only, not cumulative
+        Assert.Equal(1, trace.AllowedCount);
+    }
+
+    [Fact]
     public async Task AuthorizeAsync_PolicyEngineDenies_Blocks()
     {
         // GovernanceConfig is init-only — build one with the policy layer enabled.

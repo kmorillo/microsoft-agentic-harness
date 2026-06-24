@@ -164,9 +164,8 @@ public sealed class ToolInvocationGovernor : IToolInvocationGovernor
         {
             var decision = _policyEngine.EvaluateToolCall(agentId, toolName);
 
-            if (governance.EnableAudit)
-                _auditService.Log(agentId, toolName, decision.Action.ToString());
-
+            // The outcome is audited once below — by Blocked() on a deny/approval, or by the final
+            // Allowed audit on success — so the policy action is not logged separately here.
             if (!decision.IsAllowed)
             {
                 if (decision.Action == GovernancePolicyAction.RequireApproval)
@@ -255,6 +254,13 @@ public sealed class ToolInvocationGovernor : IToolInvocationGovernor
     {
         lock (_lock)
             _decisions.Add(record);
+    }
+
+    /// <inheritdoc />
+    public void Reset()
+    {
+        lock (_lock)
+            _decisions.Clear();
     }
 
     /// <inheritdoc />

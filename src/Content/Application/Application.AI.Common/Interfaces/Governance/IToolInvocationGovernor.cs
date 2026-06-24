@@ -36,6 +36,15 @@ public interface IToolInvocationGovernor
 
     /// <summary>Snapshots the governance decisions recorded so far for this turn.</summary>
     GovernanceTrace GetTrace();
+
+    /// <summary>
+    /// Clears the recorded decisions so the next turn starts clean. The governor is registered
+    /// scoped, but nested MediatR sends within a conversation share one DI scope (and thus one
+    /// governor instance), so a multi-turn conversation must reset between turns — otherwise
+    /// <see cref="GetTrace"/> returns the cumulative list and per-turn traces double-count when
+    /// aggregated. Mirrors the per-turn reset of the adjacent scoped <c>ILlmUsageCapture</c>.
+    /// </summary>
+    void Reset();
 }
 
 /// <summary>

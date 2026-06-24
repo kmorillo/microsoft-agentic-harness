@@ -116,7 +116,10 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 
 			// Same bridge for tool governance: the agent (and its cached tool functions) outlive
 			// this scope, so expose this turn's scoped governor ambiently for the governed tool
-			// wrapper to consult at invocation time.
+			// wrapper to consult at invocation time. Reset first: nested MediatR sends within a
+			// conversation share one scope (one governor), so clear prior turns' decisions so this
+			// turn's trace reflects only this turn — mirrors the _usageCapture clear above.
+			_governor.Reset();
 			ToolGovernanceAccessor.Current = _governor;
 
 			object? response;
