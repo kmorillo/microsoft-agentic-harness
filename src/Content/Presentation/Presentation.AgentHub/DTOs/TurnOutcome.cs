@@ -17,4 +17,11 @@ public sealed record TurnOutcome
     /// The transport should emit a truncation event with this count before streaming the response.
     /// </summary>
     public int? HistoryKeepCount { get; init; }
+
+    /// <summary>
+    /// True when this turn was declined because the conversation exhausted its lifetime token budget.
+    /// A graceful stop, not an error: <see cref="Success"/> stays true and <see cref="Response"/> carries
+    /// the explanatory message. The transport may surface this (e.g. disable further input).
+    /// </summary>
+    public bool BudgetExhausted { get; init; }
 }

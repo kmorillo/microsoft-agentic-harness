@@ -153,6 +153,12 @@ public static class DependencyInjection
         // for the pre-flight CanAfford check and the post-turn RecordUsage decrement.
         services.AddScoped<ITokenBudgetTracker, Services.AI.TokenBudgetTracker>();
 
+        // Conversation-lifetime token budget tracker — singleton keyed internally by conversation id
+        // so it outlives the per-turn scopes. Consulted between turns by the conversation loopers
+        // (RunConversationCommandHandler, ConversationOrchestrator) to break gracefully when a
+        // conversation exhausts its cumulative budget. Opt-in via ConversationTokenBudget (0 = off).
+        services.AddSingleton<IConversationBudgetTracker, Services.AI.ConversationBudgetTracker>();
+
         // Per-conversation tracker of registrations (system prompt, skills, tools, MCP,
         // sub-agents) already emitted. Drives the per-turn context snapshot deltas so
         // the dashboard inspector shows what landed in context on each turn.

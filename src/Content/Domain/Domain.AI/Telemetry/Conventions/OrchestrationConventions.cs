@@ -16,4 +16,7 @@ public static class OrchestrationConventions
     public const string TurnsTotal = "agent.orchestration.turns_total";
     /// <summary>Turns that ended with an error.</summary>
     public const string TurnErrors = "agent.orchestration.turn_errors";
+
+    /// <summary>Conversations stopped because they exhausted their lifetime token budget.</summary>
+    public const string ConversationsBudgetStopped = "agent.orchestration.conversations_budget_stopped";
 }

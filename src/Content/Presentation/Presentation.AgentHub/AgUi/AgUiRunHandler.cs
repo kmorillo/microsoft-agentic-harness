@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Security.Claims;
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Interfaces.AI;
 using Application.AI.Common.OpenTelemetry.Metrics;
 using Application.Core.CQRS.Agents.ExecuteAgentTurn;
 using Domain.AI.Telemetry.Conventions;
@@ -31,6 +32,7 @@ public sealed class AgUiRunHandler
     private readonly IObservabilityStore _observabilityStore;
     private readonly ConversationLockRegistry _lockRegistry;
     private readonly IAgUiEventWriterAccessor _writerAccessor;
+    private readonly IConversationBudgetTracker _conversationBudget;
     private readonly IHostEnvironment _environment;
     private readonly ILogger<AgUiRunHandler> _logger;
 
@@ -43,6 +45,7 @@ public sealed class AgUiRunHandler
         IObservabilityStore observabilityStore,
         ConversationLockRegistry lockRegistry,
         IAgUiEventWriterAccessor writerAccessor,
+        IConversationBudgetTracker conversationBudget,
         IHostEnvironment environment,
         ILogger<AgUiRunHandler> logger)
     {
@@ -51,6 +54,7 @@ public sealed class AgUiRunHandler
         _observabilityStore = observabilityStore;
         _lockRegistry = lockRegistry;
         _writerAccessor = writerAccessor;
+        _conversationBudget = conversationBudget;
         _environment = environment;
         _logger = logger;
     }
@@ -197,6 +201,15 @@ public sealed class AgUiRunHandler
         var history = await _conversationStore.GetHistoryForDispatch(input.ThreadId, 50, ct) ?? [];
         var turnNumber = record.Messages.Count + 1;
 
+        // Conversation-lifetime budget gate: decline gracefully (no LLM dispatch) when the
+        // conversation has exhausted its cumulative ceiling, emitting the explanatory message as a
+        // normal assistant turn rather than a RunErrorEvent. No-op when the budget is disabled.
+        if (_conversationBudget.GetStatus(input.ThreadId).IsExhausted)
+        {
+            await EmitBudgetExhaustedAsync(writer, input, record.AgentName, ct);
+            return;
+        }
+
         var command = new ExecuteAgentTurnCommand
         {
             AgentName = record.AgentName,
@@ -257,6 +270,10 @@ public sealed class AgUiRunHandler
             new KeyValuePair<string, object?>(UserConventions.UserId, callerId),
             new KeyValuePair<string, object?>(AgentConventions.Name, record.AgentName));
 
+        // Fold this turn's tokens into the conversation-lifetime budget so a subsequent run is
+        // declined once the cumulative ceiling is crossed. No-op when the budget is disabled.
+        _conversationBudget.RecordUsage(input.ThreadId, result.InputTokens + result.OutputTokens);
+
         var previousTelemetry = record.Telemetry ?? TelemetryAccumulator.Zero;
         var updatedTelemetry = previousTelemetry.Add(
             result.InputTokens, result.OutputTokens,
@@ -304,6 +321,35 @@ public sealed class AgUiRunHandler
             MessageRole.Assistant,
             response,
             DateTimeOffset.UtcNow);
+        await _conversationStore.AppendMessageAsync(input.ThreadId, assistantMsg, ct);
+
+        await writer.WriteAsync(new RunFinishedEvent(input.ThreadId, input.RunId), ct);
+    }
+
+    /// <summary>
+    /// Emits the graceful "budget exhausted" turn over the AG-UI protocol: a normal assistant text
+    /// message (not a RunErrorEvent) carrying the explanatory text, persisted under a stable id, then
+    /// <c>RunFinished</c>. No LLM is dispatched.
+    /// </summary>
+    private async Task EmitBudgetExhaustedAsync(
+        IAgUiEventWriter writer, RunAgentInput input, string agentName, CancellationToken ct)
+    {
+        var message = Services.ConversationBudgetNotice.Message;
+
+        _logger.LogWarning(
+            "AG-UI run {RunId}: declined — conversation {ThreadId} lifetime token budget exhausted",
+            input.RunId, input.ThreadId);
+        OrchestrationMetrics.ConversationsBudgetStopped.Add(
+            1, new KeyValuePair<string, object?>(AgentConventions.Name, agentName));
+
+        var assistantId = Guid.NewGuid();
+        var messageId = assistantId.ToString();
+        await writer.WriteAsync(new TextMessageStartEvent(messageId, "assistant"), ct);
+        await writer.WriteAsync(new TextMessageContentEvent(messageId, message), ct);
+        await writer.WriteAsync(new TextMessageEndEvent(messageId), ct);
+
+        var assistantMsg = new ConversationMessage(
+            assistantId, MessageRole.Assistant, message, DateTimeOffset.UtcNow);
         await _conversationStore.AppendMessageAsync(input.ThreadId, assistantMsg, ct);
 
         await writer.WriteAsync(new RunFinishedEvent(input.ThreadId, input.RunId), ct);

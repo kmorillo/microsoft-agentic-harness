@@ -400,6 +400,7 @@ public sealed class AgentTelemetryHub : Hub
                     turnNumber = outcome.FinalTurnNumber,
                     fullResponse = outcome.Response,
                     assistantMessageId = outcome.AssistantMessageId,
+                    budgetExhausted = outcome.BudgetExhausted,
                 }, ct);
         }
         else
