@@ -56,6 +56,27 @@ public sealed class DataClassificationConfigValidator : AbstractValidator<DataCl
                 .GreaterThan(TimeSpan.Zero)
                 .WithMessage("InformationProtection.LabelCatalogCacheTtl must be positive so the label taxonomy is cached.");
         });
+
+        // Data Map provider rules apply only once it is switched on, independent of Mode: an operator may
+        // stage the provider's connection settings before flipping the gate.
+        When(x => x.DataMap.Enabled, () =>
+        {
+            RuleFor(x => x.DataMap.AccountEndpoint)
+                .Must(BeValidHttpUrl)
+                .WithMessage("DataMap.AccountEndpoint must be a valid absolute http(s) URL (e.g. https://your-account.purview.azure.com).");
+
+            RuleFor(x => x.DataMap.Scopes)
+                .NotEmpty()
+                .WithMessage("DataMap.Scopes must contain at least one OAuth scope to mint a Data Map token.");
+
+            RuleForEach(x => x.DataMap.Scopes)
+                .Must(scope => !string.IsNullOrWhiteSpace(scope))
+                .WithMessage("DataMap.Scopes contains a blank scope; remove it or supply a value.");
+
+            RuleFor(x => x.DataMap.StalenessThreshold)
+                .GreaterThan(TimeSpan.Zero)
+                .WithMessage("DataMap.StalenessThreshold must be positive so scan freshness can be judged.");
+        });
     }
 
     private static bool BeValidHttpUrl(string url) =>

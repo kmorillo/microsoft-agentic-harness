@@ -58,6 +58,14 @@ public sealed class DataClassificationConfig
     public InformationProtectionProviderConfig InformationProtection { get; init; } = new();
 
     /// <summary>
+    /// Configuration for the Microsoft Purview Data Map provider — the data-estate source of sensitivity
+    /// labels and classifications for cloud assets (Azure Blob, ADLS Gen2, Azure SQL, Cosmos DB). Opt-in
+    /// via <see cref="DataMapProviderConfig.Enabled"/>; off by default. The classification gate routes an
+    /// asset to this provider or to <see cref="InformationProtection"/> by the asset's kind.
+    /// </summary>
+    public DataMapProviderConfig DataMap { get; init; } = new();
+
+    /// <summary>
     /// How long a resolved <c>AssetLabelResult</c> is cached, keyed by the asset, before the provider is
     /// consulted again. Caching is mandatory in practice — without it every gated tool call incurs a
     /// Purview round trip. Defaults to five minutes; a non-positive value disables result caching.

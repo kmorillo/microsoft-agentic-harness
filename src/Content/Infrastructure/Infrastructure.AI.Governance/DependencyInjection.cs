@@ -62,8 +62,8 @@ public static class DependencyInjection
         services.AddSingleton<IResponseSanitizer, ExfiltrationUrlDetector>();
         services.AddSingleton<ICompositeResponseSanitizer, CompositeResponseSanitizer>();
 
-        // Data-classification seam. The policy evaluator is pure; the provider is the real Graph-backed
-        // Information Protection client when wired, else the fail-fast default.
+        // Data-classification seam. The policy evaluator is pure; the provider routes to the Graph-backed
+        // Information Protection and Purview Data Map clients when wired, else the fail-fast default.
         AddDataClassificationProvider(services, config.DataClassification);
 
         return services;
@@ -71,47 +71,89 @@ public static class DependencyInjection
 
     /// <summary>
     /// Registers the data-classification policy evaluator and the appropriate
-    /// <see cref="IDataClassificationProvider"/>. Wires the real Graph-backed
-    /// <see cref="GraphSensitivityLabelClient"/> (behind a TTL cache) only when classification is enabled
-    /// and the Information Protection provider is switched on; otherwise keeps the fail-fast default so an
-    /// enabled-but-unconfigured gate fails loudly rather than silently allowing everything.
+    /// <see cref="IDataClassificationProvider"/>. When classification is enabled and at least one Purview
+    /// world is switched on, wires those worlds — the Graph-backed <see cref="GraphSensitivityLabelClient"/>
+    /// for documents/files and the <see cref="PurviewDataMapClient"/> for scanned cloud assets — behind a
+    /// <see cref="RoutingDataClassificationProvider"/> and a shared TTL cache. Otherwise keeps the
+    /// fail-fast default so an enabled-but-unconfigured gate fails loudly rather than silently allowing
+    /// everything.
     /// </summary>
     internal static void AddDataClassificationProvider(IServiceCollection services, DataClassificationConfig config)
     {
         services.AddSingleton<IClassificationPolicyEvaluator, DefaultClassificationPolicyEvaluator>();
 
         var ip = config.InformationProtection;
-        if (config.Mode == ClassificationEnforcementMode.Off || !ip.Enabled)
+        var dataMap = config.DataMap;
+        if (config.Mode == ClassificationEnforcementMode.Off || (!ip.Enabled && !dataMap.Enabled))
         {
             services.AddSingleton<IDataClassificationProvider, NotConfiguredDataClassificationProvider>();
             return;
         }
 
-        services.AddHttpClient(GraphSensitivityLabelClient.HttpClientName);
+        if (ip.Enabled)
+            services.AddHttpClient(GraphSensitivityLabelClient.HttpClientName);
+
+        if (dataMap.Enabled)
+            services.AddHttpClient(PurviewDataMapClient.HttpClientName);
 
         services.AddSingleton<IDataClassificationProvider>(sp =>
         {
             var timeProvider = sp.GetRequiredService<TimeProvider>();
+            var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
 
-            // Azure.Identity caches and refreshes the token in-process, so building the credential once
-            // for the singleton is correct; it is created lazily here so a credential-config error
-            // surfaces when the provider is first resolved rather than during the DI graph build.
-            var credential = AzureCredentialFactory.CreateTokenCredential(ip.Auth);
-
-            var inner = new GraphSensitivityLabelClient(
-                sp.GetRequiredService<IHttpClientFactory>(),
-                credential,
-                ip,
+            var router = new RoutingDataClassificationProvider(
+                BuildInformationProtectionProvider(sp, ip, timeProvider, httpClientFactory),
+                BuildDataMapProvider(sp, dataMap, timeProvider, httpClientFactory),
                 timeProvider,
-                sp.GetRequiredService<ILogger<GraphSensitivityLabelClient>>());
+                sp.GetRequiredService<ILogger<RoutingDataClassificationProvider>>());
 
             return new CachedDataClassificationProvider(
-                inner,
+                router,
                 timeProvider,
                 config.ResultCacheTtl,
                 sp.GetRequiredService<ILogger<CachedDataClassificationProvider>>());
         });
     }
+
+    /// <summary>
+    /// Builds the Graph-backed Information Protection provider when that world is enabled, else null. The
+    /// Entra credential is created lazily here (not at DI graph build) so a credential-config error
+    /// surfaces when the provider is first resolved; Azure.Identity then caches and refreshes the token
+    /// in-process for the lifetime of the singleton.
+    /// </summary>
+    private static IDataClassificationProvider? BuildInformationProtectionProvider(
+        IServiceProvider sp,
+        InformationProtectionProviderConfig ip,
+        TimeProvider timeProvider,
+        IHttpClientFactory httpClientFactory) =>
+        ip.Enabled
+            ? new GraphSensitivityLabelClient(
+                httpClientFactory,
+                AzureCredentialFactory.CreateTokenCredential(ip.Auth),
+                ip,
+                timeProvider,
+                sp.GetRequiredService<ILogger<GraphSensitivityLabelClient>>())
+            : null;
+
+    /// <summary>
+    /// Builds the Purview Data Map provider when that world is enabled, else null. The Entra credential is
+    /// created lazily here (not at DI graph build) so a credential-config error surfaces when the provider
+    /// is first resolved; Azure.Identity then caches and refreshes the token in-process for the lifetime of
+    /// the singleton.
+    /// </summary>
+    private static IDataClassificationProvider? BuildDataMapProvider(
+        IServiceProvider sp,
+        DataMapProviderConfig dataMap,
+        TimeProvider timeProvider,
+        IHttpClientFactory httpClientFactory) =>
+        dataMap.Enabled
+            ? new PurviewDataMapClient(
+                httpClientFactory,
+                AzureCredentialFactory.CreateTokenCredential(dataMap.Auth),
+                dataMap,
+                timeProvider,
+                sp.GetRequiredService<ILogger<PurviewDataMapClient>>())
+            : null;
 
     /// <summary>
     /// Adds no-op governance services that satisfy DI without AGT.

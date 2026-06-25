@@ -34,13 +34,42 @@ public sealed class DataClassificationDependencyInjectionTests
     }
 
     [Fact]
-    public void AddDataClassificationProvider_GateOnButIpProviderDisabled_ResolvesNotConfiguredDefault()
+    public void AddDataClassificationProvider_GateOnButNoProviderEnabled_ResolvesNotConfiguredDefault()
     {
         var config = new DataClassificationConfig { Mode = ClassificationEnforcementMode.Enforce };
         using var sp = BuildProvider(config);
 
         sp.GetRequiredService<IDataClassificationProvider>()
             .Should().BeOfType<NotConfiguredDataClassificationProvider>();
+    }
+
+    [Fact]
+    public void AddDataClassificationProvider_DataMapProviderEnabled_ResolvesCachedRoutingProvider()
+    {
+        var config = new DataClassificationConfig
+        {
+            Mode = ClassificationEnforcementMode.Enforce,
+            DataMap = new DataMapProviderConfig { Enabled = true, AccountEndpoint = "https://acct.purview.azure.com" },
+        };
+        using var sp = BuildProvider(config);
+
+        sp.GetRequiredService<IDataClassificationProvider>()
+            .Should().BeOfType<CachedDataClassificationProvider>();
+    }
+
+    [Fact]
+    public void AddDataClassificationProvider_BothWorldsEnabled_ResolvesCachedRoutingProvider()
+    {
+        var config = new DataClassificationConfig
+        {
+            Mode = ClassificationEnforcementMode.Enforce,
+            InformationProtection = new InformationProtectionProviderConfig { Enabled = true },
+            DataMap = new DataMapProviderConfig { Enabled = true, AccountEndpoint = "https://acct.purview.azure.com" },
+        };
+        using var sp = BuildProvider(config);
+
+        sp.GetRequiredService<IDataClassificationProvider>()
+            .Should().BeOfType<CachedDataClassificationProvider>();
     }
 
     [Fact]
