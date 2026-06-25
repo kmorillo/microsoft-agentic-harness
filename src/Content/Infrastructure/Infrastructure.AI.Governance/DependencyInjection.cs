@@ -76,7 +76,7 @@ public static class DependencyInjection
     /// and the Information Protection provider is switched on; otherwise keeps the fail-fast default so an
     /// enabled-but-unconfigured gate fails loudly rather than silently allowing everything.
     /// </summary>
-    private static void AddDataClassificationProvider(IServiceCollection services, DataClassificationConfig config)
+    internal static void AddDataClassificationProvider(IServiceCollection services, DataClassificationConfig config)
     {
         services.AddSingleton<IClassificationPolicyEvaluator, DefaultClassificationPolicyEvaluator>();
 

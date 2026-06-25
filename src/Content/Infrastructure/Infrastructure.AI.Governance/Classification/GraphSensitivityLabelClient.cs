@@ -166,7 +166,7 @@ public sealed partial class GraphSensitivityLabelClient : IDataClassificationPro
                 labels[NormalizeLabelId(dto.Id)] = new SensitivityLabel(dto.Id, dto.Name);
             }
 
-            nextUrl = string.IsNullOrWhiteSpace(page.NextLink) ? null : new Uri(page.NextLink, UriKind.Absolute);
+            nextUrl = ResolveNextLink(page.NextLink);
         }
 
         _logger.LogInformation(
@@ -213,6 +213,29 @@ public sealed partial class GraphSensitivityLabelClient : IDataClassificationPro
     {
         var baseUrl = graphBaseUrl.EndsWith('/') ? graphBaseUrl : graphBaseUrl + "/";
         return new Uri(new Uri(baseUrl), LabelsPath);
+    }
+
+    /// <summary>
+    /// Parses and validates an <c>@odata.nextLink</c>, returning the next page URL or null on the final
+    /// page. The link comes from the response body, and each page request carries the access token, so the
+    /// host and scheme must match the configured Graph endpoint — otherwise a tampered or misrouted
+    /// response could trick the client into forwarding the bearer token to an attacker-controlled host.
+    /// </summary>
+    private Uri? ResolveNextLink(string? nextLink)
+    {
+        if (string.IsNullOrWhiteSpace(nextLink))
+            return null;
+
+        if (!Uri.TryCreate(nextLink, UriKind.Absolute, out var next) ||
+            next.Scheme != _labelsEndpoint.Scheme ||
+            !string.Equals(next.Host, _labelsEndpoint.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "The Microsoft Graph @odata.nextLink pointed to an unexpected or malformed host; refusing to " +
+                "forward the access token off the configured Graph endpoint.");
+        }
+
+        return next;
     }
 
     /// <summary>
