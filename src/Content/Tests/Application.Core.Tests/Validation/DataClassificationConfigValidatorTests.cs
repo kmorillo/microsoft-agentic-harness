@@ -182,4 +182,93 @@ public class DataClassificationConfigValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.PropertyName.Contains(nameof(InformationProtectionProviderConfig.LabelCatalogCacheTtl)));
     }
+
+    [Fact]
+    public async Task Validate_DataMapDisabled_SkipsProviderRules()
+    {
+        // Even with incoherent provider settings, a disabled provider imposes no constraints.
+        var config = new DataClassificationConfig
+        {
+            DataMap = new DataMapProviderConfig
+            {
+                Enabled = false,
+                AccountEndpoint = "not-a-url",
+                Scopes = [],
+                StalenessThreshold = TimeSpan.Zero,
+            },
+        };
+
+        var result = await _validator.ValidateAsync(config);
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Validate_DataMapEnabledWithEndpointAndDefaults_IsValid()
+    {
+        var config = new DataClassificationConfig
+        {
+            DataMap = new DataMapProviderConfig { Enabled = true, AccountEndpoint = "https://acct.purview.azure.com" },
+        };
+
+        var result = await _validator.ValidateAsync(config);
+
+        result.IsValid.Should().BeTrue();
+        result.Errors.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("not-a-url")]
+    [InlineData("ftp://acct.purview.azure.com")]
+    [InlineData("acct.purview.azure.com")]
+    public async Task Validate_DataMapEnabledWithInvalidEndpoint_HasError(string badUrl)
+    {
+        var config = new DataClassificationConfig
+        {
+            DataMap = new DataMapProviderConfig { Enabled = true, AccountEndpoint = badUrl },
+        };
+
+        var result = await _validator.ValidateAsync(config);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName.Contains(nameof(DataMapProviderConfig.AccountEndpoint)));
+    }
+
+    [Fact]
+    public async Task Validate_DataMapEnabledWithEmptyScopes_HasError()
+    {
+        var config = new DataClassificationConfig
+        {
+            DataMap = new DataMapProviderConfig
+            {
+                Enabled = true,
+                AccountEndpoint = "https://acct.purview.azure.com",
+                Scopes = [],
+            },
+        };
+
+        var result = await _validator.ValidateAsync(config);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName.Contains(nameof(DataMapProviderConfig.Scopes)));
+    }
+
+    [Fact]
+    public async Task Validate_DataMapEnabledWithNonPositiveStalenessThreshold_HasError()
+    {
+        var config = new DataClassificationConfig
+        {
+            DataMap = new DataMapProviderConfig
+            {
+                Enabled = true,
+                AccountEndpoint = "https://acct.purview.azure.com",
+                StalenessThreshold = TimeSpan.Zero,
+            },
+        };
+
+        var result = await _validator.ValidateAsync(config);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName.Contains(nameof(DataMapProviderConfig.StalenessThreshold)));
+    }
 }
