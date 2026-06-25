@@ -253,6 +253,27 @@ public class DataClassificationConfigValidatorTests
         result.Errors.Should().Contain(e => e.PropertyName.Contains(nameof(DataMapProviderConfig.Scopes)));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Validate_DataMapEnabledWithBlankScope_HasError(string blankScope)
+    {
+        var config = new DataClassificationConfig
+        {
+            DataMap = new DataMapProviderConfig
+            {
+                Enabled = true,
+                AccountEndpoint = "https://acct.purview.azure.com",
+                Scopes = [blankScope],
+            },
+        };
+
+        var result = await _validator.ValidateAsync(config);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName.Contains(nameof(DataMapProviderConfig.Scopes)));
+    }
+
     [Fact]
     public async Task Validate_DataMapEnabledWithNonPositiveStalenessThreshold_HasError()
     {

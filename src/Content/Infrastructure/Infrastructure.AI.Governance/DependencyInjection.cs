@@ -62,8 +62,8 @@ public static class DependencyInjection
         services.AddSingleton<IResponseSanitizer, ExfiltrationUrlDetector>();
         services.AddSingleton<ICompositeResponseSanitizer, CompositeResponseSanitizer>();
 
-        // Data-classification seam. The policy evaluator is pure; the provider is the real Graph-backed
-        // Information Protection client when wired, else the fail-fast default.
+        // Data-classification seam. The policy evaluator is pure; the provider routes to the Graph-backed
+        // Information Protection and Purview Data Map clients when wired, else the fail-fast default.
         AddDataClassificationProvider(services, config.DataClassification);
 
         return services;
@@ -101,30 +101,9 @@ public static class DependencyInjection
             var timeProvider = sp.GetRequiredService<TimeProvider>();
             var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
 
-            // Azure.Identity caches and refreshes tokens in-process, so building each credential once for
-            // the singleton is correct; they are created lazily here so a credential-config error surfaces
-            // when the provider is first resolved rather than during the DI graph build.
-            IDataClassificationProvider? mip = ip.Enabled
-                ? new GraphSensitivityLabelClient(
-                    httpClientFactory,
-                    AzureCredentialFactory.CreateTokenCredential(ip.Auth),
-                    ip,
-                    timeProvider,
-                    sp.GetRequiredService<ILogger<GraphSensitivityLabelClient>>())
-                : null;
-
-            IDataClassificationProvider? dataMapProvider = dataMap.Enabled
-                ? new PurviewDataMapClient(
-                    httpClientFactory,
-                    AzureCredentialFactory.CreateTokenCredential(dataMap.Auth),
-                    dataMap,
-                    timeProvider,
-                    sp.GetRequiredService<ILogger<PurviewDataMapClient>>())
-                : null;
-
             var router = new RoutingDataClassificationProvider(
-                mip,
-                dataMapProvider,
+                BuildInformationProtectionProvider(sp, ip, timeProvider, httpClientFactory),
+                BuildDataMapProvider(sp, dataMap, timeProvider, httpClientFactory),
                 timeProvider,
                 sp.GetRequiredService<ILogger<RoutingDataClassificationProvider>>());
 
@@ -135,6 +114,46 @@ public static class DependencyInjection
                 sp.GetRequiredService<ILogger<CachedDataClassificationProvider>>());
         });
     }
+
+    /// <summary>
+    /// Builds the Graph-backed Information Protection provider when that world is enabled, else null. The
+    /// Entra credential is created lazily here (not at DI graph build) so a credential-config error
+    /// surfaces when the provider is first resolved; Azure.Identity then caches and refreshes the token
+    /// in-process for the lifetime of the singleton.
+    /// </summary>
+    private static IDataClassificationProvider? BuildInformationProtectionProvider(
+        IServiceProvider sp,
+        InformationProtectionProviderConfig ip,
+        TimeProvider timeProvider,
+        IHttpClientFactory httpClientFactory) =>
+        ip.Enabled
+            ? new GraphSensitivityLabelClient(
+                httpClientFactory,
+                AzureCredentialFactory.CreateTokenCredential(ip.Auth),
+                ip,
+                timeProvider,
+                sp.GetRequiredService<ILogger<GraphSensitivityLabelClient>>())
+            : null;
+
+    /// <summary>
+    /// Builds the Purview Data Map provider when that world is enabled, else null. The Entra credential is
+    /// created lazily here (not at DI graph build) so a credential-config error surfaces when the provider
+    /// is first resolved; Azure.Identity then caches and refreshes the token in-process for the lifetime of
+    /// the singleton.
+    /// </summary>
+    private static IDataClassificationProvider? BuildDataMapProvider(
+        IServiceProvider sp,
+        DataMapProviderConfig dataMap,
+        TimeProvider timeProvider,
+        IHttpClientFactory httpClientFactory) =>
+        dataMap.Enabled
+            ? new PurviewDataMapClient(
+                httpClientFactory,
+                AzureCredentialFactory.CreateTokenCredential(dataMap.Auth),
+                dataMap,
+                timeProvider,
+                sp.GetRequiredService<ILogger<PurviewDataMapClient>>())
+            : null;
 
     /// <summary>
     /// Adds no-op governance services that satisfy DI without AGT.
