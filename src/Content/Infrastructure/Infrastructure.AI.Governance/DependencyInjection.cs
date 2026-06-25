@@ -3,6 +3,7 @@ using AgentGovernance.Audit;
 using AgentGovernance.Policy;
 using AgentGovernance.Security;
 using Application.AI.Common.Interfaces.Governance;
+using Application.AI.Common.Services.Governance;
 using Domain.Common.Config.AI;
 using Infrastructure.AI.Governance.Adapters;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,6 +59,12 @@ public static class DependencyInjection
         services.AddSingleton<IResponseSanitizer, ExfiltrationUrlDetector>();
         services.AddSingleton<ICompositeResponseSanitizer, CompositeResponseSanitizer>();
 
+        // Data-classification seam. The policy evaluator is pure; the provider default is fail-fast and
+        // is only consulted when DataClassificationConfig.Mode is not Off — a real Purview-backed
+        // provider (Graph / Data Map) replaces it before classification enforcement is switched on.
+        services.AddSingleton<IClassificationPolicyEvaluator, DefaultClassificationPolicyEvaluator>();
+        services.AddSingleton<IDataClassificationProvider, NotConfiguredDataClassificationProvider>();
+
         return services;
     }
 
@@ -73,6 +80,12 @@ public static class DependencyInjection
         services.AddSingleton<IGovernanceAuditService, NoOpAuditService>();
         services.AddSingleton<IMcpSecurityScanner, NoOpMcpScanner>();
         services.AddSingleton<ICompositeResponseSanitizer, NoOpResponseSanitizer>();
+
+        // Data-classification seam (governance disabled): the pure evaluator plus a benign no-op
+        // provider that classifies every asset as Unknown, so the dependency resolves without
+        // contacting Purview or throwing.
+        services.AddSingleton<IClassificationPolicyEvaluator, DefaultClassificationPolicyEvaluator>();
+        services.AddSingleton<IDataClassificationProvider, NoOpDataClassificationProvider>();
 
         return services;
     }
