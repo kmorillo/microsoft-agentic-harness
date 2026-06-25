@@ -74,4 +74,13 @@ public sealed class GovernanceConfig
     /// "may this tool run?".
     /// </summary>
     public ProgressGuardConfig ProgressGuard { get; init; } = new();
+
+    /// <summary>
+    /// Purview-backed data classification (classification-aware DLP) for the agent's live tool-call
+    /// path. Opt-in via <see cref="Governance.DataClassificationConfig.Mode"/>; off by default. Resolves
+    /// the Purview sensitivity label of the asset a tool is about to touch and allows / redacts / blocks
+    /// the call accordingly — access control driven by classification metadata, distinct from the
+    /// content-pattern response sanitizers.
+    /// </summary>
+    public DataClassificationConfig DataClassification { get; init; } = new();
 }
