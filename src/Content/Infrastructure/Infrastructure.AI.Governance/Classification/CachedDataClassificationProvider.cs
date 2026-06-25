@@ -22,9 +22,18 @@ namespace Infrastructure.AI.Governance.Classification;
 /// unreachable for an asset that carries a label id), the exception propagates and nothing is stored, so
 /// a transient failure is never frozen into the cache.
 /// </para>
+/// <para>
+/// Growth is bounded by opportunistic pruning: once the entry count crosses
+/// <see cref="PruneThreshold"/>, expired entries are swept on write, so a long-running agent that touches
+/// many distinct assets does not accumulate dead entries indefinitely. Memory is therefore bounded by the
+/// set of <em>live</em> (unexpired) assets within a TTL window, not by total assets ever seen.
+/// </para>
 /// </remarks>
 public sealed class CachedDataClassificationProvider : IDataClassificationProvider
 {
+    /// <summary>Entry count above which expired entries are pruned on the next write.</summary>
+    private const int PruneThreshold = 1024;
+
     private readonly IDataClassificationProvider _inner;
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _ttl;
@@ -66,7 +75,20 @@ public sealed class CachedDataClassificationProvider : IDataClassificationProvid
 
         var result = await _inner.GetLabelAsync(asset, cancellationToken).ConfigureAwait(false);
         _cache[asset] = new CacheEntry(result, now + _ttl);
+
+        if (_cache.Count > PruneThreshold)
+            PruneExpired(now);
+
         return result;
+    }
+
+    private void PruneExpired(DateTimeOffset now)
+    {
+        foreach (var (asset, entry) in _cache)
+        {
+            if (now >= entry.ExpiresAt)
+                _cache.TryRemove(asset, out _);
+        }
     }
 
     private sealed record CacheEntry(AssetLabelResult Result, DateTimeOffset ExpiresAt);

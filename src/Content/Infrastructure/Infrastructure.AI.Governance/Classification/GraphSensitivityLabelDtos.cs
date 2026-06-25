@@ -7,8 +7,13 @@ namespace Infrastructure.AI.Governance.Classification;
 /// <c>GET /security/dataSecurityAndGovernance/sensitivityLabels</c>. Internal to the MIP provider.
 /// </summary>
 /// <param name="Value">The sensitivity labels in the response, or null when the body is malformed.</param>
+/// <param name="NextLink">
+/// The <c>@odata.nextLink</c> URL for the next page of results, or null on the final page. Followed so a
+/// paginated taxonomy is read in full rather than silently truncated to the first page.
+/// </param>
 internal sealed record GraphLabelListResponse(
-    [property: JsonPropertyName("value")] IReadOnlyList<GraphSensitivityLabelDto>? Value);
+    [property: JsonPropertyName("value")] IReadOnlyList<GraphSensitivityLabelDto>? Value,
+    [property: JsonPropertyName("@odata.nextLink")] string? NextLink = null);
 
 /// <summary>
 /// Wire-format projection of a single Microsoft Graph <c>sensitivityLabel</c> resource. Only the fields

@@ -33,9 +33,15 @@ namespace Infrastructure.AI.Governance.Classification;
 /// silently treating an unreachable backend as "nothing to see".
 /// </para>
 /// </remarks>
-public sealed partial class GraphSensitivityLabelClient : IDataClassificationProvider
+public sealed partial class GraphSensitivityLabelClient : IDataClassificationProvider, IDisposable
 {
     private const string LabelsPath = "security/dataSecurityAndGovernance/sensitivityLabels";
+
+    /// <summary>
+    /// Hard cap on pagination follow-through, a guard against a malformed or looping
+    /// <c>@odata.nextLink</c> chain. A real tenant label taxonomy is far below this.
+    /// </summary>
+    private const int MaxCatalogPages = 100;
 
     /// <summary>
     /// Name of the <see cref="IHttpClientFactory"/> client this provider resolves on each fetch. Using
@@ -137,14 +143,47 @@ public sealed partial class GraphSensitivityLabelClient : IDataClassificationPro
 
     private async Task<IReadOnlyDictionary<string, SensitivityLabel>> FetchCatalogAsync(CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, _labelsEndpoint);
+        var labels = new Dictionary<string, SensitivityLabel>(StringComparer.OrdinalIgnoreCase);
+
+        // Follow @odata.nextLink so a paginated taxonomy is read in full rather than silently truncated
+        // to the first page (which would degrade later labels to Unknown).
+        Uri? nextUrl = _labelsEndpoint;
+        var pages = 0;
+        while (nextUrl is not null)
+        {
+            if (++pages > MaxCatalogPages)
+            {
+                throw new InvalidOperationException(
+                    $"The Microsoft Graph sensitivity-label taxonomy exceeded the {MaxCatalogPages}-page cap; refusing to follow further pagination.");
+            }
+
+            var page = await GetPageAsync(nextUrl, cancellationToken).ConfigureAwait(false);
+            foreach (var dto in page.Value!)
+            {
+                if (string.IsNullOrWhiteSpace(dto.Id) || string.IsNullOrWhiteSpace(dto.Name))
+                    continue;
+
+                labels[NormalizeLabelId(dto.Id)] = new SensitivityLabel(dto.Id, dto.Name);
+            }
+
+            nextUrl = string.IsNullOrWhiteSpace(page.NextLink) ? null : new Uri(page.NextLink, UriKind.Absolute);
+        }
+
+        _logger.LogInformation(
+            "Loaded {LabelCount} Purview sensitivity labels from Graph across {PageCount} page(s).", labels.Count, pages);
+        return labels;
+    }
+
+    private async Task<GraphLabelListResponse> GetPageAsync(Uri url, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
         var token = await _credential
             .GetTokenAsync(new TokenRequestContext(_scopes), cancellationToken)
             .ConfigureAwait(false);
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token.Token);
 
-        // Resolved per fetch (not captured) so the factory can rotate the underlying handler.
-        var httpClient = _httpClientFactory.CreateClient(HttpClientName);
+        // Resolved (and disposed) per request so the factory can rotate the underlying handler.
+        using var httpClient = _httpClientFactory.CreateClient(HttpClientName);
         using var response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
@@ -167,18 +206,7 @@ public sealed partial class GraphSensitivityLabelClient : IDataClassificationPro
                 "The Microsoft Graph sensitivity-label response did not contain a 'value' collection; the response shape was not understood.");
         }
 
-        var labels = new Dictionary<string, SensitivityLabel>(StringComparer.OrdinalIgnoreCase);
-        foreach (var dto in payload.Value)
-        {
-            if (string.IsNullOrWhiteSpace(dto.Id) || string.IsNullOrWhiteSpace(dto.Name))
-                continue;
-
-            var key = NormalizeLabelId(dto.Id);
-            labels[key] = new SensitivityLabel(dto.Id, dto.Name);
-        }
-
-        _logger.LogInformation("Loaded {LabelCount} Purview sensitivity labels from Graph.", labels.Count);
-        return labels;
+        return payload;
     }
 
     private static Uri BuildLabelsEndpoint(string graphBaseUrl)
@@ -219,6 +247,9 @@ public sealed partial class GraphSensitivityLabelClient : IDataClassificationPro
     [GeneratedRegex(@"MSIP_Label_(?<id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})_",
         RegexOptions.IgnoreCase)]
     private static partial Regex MsipLabelMarker();
+
+    /// <summary>Disposes the catalog-refresh lock.</summary>
+    public void Dispose() => _refreshLock.Dispose();
 
     /// <summary>An immutable snapshot of the label taxonomy with its expiry.</summary>
     private sealed record CatalogSnapshot(

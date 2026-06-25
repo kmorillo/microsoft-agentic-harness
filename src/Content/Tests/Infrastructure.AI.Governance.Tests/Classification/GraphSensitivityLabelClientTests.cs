@@ -124,6 +124,30 @@ public sealed class GraphSensitivityLabelClientTests
     }
 
     [Fact]
+    public async Task GetLabelAsync_FollowsODataNextLink_AcrossPages()
+    {
+        // Page 1 carries only "Confidential" plus a nextLink; page 2 carries "Highly Confidential".
+        const string page2Url = "https://graph.test/v1.0/security/dataSecurityAndGovernance/sensitivityLabels?$skiptoken=P2";
+        var handler = new StubHandler(request =>
+            request.RequestUri!.Query.Contains("skiptoken")
+                ? Ok($$"""{ "value": [ { "id": "{{HighlyConfidentialId}}", "name": "Highly Confidential" } ] }""")
+                : Ok($$"""
+                    {
+                      "value": [ { "id": "{{ConfidentialId}}", "name": "Confidential" } ],
+                      "@odata.nextLink": "{{page2Url}}"
+                    }
+                    """));
+        var sut = CreateClient(handler, new MutableTimeProvider(Now));
+
+        var first = await sut.GetLabelAsync(new AssetReference(AssetType.LocalFile, ConfidentialId), CancellationToken.None);
+        var second = await sut.GetLabelAsync(new AssetReference(AssetType.LocalFile, HighlyConfidentialId), CancellationToken.None);
+
+        first.Label!.Name.Should().Be("Confidential");
+        second.Label!.Name.Should().Be("Highly Confidential", "the second page's labels must be merged into the taxonomy");
+        handler.CallCount.Should().Be(2, "both pages are fetched once, then the merged catalog is cached");
+    }
+
+    [Fact]
     public async Task GetLabelAsync_GraphReturns200WithoutValueCollection_Throws()
     {
         // A 200 whose body lacks the 'value' array is an unrecognized shape — it must fail closed rather
