@@ -148,4 +148,96 @@ public sealed class Neo4jGraphStoreTests : IClassFixture<Neo4jStoreFixture>
         triplet.Edge.TenantId.Should().Be("tenant-a");
         triplet.Source.TenantId.Should().Be("tenant-a");
     }
+
+    [Fact]
+    public async Task AddAndGetNode_RoundTripsPropertiesChunksAndProvenance()
+    {
+        // These fields are stored as JSON strings on the Neo4j node (Properties, Provenance)
+        // and as a list (chunk_ids), then re-hydrated on read. Round-tripping them is the
+        // provenance/citation contract — a serialization regression here silently corrupts
+        // audit lineage and source attribution.
+        var stamp = new ProvenanceStamp
+        {
+            SourcePipeline = "rag_ingestion",
+            SourceTask = "entity_extraction",
+            Timestamp = new DateTimeOffset(2026, 3, 14, 9, 30, 0, TimeSpan.Zero),
+            SourceDocumentId = "doc-42",
+            ExtractionConfidence = 0.87,
+            LastModifiedBy = "neo-user-prov"
+        };
+        await _store.AddNodesAsync([new GraphNode
+        {
+            Id = "neo-rich", Name = "Ada Lovelace", Type = "Person",
+            Properties = new Dictionary<string, string> { ["role"] = "mathematician", ["era"] = "19c" },
+            ChunkIds = ["chunk-a", "chunk-b"],
+            Provenance = stamp
+        }]);
+
+        var node = await _store.GetNodeAsync("neo-rich");
+
+        node.Should().NotBeNull();
+        node!.Properties.Should().Contain("role", "mathematician");
+        node.Properties.Should().Contain("era", "19c");
+        node.ChunkIds.Should().BeEquivalentTo(["chunk-a", "chunk-b"]);
+        node.Provenance.Should().NotBeNull();
+        node.Provenance!.SourcePipeline.Should().Be("rag_ingestion");
+        node.Provenance.SourceTask.Should().Be("entity_extraction");
+        node.Provenance.SourceDocumentId.Should().Be("doc-42");
+        node.Provenance.ExtractionConfidence.Should().BeApproximately(0.87, 1e-9);
+        node.Provenance.LastModifiedBy.Should().Be("neo-user-prov");
+        node.Provenance.Timestamp.Should().BeCloseTo(stamp.Timestamp, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task AddNode_RewriteMergesChunkIds_WithoutDroppingExisting()
+    {
+        // Re-ingesting an entity from a new chunk must UNION its chunk citations, not overwrite
+        // them — otherwise the earlier source reference (c1) is silently lost. A naive
+        // "SET chunk_ids = $chunks" would drop c1; the store merges instead.
+        await _store.AddNodesAsync([new GraphNode
+        {
+            Id = "neo-merge", Name = "Graph Theory", Type = "Concept", ChunkIds = ["c1", "c2"]
+        }]);
+        await _store.AddNodesAsync([new GraphNode
+        {
+            Id = "neo-merge", Name = "Graph Theory", Type = "Concept", ChunkIds = ["c2", "c3"]
+        }]);
+
+        var node = await _store.GetNodeAsync("neo-merge");
+
+        node!.ChunkIds.Should().Contain(["c1", "c2", "c3"]);
+    }
+
+    [Fact]
+    public async Task AddAndGetTriplet_RoundTripsEdgePropertiesAndProvenance()
+    {
+        // Same serialization contract as nodes, but for edges via the MapEdge read path.
+        var stamp = new ProvenanceStamp
+        {
+            SourcePipeline = "rag_ingestion",
+            SourceTask = "relationship_detection",
+            Timestamp = new DateTimeOffset(2026, 4, 1, 12, 0, 0, TimeSpan.Zero),
+            ExtractionConfidence = 0.55
+        };
+        await _store.AddNodesAsync([
+            new GraphNode { Id = "neo-es", Name = "S", Type = "Entity" },
+            new GraphNode { Id = "neo-et", Name = "T", Type = "Entity" }
+        ]);
+        await _store.AddEdgesAsync([new GraphEdge
+        {
+            Id = "neo-edge-rich", SourceNodeId = "neo-es", TargetNodeId = "neo-et",
+            Predicate = "depends_on", ChunkId = "c-edge",
+            Properties = new Dictionary<string, string> { ["weight"] = "0.9" },
+            Provenance = stamp
+        }]);
+
+        var triplet = (await _store.GetTripletsAsync(["neo-es"])).Single(t => t.Edge.Id == "neo-edge-rich");
+
+        triplet.Edge.Properties.Should().Contain("weight", "0.9");
+        triplet.Edge.Provenance.Should().NotBeNull();
+        triplet.Edge.Provenance!.SourcePipeline.Should().Be("rag_ingestion");
+        triplet.Edge.Provenance.SourceTask.Should().Be("relationship_detection");
+        triplet.Edge.Provenance.ExtractionConfidence.Should().BeApproximately(0.55, 1e-9);
+        triplet.Edge.Provenance.Timestamp.Should().BeCloseTo(stamp.Timestamp, TimeSpan.FromSeconds(1));
+    }
 }
