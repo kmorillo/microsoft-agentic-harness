@@ -4,6 +4,7 @@ using Azure.Monitor.OpenTelemetry.Exporter;
 using Infrastructure.Observability.Processors;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
@@ -64,6 +65,13 @@ public sealed class ObservabilityTelemetryConfigurator : ITelemetryConfigurator
     public void ConfigureTracing(TracerProviderBuilder builder)
     {
         var config = _appConfig.CurrentValue.Observability;
+
+        // Database-client instrumentation: surface Npgsql's own spans (command + connection
+        // activity) into the pipeline so DB time nests under the calling agent/HTTP span.
+        // No-op unless a Postgres-backed store is in use (e.g. PostgresObservabilityStore);
+        // Npgsql 10 emits OpenTelemetry-semconv span tags.
+        builder.AddNpgsql();
+        _logger.LogInformation("Npgsql tracing instrumentation registered");
 
         // Snapshot config for processors (they use IOptions, not IOptionsMonitor)
         var optionsSnapshot = Options.Create(_appConfig.CurrentValue);
@@ -139,6 +147,12 @@ public sealed class ObservabilityTelemetryConfigurator : ITelemetryConfigurator
     public void ConfigureMetrics(MeterProviderBuilder builder)
     {
         var config = _appConfig.CurrentValue.Observability;
+
+        // Database-client metrics: connection-pool occupancy/leaks, command duration,
+        // bytes read/written. Meter name "Npgsql"; Npgsql 10 renamed these counters to the
+        // OpenTelemetry db.client.* semantic conventions. No-op without a Postgres store.
+        builder.AddMeter("Npgsql");
+        _logger.LogInformation("Npgsql metrics instrumentation registered");
 
         // OTLP exporter is registered in OpenTelemetryServiceCollectionExtensions (pre-build phase)
 
