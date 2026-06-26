@@ -3,6 +3,7 @@ using Application.AI.Common.Interfaces.KnowledgeGraph;
 using Application.AI.Common.Interfaces.Learnings;
 using Application.AI.Common.Interfaces.RAG;
 using Application.AI.Common.Interfaces.Skills;
+using Application.AI.Common.Interfaces.WorkMemory;
 using Domain.Common.Config;
 using Infrastructure.AI.KnowledgeGraph.Audit;
 using Infrastructure.AI.KnowledgeGraph.Compliance;
@@ -255,6 +256,31 @@ public static class DependencyInjection
         var learningsProvider = appConfig.AI.Learnings.StoreProvider;
         services.AddSingleton<ILearningsStore>(sp =>
             sp.GetRequiredKeyedService<ILearningsStore>(learningsProvider));
+
+        // --- Work-Episode Store (keyed DI) ---
+
+        services.AddKeyedSingleton<IWorkEpisodeStore>("graph", (sp, _) =>
+            new WorkMemory.GraphWorkEpisodeStore(
+                sp.GetRequiredService<IKnowledgeGraphStore>(),
+                sp.GetRequiredService<ILogger<WorkMemory.GraphWorkEpisodeStore>>()));
+
+        services.AddKeyedSingleton<IWorkEpisodeStore>("in_memory", (_, _) =>
+            new WorkMemory.InMemoryWorkEpisodeStore());
+
+        var workMemoryProvider = appConfig.AI.WorkMemory.StoreProvider;
+        // Fail loud at startup on a misconfigured provider key. Capture runs fire-and-forget, so a
+        // bad key would otherwise throw inside WorkEpisodeCaptureBehavior's swallowed catch on every
+        // turn — the subsystem would be silently dead with no surfaced error. Only enforced when the
+        // subsystem is enabled so a disabled (default) host with a stale value still boots.
+        if (appConfig.AI.WorkMemory.Enabled && workMemoryProvider is not ("graph" or "in_memory"))
+        {
+            throw new InvalidOperationException(
+                $"AppConfig:AI:WorkMemory:StoreProvider '{workMemoryProvider}' is not a registered " +
+                "work-episode store provider. Use 'graph' or 'in_memory'.");
+        }
+
+        services.AddSingleton<IWorkEpisodeStore>(sp =>
+            sp.GetRequiredKeyedService<IWorkEpisodeStore>(workMemoryProvider));
 
         return services;
     }
