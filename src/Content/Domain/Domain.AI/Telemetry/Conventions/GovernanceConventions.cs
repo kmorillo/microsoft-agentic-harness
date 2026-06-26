@@ -31,6 +31,13 @@ public static class GovernanceConventions
     public const string SpinReasonTag = "agent.governance.spin.reason";
     public const string SpinModeTag = "agent.governance.spin.mode";
 
+    public const string ClassificationDecisions = "agent.governance.classification_decisions";
+    public const string ClassificationActionTag = "agent.governance.classification.action";
+    public const string ClassificationAssetTypeTag = "agent.governance.classification.asset_type";
+    public const string ClassificationLabelSourceTag = "agent.governance.classification.label_source";
+    public const string ClassificationModeTag = "agent.governance.classification.mode";
+    public const string EnforcedTag = "agent.governance.enforced";
+
     /// <summary>Tag values for <see cref="SpinReasonTag"/> — why the spin guard broke the loop.</summary>
     public static class SpinReasonValues
     {

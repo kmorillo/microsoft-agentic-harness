@@ -63,6 +63,14 @@ public class AgentPipelineIntegrationTests
             .Returns(Application.AI.Common.Interfaces.Governance.ProgressVerdict.Continue());
         services.AddScoped(_ => progressMock.Object);
 
+        // Classification DLP gate — not under test here; permissive mock so the handler resolves.
+        var classificationMock = new Mock<Application.AI.Common.Interfaces.Governance.IToolClassificationGate>();
+        classificationMock
+            .Setup(g => g.EvaluateAsync(
+                It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, object?>>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Application.AI.Common.Interfaces.Governance.ClassificationVerdict.Allow());
+        services.AddScoped(_ => classificationMock.Object);
+
         // Conversation-lifetime budget — not under test here; permissive mock (disabled) so the
         // RunConversation handler resolves and never reports exhaustion.
         var budgetMock = new Mock<Application.AI.Common.Interfaces.AI.IConversationBudgetTracker>();

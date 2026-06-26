@@ -124,6 +124,14 @@ public static class DependencyInjection
         // per agent turn, reset between turns alongside the governor.
         services.AddScoped<Interfaces.Governance.IProgressEvaluator, Services.Governance.ProgressEvaluator>();
 
+        // Classification-aware DLP gate for the agent's live tool-call path (opt-in via
+        // GovernanceConfig.DataClassification.Mode). Consulted at the same chokepoint as the governor;
+        // resolves the asset a tool touches, classifies it via Purview, and blocks or redacts per policy.
+        // Scoped: reads the per-turn agent identity for audit. The asset resolvers are the per-tool adapter
+        // layer — the file-system reference resolver ships here; consumers register more for their tools.
+        services.AddScoped<Interfaces.Governance.IToolClassificationGate, Services.Governance.DefaultToolClassificationGate>();
+        services.AddSingleton<Interfaces.Governance.IAssetReferenceResolver, Services.Governance.FileSystemAssetReferenceResolver>();
+
         // AI telemetry configurator — registers AI SDK OTel sources and processors
         services.AddSingleton<ITelemetryConfigurator, AiTelemetryConfigurator>();
 

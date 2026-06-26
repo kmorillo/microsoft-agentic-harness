@@ -27,6 +27,7 @@ public class RunOrchestratedTaskCommandHandler : IRequestHandler<RunOrchestrated
 	private readonly IServiceScopeFactory _scopeFactory;
 	private readonly IAgentExecutionContext _executionContext;
 	private readonly IToolInvocationGovernor _governor;
+	private readonly IToolClassificationGate _classificationGate;
 	private readonly ILogger<RunOrchestratedTaskCommandHandler> _logger;
 
 	public RunOrchestratedTaskCommandHandler(
@@ -34,12 +35,14 @@ public class RunOrchestratedTaskCommandHandler : IRequestHandler<RunOrchestrated
 		IServiceScopeFactory scopeFactory,
 		IAgentExecutionContext executionContext,
 		IToolInvocationGovernor governor,
+		IToolClassificationGate classificationGate,
 		ILogger<RunOrchestratedTaskCommandHandler> logger)
 	{
 		_agentFactory = agentFactory;
 		_scopeFactory = scopeFactory;
 		_executionContext = executionContext;
 		_governor = governor;
+		_classificationGate = classificationGate;
 		_logger = logger;
 	}
 
@@ -185,10 +188,11 @@ public class RunOrchestratedTaskCommandHandler : IRequestHandler<RunOrchestrated
 	private async Task<object?> RunOrchestratorGovernedAsync(
 		AIAgent orchestrator, List<ChatMessage> messages, CancellationToken cancellationToken)
 	{
-		// Expose this scope's governor to the governed tool wrappers for the orchestrator's own
-		// RunAsync. Set/clear tightly around the call so interleaved sub-agent turns (which set their
-		// own ambient governor in their child scope) are unaffected.
+		// Expose this scope's governor and classification gate to the governed tool wrappers for the
+		// orchestrator's own RunAsync. Set/clear tightly around the call so interleaved sub-agent turns
+		// (which set their own ambient gates in their child scope) are unaffected.
 		ToolGovernanceAccessor.Current = _governor;
+		ClassificationGateAccessor.Current = _classificationGate;
 		try
 		{
 			return await orchestrator.RunAsync(messages, cancellationToken: cancellationToken);
@@ -196,6 +200,7 @@ public class RunOrchestratedTaskCommandHandler : IRequestHandler<RunOrchestrated
 		finally
 		{
 			ToolGovernanceAccessor.Current = null;
+			ClassificationGateAccessor.Current = null;
 		}
 	}
 
