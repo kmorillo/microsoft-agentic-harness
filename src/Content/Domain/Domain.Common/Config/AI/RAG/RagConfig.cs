@@ -53,6 +53,13 @@ public class RagConfig
     public VectorStoreConfig VectorStore { get; set; } = new();
 
     /// <summary>
+    /// Gets or sets the optional Azure AI Search agentic-retrieval backend configuration.
+    /// Off by default; when enabled, <c>IHybridRetriever</c> resolves to the server-side
+    /// knowledge-base retriever instead of the local hybrid pipeline.
+    /// </summary>
+    public AgenticRetrievalConfig AgenticRetrieval { get; set; } = new();
+
+    /// <summary>
     /// Gets or sets the GraphRAG configuration for graph-based retrieval
     /// using community summaries and entity relationships.
     /// </summary>
