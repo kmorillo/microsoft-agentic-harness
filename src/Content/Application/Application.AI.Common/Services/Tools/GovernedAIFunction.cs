@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Application.AI.Common.Interfaces.Governance;
 using Application.AI.Common.Services.Governance;
 using Microsoft.Extensions.AI;
 
@@ -13,10 +14,13 @@ namespace Application.AI.Common.Services.Tools;
 /// JSON schema are preserved unchanged — only invocation is intercepted. On invoke it consults, in order:
 /// the ambient <c>IToolInvocationGovernor</c> (via <see cref="ToolGovernanceAccessor"/>) — a denial
 /// returns the governor's model-facing message in place of the tool result and the inner function is
-/// never called; then the ambient <c>IProgressEvaluator</c> (via <see cref="ProgressGuardAccessor"/>) —
-/// a spin verdict returns its halt message in place of the tool result. Progress is evaluated only for
-/// calls the governor permits (a denied call never executed, so it must not count toward progress).
-/// When neither is ambient (a tool invoked outside a governed turn), the call passes straight through.
+/// never called; then the ambient <c>IToolClassificationGate</c> (via <see cref="ClassificationGateAccessor"/>)
+/// — a block returns its model-facing message in place of the tool result, while a redact verdict lets the
+/// call run and scrubs its output afterward; then the ambient <c>IProgressEvaluator</c> (via
+/// <see cref="ProgressGuardAccessor"/>) — a spin verdict returns its halt message in place of the tool
+/// result. Classification and progress are evaluated only for calls the governor permits, and a
+/// classification block likewise skips progress (a blocked call never executed, so it must not count toward
+/// progress). When none are ambient (a tool invoked outside a governed turn), the call passes straight through.
 /// </para>
 /// <para>
 /// This is the single invocation-time chokepoint for the agent's autonomous tool calls, applied to
@@ -46,8 +50,22 @@ internal sealed class GovernedAIFunction : DelegatingAIFunction
                 return decision.DeniedMessage ?? $"Error: tool '{Name}' was blocked by governance policy.";
         }
 
-        // Progress / spin guard runs after authorization so it only sees calls that would actually
-        // execute. Inert unless an evaluator is ambient and the guard is opt-in enabled.
+        // Classification gate runs after authorization (a denied call never reaches it). A block returns a
+        // model-facing message in place of the result; a redact verdict lets the call run and scrubs its
+        // output below. Inert unless the gate is ambient and classification is opt-in enabled.
+        var classificationGate = ClassificationGateAccessor.Current;
+        ClassificationVerdict? classification = null;
+        if (classificationGate is not null)
+        {
+            classification = await classificationGate
+                .EvaluateAsync(Name, arguments, cancellationToken).ConfigureAwait(false);
+            if (classification.Outcome == ClassificationGateOutcome.Block)
+                return classification.BlockedMessage
+                    ?? $"Error: tool '{Name}' was blocked by data-classification policy.";
+        }
+
+        // Progress / spin guard runs after authorization and classification so it only sees calls that
+        // would actually execute. Inert unless an evaluator is ambient and the guard is opt-in enabled.
         var progress = ProgressGuardAccessor.Current;
         if (progress is not null)
         {
@@ -57,7 +75,13 @@ internal sealed class GovernedAIFunction : DelegatingAIFunction
                     ?? $"Error: tool '{Name}' was stopped because the agent is not making progress.";
         }
 
-        return await base.InvokeCoreAsync(arguments, cancellationToken).ConfigureAwait(false);
+        var result = await base.InvokeCoreAsync(arguments, cancellationToken).ConfigureAwait(false);
+
+        // A redact-classified asset: scrub the tool's output before the model sees it.
+        if (classification?.Outcome == ClassificationGateOutcome.RedactOutput && classificationGate is not null)
+            return classificationGate.RedactResult(Name, result);
+
+        return result;
     }
 
     /// <summary>

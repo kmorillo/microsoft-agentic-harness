@@ -39,6 +39,7 @@ public class RunOrchestratedTaskCommandHandlerTests
             _scopeFactory.Object,
             new Application.AI.Common.Services.Agent.AgentExecutionContext(),
             new Mock<Application.AI.Common.Interfaces.Governance.IToolInvocationGovernor>().Object,
+            new Mock<Application.AI.Common.Interfaces.Governance.IToolClassificationGate>().Object,
             NullLogger<RunOrchestratedTaskCommandHandler>.Instance);
     }
 

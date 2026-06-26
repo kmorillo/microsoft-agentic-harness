@@ -32,6 +32,7 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 	private readonly IAgentConversationCache _agentCache;
 	private readonly IToolInvocationGovernor _governor;
 	private readonly IProgressEvaluator _progressEvaluator;
+	private readonly IToolClassificationGate _classificationGate;
 	private readonly IAgentMetadataRegistry _agentRegistry;
 	private readonly ISkillMetadataRegistry _skillRegistry;
 	private readonly IConversationRegistrationTracker _registrationTracker;
@@ -46,6 +47,7 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 		IAgentConversationCache agentCache,
 		IToolInvocationGovernor governor,
 		IProgressEvaluator progressEvaluator,
+		IToolClassificationGate classificationGate,
 		IAgentMetadataRegistry agentRegistry,
 		ISkillMetadataRegistry skillRegistry,
 		IConversationRegistrationTracker registrationTracker,
@@ -59,6 +61,7 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 		_agentCache = agentCache;
 		_governor = governor;
 		_progressEvaluator = progressEvaluator;
+		_classificationGate = classificationGate;
 		_agentRegistry = agentRegistry;
 		_skillRegistry = skillRegistry;
 		_registrationTracker = registrationTracker;
@@ -132,6 +135,11 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 			_progressEvaluator.Reset();
 			ProgressGuardAccessor.Current = _progressEvaluator;
 
+			// Same per-turn bridge for the classification DLP gate. It is stateless across calls (each
+			// decision is emitted to audit/OTel immediately), so unlike the governor and progress guard it
+			// needs no reset — only the ambient exposure for the governed tool wrapper to consult.
+			ClassificationGateAccessor.Current = _classificationGate;
+
 			object? response;
 			var turnSw = Stopwatch.StartNew();
 			try
@@ -152,6 +160,7 @@ public class ExecuteAgentTurnCommandHandler : IRequestHandler<ExecuteAgentTurnCo
 				LlmUsageCapture.Current = null;
 				ToolGovernanceAccessor.Current = null;
 				ProgressGuardAccessor.Current = null;
+				ClassificationGateAccessor.Current = null;
 			}
 
 			// Capture accumulated token usage from all LLM calls during this turn

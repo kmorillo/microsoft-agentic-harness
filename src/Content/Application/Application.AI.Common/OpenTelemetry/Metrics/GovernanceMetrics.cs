@@ -34,6 +34,15 @@ public static class GovernanceMetrics
     public static Counter<long> InjectionDetections { get; } =
         AppInstrument.Meter.CreateCounter<long>(GovernanceConventions.InjectionDetections, "{detection}", "Prompt injection detections");
 
+    /// <summary>
+    /// Data-classification gate decisions on the live tool path. Tags: agent.governance.tool,
+    /// agent.governance.classification.action, agent.governance.classification.asset_type,
+    /// agent.governance.classification.label_source, agent.governance.classification.mode,
+    /// agent.governance.enforced.
+    /// </summary>
+    public static Counter<long> ClassificationDecisions { get; } =
+        AppInstrument.Meter.CreateCounter<long>(GovernanceConventions.ClassificationDecisions, "{decision}", "Data-classification gate decisions");
+
     /// <summary>MCP tool security scans performed.</summary>
     public static Counter<long> McpScans { get; } =
         AppInstrument.Meter.CreateCounter<long>(GovernanceConventions.McpScans, "{scan}", "MCP tool security scans");
