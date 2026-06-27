@@ -258,48 +258,20 @@
 
 /* ---------------------------------------------------------------------------
    Chat surface (folded in from Presentation.WebUI during frontend unification).
-   Additive only — these tokens/animations are not used by the observability
-   surfaces, so existing Dashboard pages render unchanged. Typography, fonts,
-   and the shared shadcn token set are intentionally NOT overridden here; the
-   unified app keeps the Dashboard's type system.
+   Strictly additive and chat-scoped: one token consumed by the chat code block,
+   plus the two keyframes the typing indicator and streaming cursor reference via
+   Tailwind `animate-[…]` arbitrary classes. The chat components style their own
+   inline code and collapsible chevrons with Tailwind utilities, so NO global
+   element rules are introduced — the observability surfaces render unchanged.
 --------------------------------------------------------------------------- */
 :root {
   --code-bg: #f4f3ec;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 }
 
 [data-theme="dark"], .dark {
   --code-bg: #1f2028;
-  --accent-bg: rgba(192, 132, 252, 0.15);
-  --accent-border: rgba(192, 132, 252, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
 }
 
-@theme inline {
-  --animate-typing-pulse: typing-pulse 1.4s ease-in-out infinite;
-  --animate-cursor-blink: cursor-blink 1s ease-in-out infinite;
-}
-
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
-}
-
-code {
-  font-size: 0.9em;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
-}
-
-/* Chat animations */
 @keyframes typing-pulse {
   0%, 100% { opacity: 0.4; transform: scale(0.8); }
   50% { opacity: 1; transform: scale(1); }
@@ -308,15 +280,4 @@ code {
 @keyframes cursor-blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
-}
-
-/* Collapsible chevron rotation for tool cards */
-[data-state="closed"] .lucide-chevron-down {
-  transform: rotate(-90deg);
-}
-[data-state="open"] .lucide-chevron-down {
-  transform: rotate(0deg);
-}
-.lucide-chevron-down {
-  transition: transform 200ms ease;
 }
