@@ -4,6 +4,7 @@ using Application.AI.Common.Interfaces.Routing;
 using Application.Common.Interfaces.Data;
 using Azure;
 using Azure.Search.Documents;
+using Azure.Search.Documents.KnowledgeBases;
 using Domain.Common.Config;
 using Infrastructure.AI.RAG.Evaluation;
 using Infrastructure.AI.RAG.Orchestration;
@@ -61,8 +62,24 @@ public static partial class DependencyInjection
             return sp.GetRequiredKeyedService<IBm25Store>(key);
         });
 
-        // Hybrid retriever
-        services.AddSingleton<IHybridRetriever, HybridRetriever>();
+        // Hybrid retriever — keyed so an optional server-side backend (Azure AI Search
+        // agentic retrieval) can replace the local dense+sparse+RRF path without changing
+        // any consumer. The local hybrid path is the default.
+        services.AddKeyedSingleton<IHybridRetriever, HybridRetriever>("hybrid");
+
+        services.AddKeyedSingleton<IHybridRetriever>("azure_knowledge_base", (sp, _) =>
+            new AzureKnowledgeBaseRetriever(
+                BuildKnowledgeBaseRetrievalClient(sp),
+                sp.GetRequiredService<IOptionsMonitor<AppConfig>>(),
+                sp.GetRequiredService<ILogger<AzureKnowledgeBaseRetriever>>()));
+
+        // Default hybrid retriever from config — opt-in agentic backend, else local hybrid.
+        services.AddSingleton<IHybridRetriever>(sp =>
+        {
+            var config = sp.GetRequiredService<IOptionsMonitor<AppConfig>>().CurrentValue;
+            var key = config.AI.Rag.AgenticRetrieval.Enabled ? "azure_knowledge_base" : "hybrid";
+            return sp.GetRequiredKeyedService<IHybridRetriever>(key);
+        });
 
         // Rerankers — keyed by strategy name
         services.AddKeyedSingleton<IReranker>("azure_semantic", (sp, _) =>
@@ -264,5 +281,26 @@ public static partial class DependencyInjection
             : new AzureKeyCredential("not-configured");
 
         return new SearchClient(endpoint, vsConfig.IndexName, credential);
+    }
+
+    /// <summary>
+    /// Builds a <see cref="KnowledgeBaseRetrievalClient"/> from the agentic-retrieval
+    /// configuration. Falls back to a placeholder endpoint when not configured so DI
+    /// resolution always succeeds; the retriever short-circuits to no results in that case
+    /// rather than calling the placeholder.
+    /// </summary>
+    private static KnowledgeBaseRetrievalClient BuildKnowledgeBaseRetrievalClient(IServiceProvider sp)
+    {
+        var config = sp.GetRequiredService<IOptionsMonitor<AppConfig>>().CurrentValue.AI.Rag.AgenticRetrieval;
+
+        var endpoint = config.IsConfigured
+            ? new Uri(config.Endpoint!)
+            : new Uri("https://not-configured.search.windows.net");
+
+        var credential = !string.IsNullOrWhiteSpace(config.ApiKey)
+            ? new AzureKeyCredential(config.ApiKey)
+            : new AzureKeyCredential("not-configured");
+
+        return new KnowledgeBaseRetrievalClient(endpoint, config.KnowledgeBaseName, credential);
     }
 }

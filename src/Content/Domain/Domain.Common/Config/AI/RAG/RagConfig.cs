@@ -13,6 +13,7 @@ namespace Domain.Common.Config.AI.RAG;
 /// ├── Ingestion          — Chunking strategy, token targets, RAPTOR summaries
 /// ├── Retrieval          — Top-K, RRF constant, hybrid search toggle
 /// ├── VectorStore        — Provider, endpoint, embedding model, dimensions
+/// ├── AgenticRetrieval   — Opt-in Azure AI Search knowledge-base backend (off by default)
 /// ├── GraphRag           — Graph provider, community level, entity extraction
 /// ├── Reranker           — Reranking strategy and model selection
 /// ├── Crag               — Corrective RAG thresholds and web fallback
@@ -51,6 +52,13 @@ public class RagConfig
     /// endpoint, embedding model, and index settings.
     /// </summary>
     public VectorStoreConfig VectorStore { get; set; } = new();
+
+    /// <summary>
+    /// Gets or sets the optional Azure AI Search agentic-retrieval backend configuration.
+    /// Off by default; when enabled, <c>IHybridRetriever</c> resolves to the server-side
+    /// knowledge-base retriever instead of the local hybrid pipeline.
+    /// </summary>
+    public AgenticRetrievalConfig AgenticRetrieval { get; set; } = new();
 
     /// <summary>
     /// Gets or sets the GraphRAG configuration for graph-based retrieval
