@@ -35,7 +35,7 @@ public interface IAgUiEventWriter
 /// transfer delivers frames to the client without buffering.
 /// </para>
 /// </remarks>
-public sealed class AgUiEventWriter : IAgUiEventWriter
+public sealed class AgUiEventWriter : IAgUiEventWriter, IDisposable
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -44,6 +44,15 @@ public sealed class AgUiEventWriter : IAgUiEventWriter
     };
 
     private readonly Stream _stream;
+
+    // Serializes frame writes. The agent runs tool calls concurrently
+    // (AgentFactory sets AllowConcurrentInvocation = true), and blocking-proxy tools emit
+    // TOOL_CALL_* frames from those concurrent invocations onto this same response body. Kestrel
+    // forbids concurrent response writes, so without this gate two in-flight tool calls would either
+    // throw or interleave bytes into an unparseable SSE frame. Each frame is written atomically;
+    // frames from different tool calls may still arrive in any order, which is fine because the client
+    // reassembles them by toolCallId.
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     /// <summary>
     /// Initializes a new <see cref="AgUiEventWriter"/> that writes to <paramref name="responseBody"/>.
@@ -62,7 +71,19 @@ public sealed class AgUiEventWriter : IAgUiEventWriter
         // Serialize as the base AgUiEvent type so JsonPolymorphic emits the "type" discriminator.
         var json = JsonSerializer.Serialize(evt, typeof(AgUiEvent), SerializerOptions);
         var frame = Encoding.UTF8.GetBytes($"data: {json}\n\n");
-        await _stream.WriteAsync(frame, ct);
-        await _stream.FlushAsync(ct);
+
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            await _stream.WriteAsync(frame, ct);
+            await _stream.FlushAsync(ct);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
+
+    /// <summary>Releases the write-serialization semaphore. The response stream is owned by the host.</summary>
+    public void Dispose() => _writeLock.Dispose();
 }

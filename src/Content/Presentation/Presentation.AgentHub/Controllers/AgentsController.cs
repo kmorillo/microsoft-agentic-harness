@@ -1,6 +1,8 @@
 using Application.AI.Common.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using Presentation.AgentHub.Config;
 using Presentation.AgentHub.Extensions;
 using Presentation.AgentHub.Interfaces;
 using Presentation.AgentHub.DTOs;
@@ -27,16 +29,19 @@ public sealed class AgentsController : ControllerBase
 
     private readonly IConversationStore _store;
     private readonly IAgentMetadataRegistry _agentRegistry;
+    private readonly IOptionsMonitor<AgentHubConfig> _config;
     private readonly ILogger<AgentsController> _logger;
 
     /// <summary>Initialises the controller with its dependencies.</summary>
     public AgentsController(
         IConversationStore store,
         IAgentMetadataRegistry agentRegistry,
+        IOptionsMonitor<AgentHubConfig> config,
         ILogger<AgentsController> logger)
     {
         _store = store;
         _agentRegistry = agentRegistry;
+        _config = config;
         _logger = logger;
     }
 
@@ -113,4 +118,46 @@ public sealed class AgentsController : ControllerBase
         await _store.DeleteAsync(id, ct);
         return NoContent();
     }
+
+    /// <summary>
+    /// Creates a new conversation owned by the caller and returns its thread id. The dashboard agent
+    /// panel calls this to obtain a thread before opening the AG-UI run stream.
+    /// </summary>
+    /// <remarks>
+    /// The agent is taken from the request body, falling back to
+    /// <see cref="AgentHubConfig.DefaultAgentName"/> when omitted. A 400 is returned when neither
+    /// supplies an agent name, so a conversation is never created against an unspecified agent.
+    /// </remarks>
+    [HttpPost("conversations")]
+    public async Task<IActionResult> CreateConversation(
+        [FromBody] CreateConversationRequest? request, CancellationToken ct)
+    {
+        var agentName = !string.IsNullOrWhiteSpace(request?.AgentName)
+            ? request!.AgentName!.Trim()
+            : _config.CurrentValue.DefaultAgentName;
+
+        if (string.IsNullOrWhiteSpace(agentName))
+            return BadRequest(new { error = "An agent name is required (none supplied and no default configured)." });
+
+        var userId = User.GetUserId();
+        var record = await _store.CreateAsync(agentName, userId, conversationId: null, ct);
+
+        _logger.LogInformation(
+            "Created conversation {ConversationId} for user {UserId} bound to agent {AgentName}.",
+            record.Id, userId, agentName);
+
+        return CreatedAtAction(nameof(GetConversation), new { id = record.Id },
+            new CreateConversationResponse(record.Id, record.AgentName));
+    }
 }
+
+/// <summary>Request body for <see cref="AgentsController.CreateConversation"/>.</summary>
+/// <param name="AgentName">
+/// The agent to bind the conversation to. Optional — falls back to the configured default agent.
+/// </param>
+public sealed record CreateConversationRequest(string? AgentName);
+
+/// <summary>Response for <see cref="AgentsController.CreateConversation"/>.</summary>
+/// <param name="ThreadId">The new conversation's id, used as the AG-UI <c>threadId</c>.</param>
+/// <param name="AgentName">The agent the conversation was bound to.</param>
+public sealed record CreateConversationResponse(string ThreadId, string AgentName);

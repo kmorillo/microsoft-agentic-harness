@@ -13,6 +13,10 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://localhost:52000', changeOrigin: true },
       '/hubs': { target: 'http://localhost:52000', ws: true, changeOrigin: true },
+      // AG-UI streaming endpoint. The agent panel POSTs to /ag-ui/run and reads an SSE
+      // response; the proxy must not buffer it (the backend sets X-Accel-Buffering: no
+      // and flushes each frame), so streamed tool-call and text events arrive live.
+      '/ag-ui': { target: 'http://localhost:52000', changeOrigin: true },
     },
   },
   test: {

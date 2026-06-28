@@ -151,6 +151,7 @@ public sealed class AgUiRunHandler
         try
         {
             _writerAccessor.Writer = writer;
+            _writerAccessor.ThreadId = input.ThreadId;
             await ExecuteRunAsync(input, writer, record, userMessage, callerId, observabilitySessionId, ct);
         }
         catch (OperationCanceledException)
@@ -165,6 +166,7 @@ public sealed class AgUiRunHandler
         finally
         {
             _writerAccessor.Writer = null;
+            _writerAccessor.ThreadId = null;
             semaphore.Release();
         }
     }
