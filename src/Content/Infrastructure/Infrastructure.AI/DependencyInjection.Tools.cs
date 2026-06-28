@@ -1,4 +1,5 @@
 using Application.AI.Common.Interfaces;
+using Application.AI.Common.Interfaces.Observability;
 using Application.AI.Common.Interfaces.RAG;
 using Application.AI.Common.Interfaces.Tools;
 using Azure.AI.Agents.Persistent;
@@ -68,6 +69,18 @@ public static partial class DependencyInjection
             new DelegateToSubagentTool(
                 sp.GetRequiredService<Application.AI.Common.Interfaces.Agents.ISupervisor>(),
                 sp.GetRequiredService<ILogger<DelegateToSubagentTool>>()));
+
+        // Dashboard control tool — acts on the connected dashboard UI (read view, set time range,
+        // navigate, refresh) via a mid-run client round-trip through IClientToolBridge. The bridge
+        // implementation is supplied by the Presentation host (AG-UI); absent it, the tool fails
+        // gracefully ("no client attached"). Opt-in per skill via SKILL.md allowed-tools.
+        services.AddKeyedSingleton<ITool>(DashboardControlTool.ToolName, (sp, _) =>
+            new DashboardControlTool(sp.GetRequiredService<IClientToolBridge>()));
+
+        // List-metrics tool — enumerates the curated dashboard metric catalog (shared source) so the
+        // agent can pick a valid metric. Read-only, non-blocking. Opt-in per skill via allowed-tools.
+        services.AddKeyedSingleton<ITool>(ListMetricsTool.ToolName, (sp, _) =>
+            new ListMetricsTool(sp.GetRequiredService<IMetricCatalog>()));
     }
 
     /// <summary>

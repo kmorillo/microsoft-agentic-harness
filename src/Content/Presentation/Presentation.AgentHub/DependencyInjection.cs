@@ -229,6 +229,14 @@ public static class DependencyInjection
         services.AddScoped<IConversationOrchestrator, ConversationOrchestrator>();
 
         services.AddSingleton<IAgUiEventWriterAccessor, AgUiEventWriterAccessor>();
+
+        // AG-UI client round-trip ("blocking proxy") wiring. The registry is the shared rendezvous
+        // between the tool (awaiting, inside a run) and the resume endpoint (a separate request), so
+        // it MUST be a singleton. The bridge holds no per-run state (writer is ambient, pending map
+        // lives in the registry) and the catalog provider is immutable — both safe as singletons.
+        services.AddSingleton<AgUi.PendingToolCallRegistry>();
+        services.AddSingleton<Application.AI.Common.Interfaces.Tools.IClientToolBridge, AgUi.AgUiClientToolBridge>();
+        services.AddSingleton<Application.AI.Common.Interfaces.Observability.IMetricCatalog, AgUi.MetricCatalogProvider>();
         services.AddSingleton<IEscalationNotificationChannel, AgUiEscalationNotifier>();
         services.AddSingleton<IDriftNotificationChannel, AgUiDriftNotifier>();
         services.AddSingleton<ILearningNotificationChannel, AgUiLearningNotifier>();

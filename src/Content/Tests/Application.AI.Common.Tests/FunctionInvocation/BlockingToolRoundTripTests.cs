@@ -3,25 +3,28 @@ using FluentAssertions;
 using Microsoft.Extensions.AI;
 using Xunit;
 
-namespace Application.AI.Common.Tests.Spikes;
+namespace Application.AI.Common.Tests.FunctionInvocation;
 
 /// <summary>
-/// SPIKE (throwaway feasibility probe — not a production feature).
+/// Feasibility guard for the AG-UI "blocking proxy" pattern: a model-invoked tool blocks mid-run while
+/// it awaits a result supplied OUT OF BAND (a browser executing a client tool call and POSTing the
+/// result back to <c>POST /ag-ui/tool-result</c>), and the run then resumes with that result.
 ///
-/// Question: can a model-invoked tool block mid-run while it awaits a result supplied OUT OF BAND
-/// (e.g. a browser executing an AG-UI tool call and POSTing the result back), and then have the run
-/// resume with that result? This is the load-bearing unknown for an AG-UI client-tool round-trip.
+/// This is the load-bearing assumption behind <c>DashboardControlTool</c> + <c>AgUiClientToolBridge</c>
+/// + <c>PendingToolCallRegistry</c>. If a future framework upgrade breaks the function-invocation
+/// middleware's tolerance for a tool that parks on a <see cref="TaskCompletionSource{TResult}"/>, these
+/// tests fail loudly before the whole feature silently regresses.
 ///
-/// The existing <see cref="Infrastructure.AI.Tests.Pipeline.MeAiPipelineCompatibilityTests"/> already
-/// proves the basic tool round-trip (UseFunctionInvocation invokes a registered tool, then the model
-/// produces a final answer). What is unproven — and probed here — is whether the function-invocation
-/// middleware tolerates a tool that does NOT return promptly but instead parks on a
-/// <see cref="TaskCompletionSource{TResult}"/> completed by a separate caller.
+/// The existing <see cref="Infrastructure.AI.Tests.Pipeline.MeAiPipelineCompatibilityTests"/> proves the
+/// basic tool round-trip (UseFunctionInvocation invokes a registered tool, then the model produces a
+/// final answer). These tests add the missing property: the middleware tolerates a tool that does NOT
+/// return promptly but instead blocks until completed by a separate caller, and that cancellation of a
+/// blocked tool unwinds the run instead of hanging.
 ///
-/// We drive the SAME middleware the harness uses in production (<c>AgentFactory.BuildMiddlewarePipeline</c>
+/// They drive the SAME middleware the harness uses in production (<c>AgentFactory.BuildMiddlewarePipeline</c>
 /// → <c>.UseFunctionInvocation()</c>) over a deterministic fake chat client, so no live LLM is needed.
 /// </summary>
-public class BlockingToolRoundTripSpikeTests
+public class BlockingToolRoundTripTests
 {
     [Fact]
     public async Task BlockingTool_SuspendsRunUntilExternallyCompleted_ThenResumes()
