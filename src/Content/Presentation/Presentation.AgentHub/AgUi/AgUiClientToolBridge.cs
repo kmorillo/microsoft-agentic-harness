@@ -51,12 +51,16 @@ public sealed class AgUiClientToolBridge : IClientToolBridge
         var writer = _writerAccessor.Writer
             ?? throw new InvalidOperationException(
                 "No AG-UI client is attached to the current run; a client round-trip tool cannot be used here.");
+        var threadId = _writerAccessor.ThreadId
+            ?? throw new InvalidOperationException(
+                "The active AG-UI run has no thread id; a client round-trip tool cannot be used here.");
 
         var callId = Guid.NewGuid().ToString("N");
         var timeout = TimeSpan.FromSeconds(Math.Max(1, _config.CurrentValue.ClientToolTimeoutSeconds));
 
-        // Register before emitting events so a result can never race ahead of the pending entry.
-        var resultTask = _registry.RegisterAsync(callId, timeout, cancellationToken);
+        // Register (bound to the owning thread) before emitting events so a result can never race
+        // ahead of the pending entry, and so only a caller who owns this thread can complete it.
+        var resultTask = _registry.RegisterAsync(callId, threadId, timeout, cancellationToken);
 
         await writer.WriteAsync(new ToolCallStartEvent(callId, toolName), cancellationToken).ConfigureAwait(false);
         await writer.WriteAsync(new ToolCallArgsEvent(callId, argumentsJson ?? "{}"), cancellationToken).ConfigureAwait(false);

@@ -25,7 +25,7 @@ public sealed class AgUiClientToolBridgeTests
     public async Task InvokeAsync_EmitsToolCallSequence_BlocksUntilCompleted_ThenReturnsResult()
     {
         var writer = new CapturingEventWriter();
-        var accessor = new AgUiEventWriterAccessor { Writer = writer };
+        var accessor = new AgUiEventWriterAccessor { Writer = writer, ThreadId = "thread-1" };
         var registry = new PendingToolCallRegistry();
         var bridge = new AgUiClientToolBridge(accessor, registry, Options());
 
@@ -43,8 +43,8 @@ public sealed class AgUiClientToolBridgeTests
         args.Delta.Should().Contain("navigate");
         start.ToolCallId.Should().Be(args.ToolCallId).And.Be(end.ToolCallId);
 
-        // Resume out-of-band, exactly like the resume endpoint completing the registry.
-        registry.TryComplete(start.ToolCallId, "navigated").Should().BeTrue();
+        // Resume out-of-band, exactly like the resume endpoint completing the registry (same thread).
+        registry.TryComplete(start.ToolCallId, "thread-1", "navigated").Should().BeTrue();
 
         (await invokeTask.WaitAsync(TimeSpan.FromSeconds(5))).Should().Be("navigated");
     }

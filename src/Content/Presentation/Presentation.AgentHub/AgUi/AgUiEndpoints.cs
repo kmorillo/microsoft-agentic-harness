@@ -51,7 +51,7 @@ public static class AgUiEndpoints
         httpContext.Response.Headers.Connection = "keep-alive";
         httpContext.Response.Headers["X-Accel-Buffering"] = "no";
 
-        var writer = new AgUiEventWriter(httpContext.Response.Body);
+        using var writer = new AgUiEventWriter(httpContext.Response.Body);
         await handler.HandleRunAsync(input, writer, httpContext.User, ct);
     }
 
@@ -61,9 +61,11 @@ public static class AgUiEndpoints
     /// tool awaiting on the <see cref="PendingToolCallRegistry"/> and the agent run resumes.
     /// </summary>
     /// <remarks>
-    /// Ownership is enforced identically to the run endpoint: the caller must own the conversation
-    /// named by <see cref="ToolResultInput.ThreadId"/>. This prevents a user from completing — and
-    /// thereby injecting a tool result into — another user's in-flight run.
+    /// Ownership is enforced in depth: the caller must own the conversation named by
+    /// <see cref="ToolResultInput.ThreadId"/> (checked here), and the pending call must itself be bound
+    /// to that same thread (checked in <see cref="PendingToolCallRegistry.TryComplete"/>). Both must
+    /// hold, so a caller cannot inject a result into another user's in-flight run even if they learn its
+    /// <see cref="ToolResultInput.CallId"/>.
     /// </remarks>
     private static async Task<IResult> HandleToolResultAsync(
         HttpContext httpContext,
@@ -90,8 +92,9 @@ public static class AgUiEndpoints
         if (record.UserId != callerId)
             return Results.Forbid();
 
-        // false ⇒ no call with this id is pending (already completed, timed out, or never existed).
-        return registry.TryComplete(input.CallId, input.Result)
+        // false ⇒ no call with this id is pending for this thread (already completed, timed out, never
+        // existed, or registered under a different conversation).
+        return registry.TryComplete(input.CallId, input.ThreadId, input.Result)
             ? Results.Ok()
             : Results.NotFound(new { error = "No pending tool call with the supplied callId." });
     }

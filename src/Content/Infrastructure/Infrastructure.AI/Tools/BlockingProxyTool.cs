@@ -49,6 +49,11 @@ public abstract class BlockingProxyTool : ITool
     /// <summary>Client round-trip tools read/act on the live view; low intrinsic blast radius.</summary>
     public virtual BlastRadius RiskTier => BlastRadius.Low;
 
+    // IsReadOnly / IsConcurrencySafe intentionally keep the fail-closed defaults (false): the
+    // concurrency classifier then serializes these view-mutating proxy calls, which is the desired
+    // behaviour (two simultaneous navigations would race). AgUiEventWriter additionally serializes
+    // frame writes to defend against the framework's own concurrent function invocation.
+
     /// <summary>Whether a client is currently attached and able to service the round-trip.</summary>
     protected bool IsClientAttached => _bridge.IsClientAttached;
 

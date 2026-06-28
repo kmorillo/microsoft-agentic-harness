@@ -1,7 +1,7 @@
 ---
 id: dashboard-agent
 name: Dashboard Agent
-description: Conversational agent embedded in the observability dashboard that reads the current view and acts on it (time range, navigation, refresh) and can list available metrics.
+description: Conversational agent embedded in the observability dashboard that reads the current view and acts on it (time range, navigation, refresh), lists available metrics, and renders charts inline in its answers.
 domain: observability
 category: observability
 version: 1.0.0
@@ -14,8 +14,8 @@ skill: dashboard-agent
 
 The agent behind the embedded dashboard chat panel. It answers questions about the observability
 dashboard and acts on it for the user — changing the time range, navigating between pages, and
-refreshing data — using the `dashboard_control` tool, and can enumerate the available metrics with
-`list_metrics`.
+refreshing data — using the `dashboard_control` tool, enumerates the available metrics with
+`list_metrics`, and renders charts inline in its answers with `render_chart`.
 
 ## When to use
 

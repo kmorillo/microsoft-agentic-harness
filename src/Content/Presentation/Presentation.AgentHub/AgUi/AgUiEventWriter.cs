@@ -35,7 +35,7 @@ public interface IAgUiEventWriter
 /// transfer delivers frames to the client without buffering.
 /// </para>
 /// </remarks>
-public sealed class AgUiEventWriter : IAgUiEventWriter
+public sealed class AgUiEventWriter : IAgUiEventWriter, IDisposable
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
@@ -83,4 +83,7 @@ public sealed class AgUiEventWriter : IAgUiEventWriter
             _writeLock.Release();
         }
     }
+
+    /// <summary>Releases the write-serialization semaphore. The response stream is owned by the host.</summary>
+    public void Dispose() => _writeLock.Dispose();
 }

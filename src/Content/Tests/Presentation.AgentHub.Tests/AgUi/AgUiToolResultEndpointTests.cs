@@ -46,7 +46,7 @@ public sealed class AgUiToolResultEndpointTests : IClassFixture<TestWebApplicati
         var owner = $"tr-owner-{Guid.NewGuid():N}";
         var conv = await store.CreateAsync("dashboard-agent", owner);
         var callId = Guid.NewGuid().ToString("N");
-        var pending = registry.RegisterAsync(callId, TimeSpan.FromSeconds(30), CancellationToken.None);
+        var pending = registry.RegisterAsync(callId, conv.Id, TimeSpan.FromSeconds(30), CancellationToken.None);
 
         using var client = ClientAs(factory, owner);
         var response = await client.PostAsJsonAsync("/ag-ui/tool-result",
@@ -68,7 +68,7 @@ public sealed class AgUiToolResultEndpointTests : IClassFixture<TestWebApplicati
         var attacker = $"tr-attacker-{Guid.NewGuid():N}";
         var conv = await store.CreateAsync("dashboard-agent", owner);
         var callId = Guid.NewGuid().ToString("N");
-        _ = registry.RegisterAsync(callId, TimeSpan.FromSeconds(30), CancellationToken.None);
+        _ = registry.RegisterAsync(callId, conv.Id, TimeSpan.FromSeconds(30), CancellationToken.None);
 
         using var client = ClientAs(factory, attacker);
         var response = await client.PostAsJsonAsync("/ag-ui/tool-result",
@@ -76,6 +76,28 @@ public sealed class AgUiToolResultEndpointTests : IClassFixture<TestWebApplicati
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         registry.PendingCount.Should().BeGreaterThan(0, "a rejected post must not complete the pending call");
+    }
+
+    [Fact]
+    public async Task PostToolResult_CallIdFromAnotherThread_Returns404_EvenWhenCallerOwnsThePostedThread()
+    {
+        var factory = AuthFactory();
+        var store = factory.Services.GetRequiredService<IConversationStore>();
+        var registry = factory.Services.GetRequiredService<PendingToolCallRegistry>();
+
+        // The caller owns BOTH conversations; the call is pending on convA, but they post it against convB.
+        var owner = $"tr-owner-{Guid.NewGuid():N}";
+        var convA = await store.CreateAsync("dashboard-agent", owner);
+        var convB = await store.CreateAsync("dashboard-agent", owner);
+        var callId = Guid.NewGuid().ToString("N");
+        _ = registry.RegisterAsync(callId, convA.Id, TimeSpan.FromSeconds(30), CancellationToken.None);
+
+        using var client = ClientAs(factory, owner);
+        var response = await client.PostAsJsonAsync("/ag-ui/tool-result",
+            new { threadId = convB.Id, callId, result = "mismatched" });
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        registry.PendingCount.Should().BeGreaterThan(0, "the call is bound to convA and must stay pending");
     }
 
     [Fact]
