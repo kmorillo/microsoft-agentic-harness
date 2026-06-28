@@ -1,8 +1,9 @@
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Sparkles } from 'lucide-react';
 import { TimeRangePicker } from './TimeRangePicker';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useTelemetryStore } from '@/stores/telemetryStore';
 import { useTimeRangeStore } from '@/stores/timeRangeStore';
+import { useChatStore } from '@/stores/chatStore';
 import { useQueryClient } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
 
@@ -43,6 +44,7 @@ function ConnectionPip({ connected }: { connected: boolean }) {
 export function Topbar() {
   const connected = useTelemetryStore((s) => s.connected);
   const refreshInterval = useTimeRangeStore((s) => s.refreshIntervalSeconds);
+  const toggleAgent = useChatStore((s) => s.toggle);
   const queryClient = useQueryClient();
   const location = useLocation();
 
@@ -62,6 +64,14 @@ export function Topbar() {
         </div>
       </div>
       <div className="flex items-center gap-2">
+        <button
+          onClick={toggleAgent}
+          className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="Open dashboard agent"
+          data-testid="agent-launcher"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+        </button>
         <button
           onClick={() => queryClient.invalidateQueries()}
           className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"

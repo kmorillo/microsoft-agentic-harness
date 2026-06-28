@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { AgentPanel } from '@/components/agent/AgentPanel';
 import { useTelemetryStream } from '@/realtime/useTelemetryStream';
 
 export default function DashboardShell() {
@@ -15,6 +16,8 @@ export default function DashboardShell() {
           <Outlet />
         </main>
       </div>
+      {/* Mounted once at the shell level so the agent panel overlays every page. */}
+      <AgentPanel />
     </div>
   );
 }
