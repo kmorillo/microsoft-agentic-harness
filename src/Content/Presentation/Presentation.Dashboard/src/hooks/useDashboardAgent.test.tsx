@@ -104,6 +104,39 @@ describe('useDashboardAgent', () => {
     expect(createConversation).not.toHaveBeenCalled();
   });
 
+  it('recovers to error status when posting the tool result fails (does not hang on running)', async () => {
+    postToolResult.mockRejectedValueOnce(new Error('network down'));
+    runWith([
+      { type: EventType.TOOL_CALL_START, toolCallId: 'call-1', toolCallName: 'dashboard_control' },
+      { type: EventType.TOOL_CALL_ARGS, toolCallId: 'call-1', delta: JSON.stringify({ operation: 'refresh_data', parameters: {} }) },
+      { type: EventType.TOOL_CALL_END, toolCallId: 'call-1' },
+    ]);
+
+    const { result } = renderHook(() => useDashboardAgent());
+    await act(async () => {
+      await result.current.sendMessage('refresh');
+    });
+
+    await waitFor(() => expect(useChatStore.getState().status).toBe('error'));
+    expect(useChatStore.getState().error).toContain('network down');
+  });
+
+  it('still posts a result for a TOOL_CALL_END with no matching START (never hangs the server)', async () => {
+    runWith([
+      { type: EventType.TOOL_CALL_END, toolCallId: 'ghost' },
+      { type: EventType.RUN_FINISHED, threadId: 'thread-1', runId: 'r1' },
+    ]);
+
+    const { result } = renderHook(() => useDashboardAgent());
+    await act(async () => {
+      await result.current.sendMessage('go');
+    });
+
+    await waitFor(() =>
+      expect(postToolResult).toHaveBeenCalledWith('thread-1', 'ghost', expect.stringContaining('No client handler')),
+    );
+  });
+
   it('surfaces a RUN_ERROR as an error status', async () => {
     runWith([{ type: EventType.RUN_ERROR, message: 'boom' }]);
 

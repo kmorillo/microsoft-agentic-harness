@@ -67,23 +67,37 @@ export function useDashboardAgent() {
   const handleToolCallEnd = useCallback(async (threadId: string, callId: string) => {
     const pending = pendingCallsRef.current.get(callId);
     pendingCallsRef.current.delete(callId);
-    if (!pending) return;
 
+    // Compute a result for every callId — including one we never saw a START for — so the awaiting
+    // server-side tool always gets a reply. The action runners already catch their own errors and
+    // return a string, so the only thing that can throw here is the POST itself.
     let result: string;
-    switch (pending.name) {
-      case DASHBOARD_CONTROL:
-        result = await runDashboardControl(pending.args);
-        break;
-      case RENDER_CHART:
-        result = await runRenderChart(pending.args);
-        break;
-      default:
-        result = `Unsupported client tool "${pending.name}".`;
-        break;
+    if (!pending) {
+      result = `No client handler matched tool call ${callId}.`;
+    } else {
+      switch (pending.name) {
+        case DASHBOARD_CONTROL:
+          result = await runDashboardControl(pending.args);
+          break;
+        case RENDER_CHART:
+          result = await runRenderChart(pending.args);
+          break;
+        default:
+          result = `Unsupported client tool "${pending.name}".`;
+          break;
+      }
     }
 
-    // Always post a result — even on failure — so the awaiting server-side tool never hangs.
-    await postToolResult(threadId, callId, result);
+    try {
+      await postToolResult(threadId, callId, result);
+    } catch (err) {
+      // The server tool is blocked on this POST; if delivery fails the run can never resume. Surface
+      // an error and stop the spinner so the panel recovers instead of hanging on 'running' forever.
+      const store = useChatStore.getState();
+      store.setToolActivity(null);
+      store.setError(err instanceof Error ? err.message : 'Could not deliver the tool result to the agent.');
+      store.setStatus('error');
+    }
   }, []);
 
   const handleEvent = useCallback(

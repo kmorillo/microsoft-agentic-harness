@@ -60,10 +60,10 @@ function navigate(params: ActionParams): string {
   return `Navigated to ${path}.`;
 }
 
-/** Refreshes all data for the current view by invalidating cached queries. */
+/** Refreshes dashboard data by invalidating cached queries (matches the Topbar refresh button). */
 function refreshData(): string {
   void queryClient.invalidateQueries();
-  return 'Refreshed the current view data.';
+  return 'Refreshed the dashboard data.';
 }
 
 /**

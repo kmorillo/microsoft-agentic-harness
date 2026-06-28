@@ -55,6 +55,33 @@ public class AgUiEventWriterTests
     }
 
     [Fact]
+    public async Task WriteAsync_ConcurrentWrites_ProduceIntactNonInterleavedFrames()
+    {
+        // The agent runs tool calls concurrently (AllowConcurrentInvocation = true), and blocking-proxy
+        // tools emit frames onto the same writer from those concurrent invocations. WriteAsync must
+        // serialize so each frame is written atomically; without the gate, concurrent writes to the
+        // underlying stream interleave bytes and corrupt the SSE.
+        using var stream = new MemoryStream();
+        var writer = new AgUiEventWriter(stream);
+
+        const int count = 64;
+        var writes = Enumerable.Range(0, count)
+            .Select(i => writer.WriteAsync(new TextMessageContentEvent($"m{i}", $"delta-{i}")));
+        await Task.WhenAll(writes);
+
+        var frames = Encoding.UTF8.GetString(stream.ToArray())
+            .Split("\n\n", StringSplitOptions.RemoveEmptyEntries);
+        frames.Should().HaveCount(count);
+
+        // Every frame must be a complete, parseable JSON object — proof that no two writes interleaved.
+        var ids = frames
+            .Select(f => System.Text.Json.JsonDocument.Parse(f.Replace("data: ", "")))
+            .Select(d => d.RootElement.GetProperty("messageId").GetString())
+            .ToList();
+        ids.Should().BeEquivalentTo(Enumerable.Range(0, count).Select(i => $"m{i}"));
+    }
+
+    [Fact]
     public async Task WriteAsync_NullOptionalFields_OmittedFromJson()
     {
         using var stream = new MemoryStream();
